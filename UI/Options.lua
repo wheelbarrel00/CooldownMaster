@@ -1,0 +1,906 @@
+--[[
+	Cooldown Master - UI/Options.lua
+
+	Custom main panel hosting horizontal tabs along the top edge:
+	  Global | Lanes | Ready | Bars | Filters | Colors | Profiles | Import/Export | Changelog
+
+	Each tab populates a single content area below the tab bar. Sub-tabs
+	(Lane 1/2/3, etc.) are built by the per-tab modules in this same folder.
+
+	v0.1 status: panel + tab-switching is live. The Global tab is populated as
+	a working example. Other tabs render a placeholder header until their
+	modules are filled in.
+--]]
+
+local ADDON_NAME, ns = ...
+
+local Theme = ns.Theme
+
+-- Tab definitions. Each entry: { id, label, builder }
+-- The builder is called once, the first time the tab is shown, and receives
+-- the content frame to populate.
+local TABS = {
+	{ id = "global",       label = "Global",        builder = nil }, -- assigned below
+	{ id = "lanes",        label = "Lanes",         builder = nil },
+	{ id = "ready",        label = "Ready",         builder = nil },
+	{ id = "bars",         label = "Bars",          builder = nil },
+	{ id = "filters",      label = "Filters",       builder = nil },
+	{ id = "colors",       label = "Colors",        builder = nil },
+	{ id = "profiles",     label = "Profiles",      builder = nil },
+	{ id = "importexport", label = "Import/Export", builder = nil },
+	{ id = "changelog",    label = "Changelog",     builder = nil },
+}
+
+local panel  -- the main panel frame; created lazily on first open
+local tabButtons = {}
+local tabContents = {}
+local currentTabID
+
+
+-- ---------------------------------------------------------------------------
+-- Panel construction
+-- ---------------------------------------------------------------------------
+
+local function BuildPanel()
+	panel = CreateFrame("Frame", "CooldownMasterOptionsPanel", UIParent,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	panel:SetSize(Theme.PANEL.WIDTH, Theme.PANEL.HEIGHT)
+	panel:SetPoint("CENTER")
+	panel:SetFrameStrata("HIGH")
+	panel:SetMovable(true)
+	panel:EnableMouse(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetScript("OnDragStart", panel.StartMoving)
+	panel:SetScript("OnDragStop",  panel.StopMovingOrSizing)
+	panel:Hide()
+
+	Theme.ApplyBackdrop(panel)
+
+	-- Header bar (yellow title, red close button)
+	local header = Theme.CreateHeader(panel, ns.CONST.ADDON_DISPLAY)
+	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -10)
+
+	local versionText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	versionText:SetPoint("LEFT", header, "RIGHT", 8, -1)
+	versionText:SetText("v" .. ns.CONST.VERSION .. "  -  " .. ns.Compat.FlavorLabel())
+	versionText:SetTextColor(0.7, 0.7, 0.7)
+
+	local closeBtn = Theme.CreateButton(panel, "X", 28, 24)
+	closeBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -8)
+	closeBtn:SetScript("OnClick", function() panel:Hide() end)
+
+	-- Tab bar
+	local tabBar = CreateFrame("Frame", nil, panel)
+	tabBar:SetPoint("TOPLEFT",  panel, "TOPLEFT",  10, -Theme.PANEL.HEADER_H - 4)
+	tabBar:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -Theme.PANEL.HEADER_H - 4)
+	tabBar:SetHeight(Theme.PANEL.TAB_H)
+
+	-- Content area (everything below the tabs)
+	local content = CreateFrame("Frame", nil, panel,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	content:SetPoint("TOPLEFT",     tabBar, "BOTTOMLEFT",  0, -Theme.PANEL.TAB_GAP)
+	content:SetPoint("BOTTOMRIGHT", panel,  "BOTTOMRIGHT", -10, 10)
+	Theme.ApplyBackdrop(content,
+		{ r = 0, g = 0, b = 0, a = 0.55 },
+		ns.CONST.RGB.PANEL_BORDER)
+
+	panel.content = content
+
+	-- Build each tab button along the bar.
+	local x = 0
+	for _, def in ipairs(TABS) do
+		local b = Theme.CreateTab(tabBar, def.label, 105)
+		b:SetPoint("TOPLEFT", tabBar, "TOPLEFT", x, 0)
+		b:SetScript("OnClick", function() ns.Options_SelectTab(def.id) end)
+		tabButtons[def.id] = b
+		x = x + 105 + Theme.PANEL.TAB_GAP
+	end
+end
+
+
+-- Sub-frame for a single tab's content. Created lazily.
+local function GetOrCreateTabContent(id)
+	if tabContents[id] then return tabContents[id] end
+
+	local f = CreateFrame("Frame", nil, panel.content)
+	f:SetAllPoints(panel.content)
+	f:Hide()
+	tabContents[id] = f
+
+	-- Find the matching builder and run it.
+	for _, def in ipairs(TABS) do
+		if def.id == id then
+			if def.builder then
+				def.builder(f)
+			else
+				-- Placeholder for tabs we haven't filled in yet.
+				local fs = Theme.CreateHeader(f, def.label, "GameFontNormalHuge")
+				fs:SetPoint("CENTER")
+				local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				sub:SetPoint("TOP", fs, "BOTTOM", 0, -8)
+				sub:SetText("This tab is not yet implemented in v" .. ns.CONST.VERSION .. ".")
+				sub:SetTextColor(0.7, 0.7, 0.7)
+			end
+			break
+		end
+	end
+	return f
+end
+
+
+function ns.Options_SelectTab(id)
+	if not panel then return end
+	currentTabID = id
+	for _, def in ipairs(TABS) do
+		local btn = tabButtons[def.id]
+		if btn then btn:SetSelected(def.id == id) end
+		local frame = tabContents[def.id]
+		if frame then frame:Hide() end
+	end
+	GetOrCreateTabContent(id):Show()
+end
+
+
+function ns.Options_Toggle()
+	if not panel then BuildPanel() end
+	if panel:IsShown() then
+		panel:Hide()
+	else
+		panel:Show()
+		ns.Options_SelectTab(currentTabID or "global")
+	end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Global tab (working example so v0.1 has at least one filled-in tab)
+-- ---------------------------------------------------------------------------
+
+local function BuildGlobalTab(content)
+	local CDM = ns.CDM
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
+	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+
+	-- Three checkboxes in a row: Always / In Group / In Instance
+	local function MakeCheck(label, key, anchor, xOff)
+		local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+		cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", xOff or 0, -4)
+		cb:SetSize(24, 24)
+		local fs = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+		fs:SetText(label)
+		cb:SetChecked(CDM.db.profile.global[key])
+		cb:SetScript("OnClick", function(self)
+			CDM.db.profile.global[key] = self:GetChecked() and true or false
+		end)
+		return cb
+	end
+
+	local cbAlways   = MakeCheck("Always",      "enabledAlways",   section, 0)
+	local cbGroup    = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+	cbGroup:SetPoint("LEFT", cbAlways, "RIGHT", 120, 0)
+	cbGroup:SetSize(24, 24)
+	local fsg = cbGroup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	fsg:SetPoint("LEFT", cbGroup, "RIGHT", 4, 0); fsg:SetText("In Group")
+	cbGroup:SetChecked(CDM.db.profile.global.enabledGroup)
+	cbGroup:SetScript("OnClick", function(self)
+		CDM.db.profile.global.enabledGroup = self:GetChecked() and true or false
+	end)
+
+	local cbInst = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+	cbInst:SetPoint("LEFT", cbGroup, "RIGHT", 120, 0)
+	cbInst:SetSize(24, 24)
+	local fsi = cbInst:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	fsi:SetPoint("LEFT", cbInst, "RIGHT", 4, 0); fsi:SetText("In Instance")
+	cbInst:SetChecked(CDM.db.profile.global.enabledInstance)
+	cbInst:SetScript("OnClick", function(self)
+		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
+	end)
+
+	-- Single-column toggles below.
+	local prev = cbAlways
+	local toggles = {
+		{ "Unlock Frames",         "unlockFrames"   },
+		{ "Auto-hide Frames",      "autohide"       },
+		{ "Enable tooltips",       "enableTooltip"  },
+		{ "Detect Shared Spell Cooldowns", "detectSharedCD" },
+		{ "Tint Unusable Icons",   "notUsableTint"  },
+	}
+	for _, t in ipairs(toggles) do
+		prev = MakeCheck(t[1], t[2], prev, 0)
+	end
+
+	-- Test button at the bottom.
+	local testBtn = Theme.CreateButton(content, "Open Test Panel", 180, 30)
+	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
+	testBtn:SetScript("OnClick", function()
+		CDM.testing = not CDM.testing
+		CDM:Print("Test mode " .. (CDM.testing and "ON" or "OFF"))
+	end)
+end
+
+-- Wire the Global builder into the TABS list.
+for _, def in ipairs(TABS) do
+	if def.id == "global" then def.builder = BuildGlobalTab end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Lanes tab
+--
+-- Layout:
+--   [Lane 1][Lane 2][Lane 3] sub-tabs at the top.
+--   Left column (160px): inner-rail with section names. "General" and
+--   "Appearance" are active. "Icons", "Stacking", "Text" are placeholders
+--   for v0.3.
+--   Right column: scrollable form for the selected section.
+--
+-- All field onChange callbacks call ns.Lanes_Refresh(laneIndex) to give an
+-- immediate live preview. Structural changes (size/position/anchor) also
+-- call ns.Lanes_RebuildOne(laneIndex).
+-- ---------------------------------------------------------------------------
+
+local LANES_INNER_RAIL_W = 160
+local LANES_SECTION_LIST = {
+	{ id = "general",    label = "General",    active = true  },
+	{ id = "appearance", label = "Appearance", active = true  },
+	{ id = "icons",      label = "Icons",      active = false },
+	{ id = "stacking",   label = "Stacking",   active = true  },
+	{ id = "text",       label = "Text",       active = false },
+}
+
+local ANCHOR_OPTIONS = {
+	{ value = "TOPLEFT",     text = "Top Left"     },
+	{ value = "TOP",         text = "Top"          },
+	{ value = "TOPRIGHT",    text = "Top Right"    },
+	{ value = "LEFT",        text = "Left"         },
+	{ value = "CENTER",      text = "Center"       },
+	{ value = "RIGHT",        text = "Right"        },
+	{ value = "BOTTOMLEFT",  text = "Bottom Left"  },
+	{ value = "BOTTOM",      text = "Bottom"       },
+	{ value = "BOTTOMRIGHT", text = "Bottom Right" },
+}
+
+local MODE_OPTIONS = {
+	{ value = "LINEAR", text = "Linear"      },
+	{ value = "LOG",    text = "Linear (%)"  },
+}
+
+local TRACKING_OPTIONS = {
+	{ value = "NONE",  text = "None"  },
+	{ value = "GCD",   text = "GCD"   },
+	{ value = "SWING", text = "Swing" },
+}
+
+local TEXTURE_OPTIONS_FG = { { value = "CDM Smooth", text = "CDM Smooth" } }
+local TEXTURE_OPTIONS_BORDER = { { value = "CDM Shadow", text = "CDM Shadow" } }
+
+
+-- Module-locals: which lane and section the user is currently viewing.
+local lanesState = {
+	laneIndex   = 1,
+	sectionID   = "general",
+	subTabBtns  = {},
+	railRows    = {},
+	formFrames  = {},  -- [laneIndex][sectionID] = scroll content frame
+}
+
+local YELLOW  -- assigned in BuildLanesTab once Constants are guaranteed loaded
+local lanesPanelArea  -- captured form-area frame, set in BuildLanesTab
+
+
+local function GetLaneCfg(laneIndex)
+	return ns.CDM.db.profile.lanes[laneIndex]
+end
+
+
+local function RefreshLane(laneIndex)
+	if ns.Lanes_Refresh then ns.Lanes_Refresh(laneIndex) end
+end
+
+
+local function RebuildLane(laneIndex)
+	if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(laneIndex) end
+end
+
+
+-- Build the General form for the given lane. Parent must be a content frame
+-- already sized inside the scroll child.
+local function BuildLaneGeneralForm(parent, laneIndex)
+	local W = ns.Widgets
+	local cfg = GetLaneCfg(laneIndex)
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateEditBox(parent, {
+		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		onChange = function(text)
+			cfg.frameName = text
+			RefreshLane(laneIndex)
+		end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Enabled", checked = cfg.enabled,
+		onChange = function(v)
+			cfg.enabled = v
+			RebuildLane(laneIndex)
+		end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Reversed", checked = cfg.reversed,
+		onChange = function(v) cfg.reversed = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Vertical", checked = cfg.vertical,
+		onChange = function(v) cfg.vertical = v; RefreshLane(laneIndex) end,
+	}))
+
+	local secMode = W.CreateSectionHeader(parent, "Mode")
+	secMode:SetWidth(parent:GetWidth() - pad * 2)
+	place(secMode, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Mode", value = cfg.mode, options = MODE_OPTIONS, width = 200,
+		onChange = function(v) cfg.mode = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Max Time (seconds)", min = 10, max = 180, step = 1,
+		value = cfg.maxTime, width = 240,
+		onChange = function(v) cfg.maxTime = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Hide Long Timers", checked = cfg.hideLongTimers,
+		onChange = function(v) cfg.hideLongTimers = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Override Autohide", checked = cfg.overrideAutohide,
+		onChange = function(v) cfg.overrideAutohide = v; RefreshLane(laneIndex) end,
+	}))
+
+	-- Secondary-tracking block. On Midnight, Blizzard's Cooldown Manager owns
+	-- secondary tracking, so we hide these controls instead of letting the
+	-- user think they configure something live.
+	if not ns.Compat.IS_RETAIL then
+		local secTrack = W.CreateSectionHeader(parent, "Secondary Tracking")
+		secTrack:SetWidth(parent:GetWidth() - pad * 2)
+		place(secTrack, 18)
+
+		place(W.CreateDropdown(parent, {
+			label = "Primary Tracking", value = cfg.primaryTracking,
+			options = TRACKING_OPTIONS, width = 200,
+			onChange = function(v) cfg.primaryTracking = v; RefreshLane(laneIndex) end,
+		}))
+		place(W.CreateCheckbox(parent, {
+			label = "Reverse Primary", checked = cfg.primaryReverse,
+			onChange = function(v) cfg.primaryReverse = v; RefreshLane(laneIndex) end,
+		}))
+
+		place(W.CreateDropdown(parent, {
+			label = "Secondary Tracking", value = cfg.secondaryTracking,
+			options = TRACKING_OPTIONS, width = 200,
+			onChange = function(v) cfg.secondaryTracking = v; RefreshLane(laneIndex) end,
+		}))
+		place(W.CreateCheckbox(parent, {
+			label = "Reverse Secondary", checked = cfg.secondaryReverse,
+			onChange = function(v) cfg.secondaryReverse = v; RefreshLane(laneIndex) end,
+		}))
+
+		place(W.CreateSlider(parent, {
+			label = "ST Width", min = 1, max = 60, step = 1,
+			value = cfg.stWidth, width = 220,
+			onChange = function(v) cfg.stWidth = v; RefreshLane(laneIndex) end,
+		}))
+		place(W.CreateSlider(parent, {
+			label = "ST Height", min = 1, max = 120, step = 1,
+			value = cfg.stHeight, width = 220,
+			onChange = function(v) cfg.stHeight = v; RefreshLane(laneIndex) end,
+		}))
+
+		local stTexDD = W.CreateDropdown(parent, {
+			label = "ST Texture", value = cfg.stTexture,
+			options = TEXTURE_OPTIONS_FG, width = 200,
+			onChange = function(v) cfg.stTexture = v; RefreshLane(laneIndex) end,
+		})
+		stTexDD:SetEnabled(false)  -- only one entry; locked until v0.3 LSM hookup
+		place(stTexDD)
+
+		place(W.CreateColorPicker(parent, {
+			label = "ST Color", color = cfg.stColor, hasAlpha = true,
+			onChange = function(r, g, b, a)
+				cfg.stColor.r, cfg.stColor.g, cfg.stColor.b, cfg.stColor.a = r, g, b, a
+				RefreshLane(laneIndex)
+			end,
+		}))
+	end
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+-- Build the Appearance form.
+local function BuildLaneAppearanceForm(parent, laneIndex)
+	local W = ns.Widgets
+	local cfg = GetLaneCfg(laneIndex)
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "Width", min = 1, max = 600, step = 1,
+		value = cfg.width, width = 240,
+		onChange = function(v) cfg.width = v; RebuildLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Height", min = 1, max = 600, step = 1,
+		value = cfg.height, width = 240,
+		onChange = function(v) cfg.height = v; RebuildLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "X Offset", min = -500, max = 500, step = 1,
+		value = cfg.x, width = 240,
+		onChange = function(v) cfg.x = v; RebuildLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Y Offset", min = -500, max = 500, step = 1,
+		value = cfg.y, width = 240,
+		onChange = function(v) cfg.y = v; RebuildLane(laneIndex) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		onChange = function(v) cfg.anchor = v; RebuildLane(laneIndex) end,
+	}))
+
+	local secFG = W.CreateSectionHeader(parent, "Foreground")
+	secFG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secFG, 18)
+
+	local fgTexDD = W.CreateDropdown(parent, {
+		label = "Foreground Texture", value = cfg.fgTexture,
+		options = TEXTURE_OPTIONS_FG, width = 200,
+		onChange = function(v) cfg.fgTexture = v; RefreshLane(laneIndex) end,
+	})
+	fgTexDD:SetEnabled(false)
+	place(fgTexDD)
+
+	place(W.CreateColorPicker(parent, {
+		label = "Foreground Color", color = cfg.fgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.fgColor.r, cfg.fgColor.g, cfg.fgColor.b, cfg.fgColor.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Use Class Color (Foreground)", checked = cfg.fgClassColor,
+		onChange = function(v) cfg.fgClassColor = v; RefreshLane(laneIndex) end,
+	}))
+
+	local secBG = W.CreateSectionHeader(parent, "Background")
+	secBG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBG, 18)
+
+	local bgTexDD = W.CreateDropdown(parent, {
+		label = "Background Texture", value = cfg.bgTexture,
+		options = TEXTURE_OPTIONS_FG, width = 200,
+		onChange = function(v) cfg.bgTexture = v; RefreshLane(laneIndex) end,
+	})
+	bgTexDD:SetEnabled(false)
+	place(bgTexDD)
+
+	place(W.CreateColorPicker(parent, {
+		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Use Class Color (Background)", checked = cfg.bgClassColor,
+		onChange = function(v) cfg.bgClassColor = v; RefreshLane(laneIndex) end,
+	}))
+
+	local secBorder = W.CreateSectionHeader(parent, "Border")
+	secBorder:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBorder, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		onChange = function(v)
+			cfg.borderEnabled = v
+			RefreshLane(laneIndex)
+		end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Lane Alpha", min = 0, max = 1, step = 0.05,
+		value = cfg.alpha, width = 220,
+		onChange = function(v) cfg.alpha = v; RefreshLane(laneIndex) end,
+	}))
+
+	local borderTexDD = W.CreateDropdown(parent, {
+		label = "Border Texture", value = cfg.borderTexture,
+		options = TEXTURE_OPTIONS_BORDER, width = 200,
+		onChange = function(v) cfg.borderTexture = v; RefreshLane(laneIndex) end,
+	})
+	borderTexDD:SetEnabled(false)
+	place(borderTexDD)
+
+	place(W.CreateColorPicker(parent, {
+		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Padding", min = 0, max = 40, step = 1,
+		value = cfg.borderPadding, width = 220,
+		onChange = function(v) cfg.borderPadding = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Size", min = 1, max = 40, step = 1,
+		value = cfg.borderSize, width = 220,
+		onChange = function(v) cfg.borderSize = v; RefreshLane(laneIndex) end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Stacking form
+-- ---------------------------------------------------------------------------
+
+local STACK_STYLE_OPTIONS = {
+	{ value = "GROUPED", text = "Grouped"         },
+	{ value = "SPREAD",  text = "Spread (coming soon)" },
+}
+
+local GROW_DIR_H = {
+	{ value = "UP",   text = "Up"   },
+	{ value = "DOWN", text = "Down" },
+}
+
+local GROW_DIR_V = {
+	{ value = "LEFT",  text = "Left"  },
+	{ value = "RIGHT", text = "Right" },
+}
+
+local function BuildLaneStackingForm(parent, laneIndex)
+	local W = ns.Widgets
+	local cfg = GetLaneCfg(laneIndex)
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateCheckbox(parent, {
+		label = "Enabled", checked = cfg.stackEnabled,
+		onChange = function(v)
+			cfg.stackEnabled = v
+			RefreshLane(laneIndex)
+		end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = "Raise On Mouseover", checked = cfg.stackRaiseHover,
+		onChange = function(v)
+			cfg.stackRaiseHover = v
+			-- No immediate refresh needed; OnEnter/OnLeave handlers are
+			-- always attached. Effect is only meaningful when stacking is on.
+		end,
+	}))
+
+	local secBeh = W.CreateSectionHeader(parent, "Behavior")
+	secBeh:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBeh, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Stack Style", value = cfg.stackStyle, options = STACK_STYLE_OPTIONS,
+		width = 200,
+		onChange = function(v) cfg.stackStyle = v; RefreshLane(laneIndex) end,
+	}))
+
+	-- Grow Direction options depend on cfg.vertical. The dropdown is built
+	-- when this form is first shown; switching Vertical on the General tab
+	-- and coming back here will rebuild the form with updated options on
+	-- next visit (forms are built lazily per-lane per-section).
+	local growOpts = cfg.vertical and GROW_DIR_V or GROW_DIR_H
+	place(W.CreateDropdown(parent, {
+		label = "Grow Direction", value = cfg.stackGrowDirection,
+		options = growOpts, width = 200,
+		onChange = function(v) cfg.stackGrowDirection = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Height", min = 0, max = 300, step = 5,
+		value = cfg.stackHeight, width = 240,
+		onChange = function(v) cfg.stackHeight = v; RefreshLane(laneIndex) end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+-- Build a scroll-frame + content child for a particular (lane, section).
+-- Returns the outer scroll frame so the caller can show/hide it.
+local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
+	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", panelArea, "TOPLEFT", 0, 0)
+	scroll:SetPoint("BOTTOMRIGHT", panelArea, "BOTTOMRIGHT", -22, 0)
+
+	local child = CreateFrame("Frame", nil, scroll)
+	child:SetSize(panelArea:GetWidth() - 26, 1)
+	scroll:SetScrollChild(child)
+
+	if sectionID == "general" then
+		BuildLaneGeneralForm(child, laneIndex)
+	elseif sectionID == "appearance" then
+		BuildLaneAppearanceForm(child, laneIndex)
+	elseif sectionID == "stacking" then
+		BuildLaneStackingForm(child, laneIndex)
+	else
+		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		fs:SetPoint("CENTER")
+		fs:SetText("Coming in v0.3")
+		fs:SetTextColor(0.7, 0.7, 0.7)
+		child:SetHeight(60)
+	end
+
+	scroll:Hide()
+	return scroll
+end
+
+
+local function ShowLaneSection(panelArea, laneIndex, sectionID)
+	-- Hide every previously built form for this lane, then show the requested
+	-- one (build it lazily).
+	lanesState.formFrames[laneIndex] = lanesState.formFrames[laneIndex] or {}
+	for _, surf in pairs(lanesState.formFrames[laneIndex]) do
+		surf:Hide()
+	end
+	-- Hide other lanes' forms too.
+	for li, sections in pairs(lanesState.formFrames) do
+		if li ~= laneIndex then
+			for _, surf in pairs(sections) do surf:Hide() end
+		end
+	end
+
+	local surf = lanesState.formFrames[laneIndex][sectionID]
+	if not surf then
+		surf = BuildLaneFormSurface(panelArea, laneIndex, sectionID)
+		lanesState.formFrames[laneIndex][sectionID] = surf
+	end
+	surf:Show()
+
+	lanesState.laneIndex = laneIndex
+	lanesState.sectionID = sectionID
+
+	-- Re-color the rail rows to indicate the active section.
+	for _, row in ipairs(lanesState.railRows) do
+		local active = row._sectionID == sectionID
+		if row._isActiveSection then
+			row.text:SetTextColor(
+				active and YELLOW.r or 1,
+				active and YELLOW.g or 1,
+				active and YELLOW.b or 1,
+				1)
+		end
+	end
+
+	-- Re-color sub-tab buttons.
+	for li, btn in ipairs(lanesState.subTabBtns) do
+		btn:SetSelected(li == laneIndex)
+	end
+end
+
+
+YELLOW = ns.CONST.RGB.YELLOW  -- module-local; used by ShowLaneSection above
+
+
+local function BuildLanesTab(content)
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	-- Sub-tab strip (Lane 1 / Lane 2 / Lane 3).
+	local subBar = CreateFrame("Frame", nil, content)
+	subBar:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+	subBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -pad, -pad)
+	subBar:SetHeight(Theme.PANEL.TAB_H)
+
+	wipe(lanesState.subTabBtns)
+	local x = 0
+	for i = 1, 3 do
+		local b = Theme.CreateTab(subBar, "Lane " .. i, 90)
+		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
+		-- OnClick is rebound below once lanesPanelArea exists.
+		lanesState.subTabBtns[i] = b
+		x = x + 90 + Theme.PANEL.TAB_GAP
+	end
+
+	-- Below the sub-tabs: a body frame that holds the rail + the form area.
+	local body = CreateFrame("Frame", nil, content)
+	body:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
+	body:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
+
+	-- Inner-rail (left column).
+	local rail = CreateFrame("Frame", nil, body,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	rail:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+	rail:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 0, 0)
+	rail:SetWidth(LANES_INNER_RAIL_W)
+	Theme.ApplyBackdrop(rail,
+		{ r = 0, g = 0, b = 0, a = 0.4 }, ns.CONST.RGB.PANEL_BORDER)
+
+	-- Form area (right column). Forms (one per lane+section) live inside.
+	local formArea = CreateFrame("Frame", nil, body)
+	formArea:SetPoint("TOPLEFT", rail, "TOPRIGHT", 8, 0)
+	formArea:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
+	lanesPanelArea = formArea
+
+	-- Now that formArea exists, wire sub-tab clicks.
+	for i, b in ipairs(lanesState.subTabBtns) do
+		b:SetScript("OnClick", function()
+			ShowLaneSection(formArea, i, lanesState.sectionID)
+		end)
+	end
+
+	-- Build rail rows.
+	wipe(lanesState.railRows)
+	local ry = -8
+	for _, sec in ipairs(LANES_SECTION_LIST) do
+		local row = CreateFrame("Button", nil, rail)
+		row:SetPoint("TOPLEFT",  rail, "TOPLEFT",  6, ry)
+		row:SetPoint("TOPRIGHT", rail, "TOPRIGHT", -6, ry)
+		row:SetHeight(22)
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		fs:SetPoint("LEFT", row, "LEFT", 4, 0)
+		fs:SetText(sec.label)
+		row.text = fs
+		row._sectionID = sec.id
+		row._isActiveSection = sec.active
+
+		if sec.active then
+			fs:SetTextColor(1, 1, 1)
+			row:EnableMouse(true)
+			row:SetScript("OnClick", function()
+				ShowLaneSection(formArea, lanesState.laneIndex, sec.id)
+			end)
+			row:SetScript("OnEnter", function()
+				if sec.id ~= lanesState.sectionID then
+					fs:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+				end
+			end)
+			row:SetScript("OnLeave", function()
+				if sec.id ~= lanesState.sectionID then
+					fs:SetTextColor(1, 1, 1)
+				end
+			end)
+		else
+			fs:SetAlpha(0.5)
+			fs:SetTextColor(1, 1, 1)
+			row:EnableMouse(true)
+			row:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				GameTooltip:SetText("Coming in v0.3")
+				GameTooltip:Show()
+			end)
+			row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		end
+
+		lanesState.railRows[#lanesState.railRows + 1] = row
+		ry = ry - 26
+	end
+
+	-- Initial selection: Lane 1 / General.
+	ShowLaneSection(formArea, lanesState.laneIndex, lanesState.sectionID)
+end
+
+-- Wire it in.
+for _, def in ipairs(TABS) do
+	if def.id == "lanes" then def.builder = BuildLanesTab end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Colors tab — class color overrides used by class-color toggles in Lanes.
+-- ---------------------------------------------------------------------------
+
+local CLASS_TOKENS_RETAIL = {
+	"DEATHKNIGHT", "DEMONHUNTER", "DRUID", "EVOKER", "HUNTER",
+	"MAGE", "MONK", "PALADIN", "PRIEST", "ROGUE",
+	"SHAMAN", "WARLOCK", "WARRIOR",
+}
+
+local CLASS_TOKENS_CLASSIC = {
+	"DRUID", "HUNTER", "MAGE", "PALADIN", "PRIEST",
+	"ROGUE", "SHAMAN", "WARLOCK", "WARRIOR",
+}
+
+local CLASS_DISPLAY_NAMES = {
+	DEATHKNIGHT = "Death Knight",
+	DEMONHUNTER = "Demon Hunter",
+	DRUID = "Druid",
+	EVOKER = "Evoker",
+	HUNTER = "Hunter",
+	MAGE = "Mage",
+	MONK = "Monk",
+	PALADIN = "Paladin",
+	PRIEST = "Priest",
+	ROGUE = "Rogue",
+	SHAMAN = "Shaman",
+	WARLOCK = "Warlock",
+	WARRIOR = "Warrior",
+}
+
+
+local function BuildColorsTab(content)
+	local W = ns.Widgets
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local header = Theme.CreateHeader(content, "Class Colors", "GameFontNormalLarge")
+	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+
+	local tokens = ns.Compat.IS_RETAIL and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC
+
+	-- 3 columns x N rows grid. Each cell gets a color picker.
+	local cols = 3
+	local cellW = math.floor((Theme.PANEL.WIDTH - pad * 2 - 40) / cols)
+	local cellH = 30
+
+	for i, token in ipairs(tokens) do
+		local col = (i - 1) % cols
+		local row = math.floor((i - 1) / cols)
+		local x = pad + col * cellW
+		local y = -(pad + 30 + row * cellH)
+
+		local profile = ns.CDM.db.profile
+		profile.classColors[token] = profile.classColors[token]
+			or ns.CONST.CLASS_COLORS[token]
+			or { r = 1, g = 1, b = 1, a = 1 }
+
+		local cp = W.CreateColorPicker(content, {
+			label = CLASS_DISPLAY_NAMES[token] or token,
+			color = profile.classColors[token],
+			hasAlpha = false,
+			onChange = function(r, g, b, a)
+				local c = profile.classColors[token]
+				c.r, c.g, c.b = r, g, b
+				c.a = a or 1
+				-- TODO(rendering): tell each lane that uses class color to redraw.
+				if ns.Lanes_Refresh then
+					for li = 1, 3 do ns.Lanes_Refresh(li) end
+				end
+			end,
+		})
+		cp:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
+	end
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "colors" then def.builder = BuildColorsTab end
+end
