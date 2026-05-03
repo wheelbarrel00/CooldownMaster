@@ -102,6 +102,14 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 	f.label = label
 
+	f.markers = {}
+	for i = 1, 5 do
+		local m = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		m:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+		m:Hide()
+		f.markers[i] = m
+	end
+
 	-- Per-lane icon pool. Reused across refreshes; nothing is ever destroyed.
 	f.iconPool   = {}
 	f.activeIcons = 0
@@ -152,6 +160,43 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn:SetScript("OnLeave", function(self)
 		if self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 1)
+		end
+	end)
+
+	btn:SetScript("OnUpdate", function(self)
+		if not self._endTime then return end
+		local remaining = self._endTime - GetTime()
+		if remaining <= 0 then return end
+		local cfg = self._cfg
+		if not cfg then return end
+		self:SetAlpha((cfg.iconAlpha) or 1)
+		local off      = cfg.iconOffset or 0
+		local iconSize = self._iconSize or 40
+		local progress = math.min(1, math.max(0, remaining / (self._duration or 120)))
+		self:ClearAllPoints()
+		if cfg.vertical then
+			local laneH   = cfg.height or 400
+			local usableH = math.max(1, laneH - iconSize)
+			local y = progress * usableH
+			if cfg.reversed then
+				self:SetPoint("TOP", self:GetParent(), "TOP", off, -y)
+			else
+				self:SetPoint("BOTTOM", self:GetParent(), "BOTTOM", off, y)
+			end
+		else
+			local laneW  = cfg.width or 400
+			local usable = math.max(1, laneW - iconSize)
+			local x = progress * usable
+			if cfg.reversed then
+				self:SetPoint("RIGHT", self:GetParent(), "RIGHT", -x, off)
+			else
+				self:SetPoint("LEFT", self:GetParent(), "LEFT", x, off)
+			end
+		end
+		if remaining <= 10 then
+			self.time:SetText(string.format("%.1f", remaining))
+		else
+			self.time:SetText(string.format("%d", math.floor(remaining + 0.5)))
 		end
 	end)
 
@@ -226,6 +271,43 @@ function ns.Lanes_ApplyConfig(laneIndex)
 			laneFrame.label:SetText(cfg.frameName or "")
 			laneFrame.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 		end
+
+		if laneFrame.markers and cfg.laneText then
+			for i = 1, 5 do
+				local m = laneFrame.markers[i]
+				local def = cfg.laneText[i]
+				if m and def then
+					if def.enabled then
+						m:SetText(def.text or "")
+						m:ClearAllPoints()
+						local pos = def.pos or 0
+						if cfg.reversed then pos = 1 - pos end
+						if cfg.vertical then
+							local laneH = cfg.height or 400
+							if i == 1 then
+								m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
+							elseif i == 5 then
+								m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
+							else
+								m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * laneH)
+							end
+						else
+							local laneW = cfg.width or 400
+							if i == 1 then
+								m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
+							elseif i == 5 then
+								m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
+							else
+								m:SetPoint("CENTER", laneFrame, "LEFT", pos * laneW, 0)
+							end
+						end
+						m:Show()
+					else
+						m:Hide()
+					end
+				end
+			end
+		end
 	end)
 	if not ok then
 		if not ns._lanesApplyConfigErr or (GetTime() - ns._lanesApplyConfigErr) > 5 then
@@ -288,34 +370,21 @@ function ns.Lanes_Refresh(laneIndex)
 		local i = 0
 		if entries then
 			for _, e in pairs(entries) do
-				if e.endTime then
+				if e.endTime
+					-- Only render entries routed to this lane. ResolveLaneIndex
+					-- may shift over time as filter settings change, so we
+					-- consult the latest cached value on each entry.
+					and (e.laneIndex == laneIndex
+					     or (e.laneIndex == nil and laneIndex == 1))
+					-- Filter visibility check (category enabled + per-spell
+					-- override + showByDefault fallback).
+					and (engine:IsSpellVisible(e.spellID, e.category)) then
 					local remaining = e.endTime - now
 					if remaining > 0 then
 						local hideForLong = (remaining > maxTime) and cfg.hideLongTimers
 						if not hideForLong then
 							i = i + 1
 							local btn = AcquireIcon(laneFrame, i, iconSize)
-						-- Position icon along the timeline axis.
-						-- TODO(rendering): respect cfg.mode == "LOG" for log scaling
-						local progress = math.min(1, math.max(0, remaining / maxTime))
-						btn:ClearAllPoints()
-						if cfg.vertical then
-							local laneH  = cfg.height or 400
-							local usableH = math.max(1, laneH - iconSize)
-							local y = progress * usableH
-							if cfg.reversed then
-								btn:SetPoint("TOP", laneFrame, "TOP", 0, -y)
-							else
-								btn:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, y)
-							end
-						else
-							local x = progress * usable
-							if cfg.reversed then
-								btn:SetPoint("RIGHT", laneFrame, "RIGHT", -x, 0)
-							else
-								btn:SetPoint("LEFT", laneFrame, "LEFT", x, 0)
-							end
-						end
 							btn:SetSize(iconSize, iconSize)
 							if e.icon then
 								btn.tex:SetTexture(e.icon)
@@ -324,8 +393,16 @@ function ns.Lanes_Refresh(laneIndex)
 							end
 							btn.time:SetText(FormatTime(remaining))
 
-							-- Charges overlay (only when entry exposes charge data).
-							if e.charges and e.maxCharges then
+							-- Slot 2 (time text) visibility.
+							if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
+								btn.time:Show()
+							else
+								btn.time:Hide()
+							end
+
+							-- Slot 1 (charges) visibility — only when entry has charge data.
+							if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
+								and e.charges and e.maxCharges then
 								btn.charges:SetText(string.format("%d/%d", e.charges, e.maxCharges))
 								btn.charges:Show()
 							else
@@ -333,7 +410,11 @@ function ns.Lanes_Refresh(laneIndex)
 							end
 
 							btn:Show()
-							-- TODO(rendering): stacking — group icons within
+						btn._endTime    = e.endTime
+						btn._duration   = e.duration
+						btn._cfg        = cfg
+						btn._iconSize   = iconSize
+						-- TODO(rendering): stacking — group icons within
 							-- iconSize/2 of each other when cfg.stackEnabled
 							-- TODO(rendering): animation tween between successive
 							-- positions instead of snapping each tick
@@ -346,7 +427,10 @@ function ns.Lanes_Refresh(laneIndex)
 		-- Hide pool slots beyond what we actually used this frame.
 		for j = i + 1, laneFrame.activeIcons do
 			local btn = laneFrame.iconPool[j]
-			if btn then btn:Hide() end
+			if btn then
+				btn._endTime = nil
+				btn:Hide()
+			end
 		end
 		laneFrame.activeIcons = i
 	end)

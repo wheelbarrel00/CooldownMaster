@@ -1,22 +1,33 @@
 # Cooldown Master
 
-A timeline-style cooldown tracker for World of Warcraft. Built fresh from the
-ground up to support **Midnight (retail 12.0+)**, **Classic Era**, and
-**Burning Crusade Classic**, with first-class integration for panel addons
-like Titan Panel, Bazooka, and ChocolateBar.
+A **timeline-style lane** cooldown tracker for World of Warcraft. Designed to
+complement Blizzard's built-in Cooldown Manager (which already covers icon,
+bar, and ready-notification displays natively) by providing the one display
+the built-in does not: a horizontal lane where each tracked spell's icon
+travels at a speed proportional to its own cooldown, so abilities visually
+fan out by urgency.
+
+Supports **Midnight (retail 12.0+)**, **Classic Era**, and **Burning Crusade
+Classic**, with first-class integration for panel addons like Titan Panel,
+Bazooka, and ChocolateBar.
 
 > Inspired by CooldownTimeline2 (cliffclive / Vreenak), but a clean-room
 > rewrite — no copied code.
 
 ## Status
 
-`v0.2.0` — engine cracked. The cooldown engine is live (curve-evaluation
-architecture from the BCM/TweaksUI Cooldowns research; sidesteps the Midnight
-12.0 secret-value taint entirely), with hardcoded fallback durations for 26
-Paladin spells, persistent learning via SavedVariables, and a three-tier
-resolution path (direct curve read → cache extrapolation → fresh-cast inference
-via `UNIT_SPELLCAST_SUCCEEDED`). Most rendering, bar/ready frames, and tab
-content are still stubs to be filled in.
+`v0.3.0` — scope refocused. Cooldown Master no longer tries to replicate
+Blizzard's built-in icon, bar, or ready-notification displays — those work
+fine out of the box. Instead the addon is now squarely focused on the lane
+timeline: per-spell time mapping, smooth 60 Hz icon motion, configurable
+stacking, timeline markers, and per-lane appearance/icons/stacking/text
+controls. Filters, Colors, Profiles, and Import/Export tabs are next on the
+roadmap.
+
+The engine itself (curve-evaluation architecture from the BCM/TweaksUI
+Cooldowns research; sidesteps the Midnight 12.0 secret-value taint entirely)
+is unchanged and continues to drive lane rendering at 10 Hz with persistent
+duration learning via SavedVariables.
 
 ## Getting it running locally
 

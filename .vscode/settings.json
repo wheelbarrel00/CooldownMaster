@@ -33,6 +33,7 @@
         "PanelTemplates_DeselectTab",
         "SetDesaturation",
         "OKAY",
-        "NOT_BOUND"
+        "NOT_BOUND",
+        "AddonCompartmentFrame"
     ]
 }

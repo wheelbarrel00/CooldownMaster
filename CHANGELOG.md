@@ -1,5 +1,53 @@
 # Cooldown Master Changelog
 
+## 0.4.0 — Filters
+
+The Filters tab is now functional. Users can decide which discovered spells, items, buffs, and debuffs render in lanes, and override per-spell lane routing on a case-by-case basis.
+
+### New Features
+- `Filters > Defaults` sub-tab: per-category Enabled toggle, Show by Default flag (controls whether brand-new discovered spells start visible), Ignore Threshold slider, and Default Lane dropdown.
+- `Filters > Spells / Items / Buffs / Debuffs` sub-tabs: scrollable list of every spell the engine has discovered for that category, each row with an icon, spell name, visibility checkbox, and per-spell lane dropdown ("Default" or Lane 1/2/3).
+- Three-layer visibility model in the engine: category-enabled → per-spell override → category `showByDefault` fallback.
+- Per-spell lane override stored in `spellOverrides[spellID].lane`; falls back to `filters[category].defaultLane`, then the engine's hardcoded category default.
+
+### Bug Fixes
+- Multi-lane rendering: the entries loop now correctly gates each entry by its resolved `laneIndex`, so spells only appear in the lane they're routed to. Previously every spell rendered in every enabled lane (latent bug — only invisible because most users ran a single lane).
+
+### Migration
+- `MigrateV030` extended to fold the legacy `perSpellRouting[spellID] = laneIndex` map into `spellOverrides[spellID].lane`, then strip the obsolete `perSpellRouting` key. Idempotent.
+
+### Not yet implemented
+- Filters sub-tabs for Offensives, Pet Spells, and Custom render a "Coming in v0.5" placeholder. Custom in particular requires an "add spell ID by hand" input flow, which is a feature unto itself.
+
+## 0.3.0 — Scope refocus: lanes only
+
+Realized that Blizzard's built-in Cooldown Manager already covers the icon,
+status bar, and "ready" notification use cases natively. What it does not
+provide is a timeline-style **lane** display. Cooldown Master is now refocused
+on that one job — and on doing it well.
+
+### Removed
+- Bar Frames feature and all related UI (`UI/BarFrames.lua` deleted, Bars tab
+  removed from the options panel).
+- Ready Frames feature and all related UI (`UI/ReadyFrames.lua` deleted, Ready
+  tab removed from the options panel).
+- Engine hook that fired ready transitions (no longer needed).
+- `defaultBar` and `defaultReady` filter-routing fields (lanes only now).
+- Sound enumeration helper from the options panel (was only used by Ready).
+
+### Migration
+- `OnInitialize` runs a one-time SavedVariables cleanup that strips the
+  orphaned `barFrames` / `readyFrames` blocks and the obsolete
+  `defaultBar` / `defaultReady` keys from each filter category. Idempotent —
+  safe to run repeatedly. Nothing for users to do; just `/reload` after
+  upgrading.
+
+### Kept and unchanged
+- Lanes tab (General, Appearance, Icons, Stacking, Text sub-tabs).
+- Global, Filters, Colors, Profiles, Import/Export, Changelog tabs.
+- Curve-evaluation cooldown engine and persistent learning.
+- LibDataBroker launcher, minimap button, slash commands.
+
 ## 0.2.0 — Engine cracked
 
 Cooldown engine is live. Cracked the Midnight 12.0 secret-value problem by

@@ -22,8 +22,6 @@ local Theme = ns.Theme
 local TABS = {
 	{ id = "global",       label = "Global",        builder = nil }, -- assigned below
 	{ id = "lanes",        label = "Lanes",         builder = nil },
-	{ id = "ready",        label = "Ready",         builder = nil },
-	{ id = "bars",         label = "Bars",          builder = nil },
 	{ id = "filters",      label = "Filters",       builder = nil },
 	{ id = "colors",       label = "Colors",        builder = nil },
 	{ id = "profiles",     label = "Profiles",      builder = nil },
@@ -246,9 +244,9 @@ local LANES_INNER_RAIL_W = 160
 local LANES_SECTION_LIST = {
 	{ id = "general",    label = "General",    active = true  },
 	{ id = "appearance", label = "Appearance", active = true  },
-	{ id = "icons",      label = "Icons",      active = false },
+	{ id = "icons",      label = "Icons",      active = true  },
 	{ id = "stacking",   label = "Stacking",   active = true  },
-	{ id = "text",       label = "Text",       active = false },
+	{ id = "text",       label = "Text",       active = true  },
 }
 
 local ANCHOR_OPTIONS = {
@@ -647,6 +645,97 @@ local function BuildLaneStackingForm(parent, laneIndex)
 end
 
 
+local function BuildLaneIconsForm(parent, laneIndex)
+	local W = ns.Widgets
+	local cfg = GetLaneCfg(laneIndex)
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "Size", min = 1, max = 128, step = 1,
+		value = cfg.iconSize, width = 240,
+		onChange = function(v) cfg.iconSize = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Transparency", min = 0, max = 1, step = 0.05,
+		value = cfg.iconAlpha, width = 240,
+		onChange = function(v) cfg.iconAlpha = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Offset", min = -30, max = 30, step = 1,
+		value = cfg.iconOffset, width = 240,
+		onChange = function(v) cfg.iconOffset = v; RefreshLane(laneIndex) end,
+	}))
+
+	local secTxt = W.CreateSectionHeader(parent, "Icon Text")
+	secTxt:SetWidth(parent:GetWidth() - pad * 2)
+	place(secTxt, 18)
+
+	local slotLabels = { "Slot 1 (Charges)", "Slot 2 (Timer)", "Slot 3" }
+	for i = 1, 3 do
+		local slot = cfg.iconText and cfg.iconText[i]
+		place(W.CreateCheckbox(parent, {
+			label = slotLabels[i] .. " enabled",
+			checked = slot and slot.enabled or false,
+			onChange = function(v)
+				if cfg.iconText and cfg.iconText[i] then
+					cfg.iconText[i].enabled = v
+				end
+				RefreshLane(laneIndex)
+			end,
+		}))
+	end
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildLaneTextForm(parent, laneIndex)
+	local W = ns.Widgets
+	local cfg = GetLaneCfg(laneIndex)
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	if W.CreateSectionHeader then
+		local secDef = W.CreateSectionHeader(parent, "Default Text")
+		secDef:SetWidth(parent:GetWidth() - pad * 2)
+		place(secDef, 18)
+	end
+
+	for i = 1, 5 do
+		local def = cfg.laneText and cfg.laneText[i]
+		if def then
+			local label = string.format("Show \"%s\"", def.text or ("Marker " .. i))
+			place(W.CreateCheckbox(parent, {
+				label = label, checked = def.enabled,
+				onChange = function(v)
+					cfg.laneText[i].enabled = v
+					RefreshLane(laneIndex)
+				end,
+			}))
+		end
+	end
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
 -- Build a scroll-frame + content child for a particular (lane, section).
 -- Returns the outer scroll frame so the caller can show/hide it.
 local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
@@ -664,6 +753,10 @@ local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
 		BuildLaneAppearanceForm(child, laneIndex)
 	elseif sectionID == "stacking" then
 		BuildLaneStackingForm(child, laneIndex)
+	elseif sectionID == "icons" then
+		BuildLaneIconsForm(child, laneIndex)
+	elseif sectionID == "text" then
+		BuildLaneTextForm(child, laneIndex)
 	else
 		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		fs:SetPoint("CENTER")
@@ -823,6 +916,398 @@ end
 -- Wire it in.
 for _, def in ipairs(TABS) do
 	if def.id == "lanes" then def.builder = BuildLanesTab end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Filters tab — controls which discovered spells / items / buffs / debuffs
+-- get rendered in lanes, plus per-spell lane routing overrides.
+-- ---------------------------------------------------------------------------
+
+local FILTERS_INNER_RAIL_W = 160
+
+local filtersState = {
+	selectedSubTab          = "defaults",  -- "defaults" or category key
+	selectedDefaultsKey     = "spells",    -- which category's defaults are shown
+	formFrames              = {},          -- [subTabKey] = scroll frame
+	railRows                = {},
+}
+
+local function GetFilterCfg(key)
+	return ns.CDM.db.profile.filters[key]
+end
+
+local function GetSpellOverride(spellID)
+	local p = ns.CDM.db.profile
+	p.spellOverrides = p.spellOverrides or {}
+	p.spellOverrides[spellID] = p.spellOverrides[spellID] or {}
+	return p.spellOverrides[spellID]
+end
+
+-- Lane dropdown options (1/2/3) plus "Default" sentinel that maps to nil.
+local FILTER_LANE_OPTIONS = {
+	{ value = 0, text = "Default" },  -- 0 = nil sentinel; stored as nil
+	{ value = 1, text = "Lane 1"  },
+	{ value = 2, text = "Lane 2"  },
+	{ value = 3, text = "Lane 3"  },
+}
+
+local FILTER_LANE_FOR_DEFAULTS = {
+	{ value = 1, text = "Lane 1" },
+	{ value = 2, text = "Lane 2" },
+	{ value = 3, text = "Lane 3" },
+}
+
+-- Categories the Defaults sub-tab can edit. Order matches FILTER_CATEGORIES.
+local function BuildDefaultsCategoryDropdownOptions()
+	local opts = {}
+	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
+		opts[#opts + 1] = { value = def.key, text = def.label }
+	end
+	return opts
+end
+
+
+-- Build the body of the Defaults sub-tab: a category-picker dropdown plus a
+-- form showing the selected category's enabled / showByDefault / threshold /
+-- defaultLane settings.
+local function BuildFiltersDefaultsForm(parent)
+	local W = ns.Widgets
+	local pad = 12
+	local rowGap = 10
+
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	-- Category picker
+	local pickerLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	pickerLabel:SetText("Select a category to edit its default settings")
+	pickerLabel:SetTextColor(1, 1, 1)
+	place(pickerLabel, 16)
+
+	local categoryDropdown = W.CreateDropdown(parent, {
+		label = "", value = filtersState.selectedDefaultsKey,
+		options = BuildDefaultsCategoryDropdownOptions(),
+		width = 200,
+		onChange = function(v)
+			filtersState.selectedDefaultsKey = v
+			-- Rebuild the form rows below for the new category by triggering
+			-- a tab refresh (cheapest approach: hide/rebuild the surface).
+			if filtersState.formFrames["defaults"] then
+				filtersState.formFrames["defaults"]:Hide()
+				filtersState.formFrames["defaults"] = nil
+			end
+			if filtersState._refresh then filtersState._refresh() end
+		end,
+	})
+	place(categoryDropdown)
+
+	-- Spacer
+	y = y - 4
+
+	-- Selected category's settings
+	local key = filtersState.selectedDefaultsKey
+	local cfg = GetFilterCfg(key)
+	if not cfg then
+		local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		fs:SetText("Unknown category: " .. tostring(key))
+		fs:SetTextColor(0.7, 0.4, 0.4)
+		place(fs, 16)
+		parent:SetHeight(math.abs(y) + pad)
+		return
+	end
+
+	-- Find the display label for this category
+	local label = key
+	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
+		if def.key == key then label = def.label; break end
+	end
+
+	local sec = W.CreateSectionHeader(parent, label .. " Defaults")
+	sec:SetWidth(parent:GetWidth() - pad * 2)
+	place(sec, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label   = "Enabled",
+		checked = cfg.enabled,
+		onChange = function(v) cfg.enabled = v end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label   = "Show by Default",
+		checked = cfg.showByDefault,
+		onChange = function(v) cfg.showByDefault = v end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Ignore Threshold (sec)", min = 5, max = 3600, step = 5,
+		value = cfg.ignoreThreshold or 1800, width = 240,
+		onChange = function(v) cfg.ignoreThreshold = v end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Default Lane",
+		value = cfg.defaultLane or 1,
+		options = FILTER_LANE_FOR_DEFAULTS,
+		width = 200,
+		onChange = function(v) cfg.defaultLane = v end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+-- One row inside a per-category spell list. Renders icon + name +
+-- visible checkbox + lane dropdown. yPos is the TOPLEFT y of this row.
+local function BuildSpellRow(parent, spellID, info, yPos)
+	local W = ns.Widgets
+	local rowH = 26
+
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetSize(parent:GetWidth() - 24, rowH)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yPos)
+
+	-- Icon
+	local tex = row:CreateTexture(nil, "ARTWORK")
+	tex:SetSize(20, 20)
+	tex:SetPoint("LEFT", row, "LEFT", 0, 0)
+	if info.icon then tex:SetTexture(info.icon) end
+	tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+	-- Name
+	local name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	name:SetPoint("LEFT", tex, "RIGHT", 8, 0)
+	name:SetWidth(180)
+	name:SetJustifyH("LEFT")
+	name:SetText(info.name or ("Spell " .. spellID))
+	name:SetTextColor(1, 1, 1)
+
+	-- Visible checkbox (using a small inline checkbox via Widgets)
+	local override = GetSpellOverride(spellID)
+	local categoryKey = ns.Engine and ns.Engine:GetCategoryFilterKey(info.category)
+	local fcfg = categoryKey and GetFilterCfg(categoryKey)
+	local effectiveVisible
+	if override.visible ~= nil then
+		effectiveVisible = override.visible
+	else
+		effectiveVisible = fcfg and fcfg.showByDefault ~= false
+	end
+
+	local cb = W.CreateCheckbox(row, {
+		label = "Show",
+		checked = effectiveVisible,
+		onChange = function(v) override.visible = v end,
+	})
+	cb:SetPoint("LEFT", name, "RIGHT", 8, 0)
+
+	-- Lane dropdown
+	local laneVal = override.lane or 0  -- 0 sentinel for "Default"
+	local dd = W.CreateDropdown(row, {
+		label = "",
+		value = laneVal,
+		options = FILTER_LANE_OPTIONS,
+		width = 90,
+		onChange = function(v)
+			if v == 0 then
+				override.lane = nil
+			else
+				override.lane = v
+			end
+		end,
+	})
+	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
+
+	return row, rowH
+end
+
+
+-- Build the per-category spell list for Spells/Items/Buffs/Debuffs sub-tabs.
+local function BuildFiltersSpellListForm(parent, categoryKey)
+	local pad = 12
+	local rowGap = 4
+
+	-- Find all tracked spells matching this category
+	local engine = ns.Engine
+	local matches = {}
+	if engine and engine.trackedSpells then
+		for spellID, info in pairs(engine.trackedSpells) do
+			local key = engine:GetCategoryFilterKey(info.category)
+			if key == categoryKey then
+				matches[#matches + 1] = { spellID = spellID, info = info }
+			end
+		end
+	end
+
+	-- Sort by name (stable)
+	table.sort(matches, function(a, b)
+		local an = (a.info.name or ""):lower()
+		local bn = (b.info.name or ""):lower()
+		if an == bn then return a.spellID < b.spellID end
+		return an < bn
+	end)
+
+	if #matches == 0 then
+		local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		fs:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
+		fs:SetText("No spells discovered yet for this category.\nLog in or /reload to populate the list.")
+		fs:SetTextColor(0.7, 0.7, 0.7)
+		fs:SetJustifyH("LEFT")
+		parent:SetHeight(80)
+		return
+	end
+
+	-- Header row
+	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
+	header:SetText(string.format("%d spells tracked. Toggle visibility and override lane routing per spell.", #matches))
+	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+
+	local y = -pad - 22
+	for _, item in ipairs(matches) do
+		local _, h = BuildSpellRow(parent, item.spellID, item.info, y)
+		y = y - h - rowGap
+	end
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+-- Build the scroll surface for one Filters sub-tab.
+local function BuildFiltersFormSurface(panelArea, subTabKey)
+	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT",     panelArea, "TOPLEFT",     0,   0)
+	scroll:SetPoint("BOTTOMRIGHT", panelArea, "BOTTOMRIGHT", -22, 0)
+
+	local child = CreateFrame("Frame", nil, scroll)
+	child:SetSize(panelArea:GetWidth() - 26, 1)
+	scroll:SetScrollChild(child)
+
+	if subTabKey == "defaults" then
+		BuildFiltersDefaultsForm(child)
+	elseif subTabKey == "spells" or subTabKey == "items"
+	    or subTabKey == "buffs"  or subTabKey == "debuffs" then
+		BuildFiltersSpellListForm(child, subTabKey)
+	else
+		-- Inactive category (offensives / petspells / custom)
+		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		fs:SetPoint("CENTER")
+		fs:SetText("Coming in v0.4")
+		fs:SetTextColor(0.7, 0.7, 0.7)
+		child:SetHeight(60)
+	end
+
+	scroll:Hide()
+	return scroll
+end
+
+
+local function ShowFiltersSubTab(panelArea, subTabKey)
+	for _, surf in pairs(filtersState.formFrames) do surf:Hide() end
+
+	local surf = filtersState.formFrames[subTabKey]
+	if not surf then
+		surf = BuildFiltersFormSurface(panelArea, subTabKey)
+		filtersState.formFrames[subTabKey] = surf
+	end
+	surf:Show()
+
+	filtersState.selectedSubTab = subTabKey
+
+	-- Update visual selected state on rail rows
+	for _, row in ipairs(filtersState.railRows) do
+		if row.key == subTabKey then
+			row.label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+			row.bg:Show()
+		else
+			if row.active then
+				row.label:SetTextColor(1, 1, 1)
+			else
+				row.label:SetTextColor(0.45, 0.45, 0.45)
+			end
+			row.bg:Hide()
+		end
+	end
+end
+
+
+local function BuildFiltersTab(content)
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local header = Theme.CreateHeader(content, "Filters", "GameFontNormalLarge")
+	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+
+	-- Left rail with sub-tab buttons
+	local rail = CreateFrame("Frame", nil, content)
+	rail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10)
+	rail:SetSize(FILTERS_INNER_RAIL_W, 1)
+
+	-- Form area to the right of rail
+	local formArea = CreateFrame("Frame", nil, content)
+	formArea:SetPoint("TOPLEFT",     rail, "TOPRIGHT",    12, 0)
+	formArea:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
+
+	wipe(filtersState.railRows)
+
+	-- The "Defaults" entry at the top of the rail, then the FILTER_CATEGORIES.
+	local railEntries = {
+		{ key = "defaults", label = "Defaults", active = true },
+	}
+	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
+		railEntries[#railEntries + 1] = def
+	end
+
+	local y = 0
+	for _, entry in ipairs(railEntries) do
+		local row = CreateFrame("Button", nil, rail)
+		row:SetSize(FILTERS_INNER_RAIL_W, 22)
+		row:SetPoint("TOPLEFT", rail, "TOPLEFT", 0, y)
+
+		local bg = row:CreateTexture(nil, "BACKGROUND")
+		bg:SetAllPoints(row)
+		bg:SetColorTexture(ns.CONST.RGB.RED_DIM.r, ns.CONST.RGB.RED_DIM.g, ns.CONST.RGB.RED_DIM.b, 0.6)
+		bg:Hide()
+
+		local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		label:SetPoint("LEFT", row, "LEFT", 8, 0)
+		label:SetText(entry.label)
+		if not entry.active then
+			label:SetTextColor(0.45, 0.45, 0.45)
+		else
+			label:SetTextColor(1, 1, 1)
+		end
+
+		row.bg     = bg
+		row.label  = label
+		row.key    = entry.key
+		row.active = entry.active
+
+		if entry.active then
+			row:SetScript("OnClick", function()
+				ShowFiltersSubTab(formArea, entry.key)
+			end)
+		else
+			row:EnableMouse(false)
+		end
+
+		filtersState.railRows[#filtersState.railRows + 1] = row
+		y = y - 24
+	end
+
+	-- Refresh hook so the Defaults sub-tab dropdown can request a rebuild.
+	filtersState._refresh = function()
+		ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
+	end
+
+	-- Initial selection
+	ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "filters" then def.builder = BuildFiltersTab end
 end
 
 

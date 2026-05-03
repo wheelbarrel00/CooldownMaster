@@ -10,7 +10,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.2.0",
+	VERSION          = "0.4.0",
 
 	-- Slash commands
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster" },
@@ -53,6 +53,30 @@ ns.CONST = {
 		SHAMAN       = { r = 0.00, g = 0.44, b = 0.87 },
 		WARLOCK      = { r = 0.53, g = 0.53, b = 0.93 },
 		WARRIOR      = { r = 0.78, g = 0.61, b = 0.43 },
+	},
+
+	-- Maps Blizzard's Cooldown Viewer numeric category enum to the string keys
+	-- used by db.profile.filters[*]. The numeric enum (Enum.CooldownViewerCategory)
+	-- is: 0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff. Categories
+	-- without a Blizzard equivalent (offensives, petspells, custom) live in
+	-- defaults but receive no auto-discovered spells in v0.3.
+	CATEGORY_TO_FILTER_KEY = {
+		[0] = "spells",
+		[1] = "items",
+		[2] = "buffs",
+		[3] = "debuffs",
+	},
+
+	-- Display-friendly labels for each filter sub-tab. Order matters — drives
+	-- the sub-tab strip in the Filters tab UI.
+	FILTER_CATEGORIES = {
+		{ key = "spells",     label = "Spells",     active = true  },
+		{ key = "items",      label = "Items",      active = true  },
+		{ key = "buffs",      label = "Buffs",      active = true  },
+		{ key = "debuffs",    label = "Debuffs",    active = true  },
+		{ key = "offensives", label = "Offensives", active = false },
+		{ key = "petspells",  label = "Pet Spells", active = false },
+		{ key = "custom",     label = "Custom",     active = false },
 	},
 }
 

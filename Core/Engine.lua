@@ -273,12 +273,62 @@ function Engine:DefaultLaneForCategory(category)
 end
 
 
+-- Resolve the string filter key for a numeric Blizzard category. Returns nil
+-- for categories outside the mapping (e.g. test entries with category=0 or
+-- categories Blizzard adds in the future).
+function Engine:GetCategoryFilterKey(category)
+	return ns.CONST.CATEGORY_TO_FILTER_KEY[category]
+end
+
+
+-- Decide whether a spell should be visible right now based on the user's
+-- filter settings. Three-layer check:
+--   1. Category-level enabled flag (Filters > Defaults sub-tab toggles a
+--      whole category on/off).
+--   2. Per-spell override (Filters > Spells/Items/Buffs/Debuffs sub-tabs;
+--      stored in db.profile.spellOverrides[spellID].visible).
+--   3. Falls back to the category's showByDefault when no per-spell override
+--      exists (so a brand-new discovered spell inherits a sensible default).
+-- Categories without a filter mapping always pass through visible (rather
+-- than being silently hidden).
+function Engine:IsSpellVisible(spellID, category)
+	local addon = ns.CDM
+	if not (addon and addon.db) then return true end
+
+	local profile = addon.db.profile
+	local key = self:GetCategoryFilterKey(category)
+	if not key then return true end
+
+	local fcfg = profile.filters and profile.filters[key]
+	if not fcfg then return true end
+	if fcfg.enabled == false then return false end
+
+	local override = profile.spellOverrides and profile.spellOverrides[spellID]
+	if override and override.visible ~= nil then
+		return override.visible == true
+	end
+
+	return fcfg.showByDefault ~= false
+end
+
+
 function Engine:ResolveLaneIndex(spellID, category)
 	local addon = ns.CDM
 	if addon and addon.db then
-		local override = addon.db.profile.perSpellRouting and
-		                 addon.db.profile.perSpellRouting[spellID]
-		if override then return override end
+		local profile = addon.db.profile
+
+		-- Per-spell override wins.
+		local override = profile.spellOverrides and profile.spellOverrides[spellID]
+		if override and override.lane then
+			return override.lane
+		end
+
+		-- Else the category's defaultLane (set in Filters > Defaults sub-tab).
+		local key = self:GetCategoryFilterKey(category)
+		local fcfg = key and profile.filters and profile.filters[key]
+		if fcfg and fcfg.defaultLane then
+			return fcfg.defaultLane
+		end
 	end
 	return self:DefaultLaneForCategory(category)
 end

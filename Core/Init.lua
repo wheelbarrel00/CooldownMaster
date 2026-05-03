@@ -17,8 +17,6 @@ _G[ns.CONST.ADDON_NAME] = CDM   -- expose globally so `/dump CooldownMaster` wor
 
 CDM.version = ns.CONST.VERSION
 CDM.lanes = {}        -- runtime lane frames, keyed 1..3
-CDM.barFrames = {}    -- runtime bar frames, keyed 1..3
-CDM.readyFrames = {}  -- runtime ready frames, keyed 1..3
 CDM.cooldowns = {}    -- active cooldown objects
 CDM.testing = false
 
@@ -29,6 +27,11 @@ function CDM:OnInitialize()
 	-- still get profile-handling utilities (copy / reset / export) for free,
 	-- without exposing per-character profiles in the UI.
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
+
+	-- v0.3.0 migration: scope was reduced to lanes only. Strip orphaned
+	-- bar/ready saved values and the obsolete defaultBar/defaultReady filter
+	-- routing keys. Safe to run repeatedly; later versions can drop this block.
+	self:MigrateV030()
 
 	-- Seed class color overrides on first run if the user hasn't customised them.
 	if next(self.db.profile.classColors) == nil then
@@ -44,6 +47,44 @@ function CDM:OnInitialize()
 
 	-- Stub hooks; real implementations live in their own files.
 	if ns.DataBroker_Init then ns.DataBroker_Init(self) end
+end
+
+
+-- One-time cleanup of saved values left over from the pre-0.3.0 multi-frame
+-- scope (Bars + Ready). Idempotent; can be removed in a later major version.
+function CDM:MigrateV030()
+	local p = self.db and self.db.profile
+	if not p then return end
+
+	if p.barFrames   ~= nil then p.barFrames   = nil end
+	if p.readyFrames ~= nil then p.readyFrames = nil end
+
+	if type(p.filters) == "table" then
+		for _, f in pairs(p.filters) do
+			if type(f) == "table" then
+				if f.defaultBar   ~= nil then f.defaultBar   = nil end
+				if f.defaultReady ~= nil then f.defaultReady = nil end
+			end
+		end
+	end
+
+	-- Fold the legacy perSpellRouting map into spellOverrides, where Filters
+	-- now stores both visibility and lane preferences in one shape:
+	--   spellOverrides[spellID] = { visible = bool, lane = int|nil }
+	if type(p.perSpellRouting) == "table" then
+		p.spellOverrides = p.spellOverrides or {}
+		for spellID, laneIdx in pairs(p.perSpellRouting) do
+			if type(spellID) == "number" and type(laneIdx) == "number" then
+				local existing = p.spellOverrides[spellID]
+				if type(existing) ~= "table" then
+					p.spellOverrides[spellID] = { lane = laneIdx }
+				else
+					existing.lane = existing.lane or laneIdx
+				end
+			end
+		end
+		p.perSpellRouting = nil
+	end
 end
 
 
@@ -66,10 +107,7 @@ end
 
 function CDM:OnEnteringWorld()
 	-- Hook point for spawning lane frames once world data is available.
-	-- Real implementation lives in UI/Lanes.lua, UI/BarFrames.lua, UI/ReadyFrames.lua.
-	if ns.Lanes_Build       then ns.Lanes_Build(self)       end
-	if ns.BarFrames_Build   then ns.BarFrames_Build(self)   end
-	if ns.ReadyFrames_Build then ns.ReadyFrames_Build(self) end
+	if ns.Lanes_Build then ns.Lanes_Build(self) end
 
 	-- Wire SPELL_UPDATE_COOLDOWN + visibility events into the engine.
 	if ns.Events and ns.Events.Register and not self._eventsWired then

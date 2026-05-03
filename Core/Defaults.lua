@@ -54,43 +54,20 @@ local function lane(frameName)
 			{ enabled = false, text = ""            },
 		},
 
+		laneText = {
+			{ enabled = true, text = "Ready", pos = 0    },
+			{ enabled = true, text = "25%",   pos = 0.25 },
+			{ enabled = true, text = "50%",   pos = 0.50 },
+			{ enabled = true, text = "75%",   pos = 0.75 },
+			{ enabled = true, text = "100%",  pos = 1    },
+		},
+
 		-- Stacking
 		stackEnabled       = false,
 		stackRaiseHover    = false,
 		stackStyle         = "GROUPED",   -- GROUPED | SPREAD
 		stackGrowDirection = "UP",
 		stackHeight        = 80,
-	}
-end
-
-local function readyFrame(frameName)
-	return {
-		enabled        = (frameName == "Ready 1"),
-		frameName      = frameName,
-		growDirection  = "DOWN",
-		normalDuration = 5,
-		normalSound    = "CDM Click",
-		highlightDuration = 10,
-		highlightSound = "None",
-		pinnedHideTime = 10,
-		xPadding       = 0,
-		yPadding       = 0,
-	}
-end
-
-local function barFrame(frameName)
-	return {
-		enabled       = (frameName == "Bar Frame 1"),
-		frameName     = frameName,
-		growDirection = "UP",
-		transitionBars  = true,
-		showIndicator   = false,
-		indicatorStyle  = "LINE",
-		indicatorTexture= "CDM Smooth",
-		indicatorColor  = { r = 1, g = 1, b = 1, a = 1 },
-		indicatorWidth  = 5,
-		xPadding       = 0,
-		yPadding       = 0,
 	}
 end
 
@@ -116,40 +93,31 @@ ns.DEFAULTS = {
 	-- Class color overrides (Colors tab)
 	classColors = {},  -- populated from CONST.CLASS_COLORS at first run
 
-	-- Lanes / Bars / Ready (3 of each, like CDTL2)
+	-- Lanes (3 lanes, configurable independently)
 	lanes = {
 		[1] = lane("Lane 1"),
 		[2] = lane("Lane 2"),
 		[3] = lane("Lane 3"),
 	},
-	barFrames = {
-		[1] = barFrame("Bar Frame 1"),
-		[2] = barFrame("Bar Frame 2"),
-		[3] = barFrame("Bar Frame 3"),
-	},
-	readyFrames = {
-		[1] = readyFrame("Ready 1"),
-		[2] = readyFrame("Ready 2"),
-		[3] = readyFrame("Ready 3"),
-	},
 
 	-- Filters (Defaults / Spells / Items / Buffs / Debuffs / Offensives / Petspells / Custom)
 	filters = {
-		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
-		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, defaultBar = 1, defaultReady = 1 },
+		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
+		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
 	},
 
-	-- Per-spell overrides keyed by spellID. Filled in as the user adjusts entries.
+	-- Per-spell overrides keyed by spellID. Filled in as the user adjusts
+	-- entries via the Filters tab. Shape:
+	--   spellOverrides[spellID] = {
+	--       visible = true|false,    -- per-spell on/off (nil = use category default)
+	--       lane    = 1|2|3|nil,     -- per-spell lane override (nil = use category default)
+	--   }
 	spellOverrides = {},
-
-	-- Per-spell lane routing keyed by spellID -> laneIndex. Populated by the
-	-- Filters tab; empty by default so engine falls back to category routing.
-	perSpellRouting = {},
 
 	-- LibDataBroker / minimap button state
 	dataBroker = {
