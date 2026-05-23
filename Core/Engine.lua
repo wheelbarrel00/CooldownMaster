@@ -30,13 +30,22 @@ local Engine = ns.Engine
 
 -- Module state
 Engine.trackedSpells   = {}   -- [spellID] = { name, icon, category, hasCharges, cooldownID }
+Engine.trackedItems    = {}   -- [itemID]  = { name, icon, category, kind = "item" }
 Engine.cdIDToSpellID   = {}   -- [cooldownID] = spellID  (reverse lookup)
 Engine.knownDurations  = {}   -- [spellID] = total duration in seconds (learned)
 Engine.cdTimingCache   = {}   -- [spellID] = { cdStart, cdDuration } (extrapolation cache)
-Engine.entries         = {}   -- [spellID] = { spellID, name, icon, startTime, duration, endTime, ... }
+Engine.entries         = {}   -- [spellID|itemID] = { spellID, name, icon, startTime, duration, endTime, ... }
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
 Engine.testSpellIDs    = { 184575, 853, 633, 642 }
+
+-- Hardcoded list of potion item IDs we poll every tick. Items don't come
+-- from C_CooldownViewer (which only enumerates spells), so we maintain our
+-- own list and read cooldowns directly via C_Container.GetItemCooldown.
+-- Add new IDs here as Blizzard ships new potions.
+local POTION_ITEMS = {
+	241308, 241304, 241309, 241323, 258318,
+}
 
 Engine.readyCurve      = nil
 Engine.progressCurve   = nil
@@ -50,8 +59,8 @@ local MAX_DURATION = 600
 -- read. Once a real read succeeds, the learned value overrides this table
 -- because it accounts for talent modifications and is more accurate.
 --
--- Coverage focuses on Paladin retail spells from the user's actual tracked
--- list, plus universal items/utilities. Easy to extend later.
+-- Coverage spans Paladin (Retribution) and Mage (all three specs) retail
+-- spells, plus universal items/utilities. Easy to extend later.
 local FALLBACK_DURATIONS = {
 	-- ===== Paladin (Retribution focus) =====
 	[375576] = 60,   -- Divine Toll
@@ -78,6 +87,48 @@ local FALLBACK_DURATIONS = {
 	[24275]  = 7.5,  -- Hammer of Wrath
 	[410126] = 60,   -- Searing Glare
 
+	-- ===== Mage (shared utility / defensives) =====
+	[122]    = 30,   -- Frost Nova (charge-based with talent)
+	[1953]   = 15,   -- Blink
+	[212653] = 25,   -- Shimmer (charge-based; replaces Blink)
+	[2139]   = 24,   -- Counterspell
+	[45438]  = 240,  -- Ice Block
+	[55342]  = 120,  -- Mirror Image
+	[66]     = 300,  -- Invisibility
+	[110959] = 90,   -- Greater Invisibility
+	[80353]  = 300,  -- Time Warp
+	[120]    = 12,   -- Cone of Cold
+	[342245] = 60,   -- Alter Time
+	[389713] = 25,   -- Displacement
+	[235450] = 25,   -- Prismatic Barrier (Arcane)
+	[11426]  = 25,   -- Ice Barrier (Frost)
+	[235313] = 25,   -- Blazing Barrier (Fire)
+
+	-- ===== Mage (Arcane) =====
+	[365350] = 90,   -- Arcane Surge
+	[321507] = 45,   -- Touch of the Magi
+	[12051]  = 90,   -- Evocation
+	[205025] = 60,   -- Presence of Mind
+	[157980] = 25,   -- Supernova
+	[153626] = 60,   -- Arcane Orb (talent)
+
+	-- ===== Mage (Fire) =====
+	[190319] = 120,  -- Combustion
+	[257541] = 25,   -- Phoenix Flames (charge-based)
+	[108853] = 12,   -- Fire Blast (charge-based)
+	[31661]  = 20,   -- Dragon's Breath
+	[153561] = 45,   -- Meteor
+	[157981] = 25,   -- Blast Wave
+
+	-- ===== Mage (Frost) =====
+	[84714]  = 60,   -- Frozen Orb
+	[12472]  = 180,  -- Icy Veins
+	[235219] = 270,  -- Cold Snap (resets Frost cooldowns)
+	[205021] = 75,   -- Ray of Frost
+	[153595] = 30,   -- Comet Storm
+	[157997] = 25,   -- Ice Nova
+	[33395]  = 25,   -- Freeze (water elemental / pet)
+
 	-- ===== Universal / item-like =====
 	[6948]   = 600,  -- Hearthstone
 }
@@ -100,6 +151,63 @@ local function GetSpellNameIcon(spellID)
 		if info then return info.name, info.iconID end
 	end
 	return "?", 134400
+end
+
+
+-- Item info is async on first cache miss. Caller should fall back to a
+-- placeholder until GET_ITEM_INFO_RECEIVED fires for this ID.
+local function GetItemNameIcon(itemID)
+	if not (C_Item and C_Item.GetItemInfo) then return nil, nil end
+	local name = C_Item.GetItemInfo(itemID)
+	local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID) or nil
+	return name, icon
+end
+
+
+-- ============================================================================
+-- Hot-path pcall helpers
+-- ============================================================================
+-- These exist so the Engine tick loops don't allocate a fresh closure on every
+-- pcall(function() ... end) call. The pcall — and therefore the secret-value
+-- taint protection it provides — is preserved exactly. The only difference is
+-- that the function passed to pcall is now defined once at file load rather
+-- than per-tick. Cuts ~900 closure allocations per second under typical load.
+
+local function ReadDObjDurations(dObj)
+	local total, remaining
+	if dObj.GetTotalDuration then
+		total = dObj:GetTotalDuration()
+	end
+	if dObj.GetRemainingDuration then
+		remaining = dObj:GetRemainingDuration()
+	end
+	return total, remaining
+end
+
+local function PassesValidThresholds(total, remaining)
+	return total > 1.5 and remaining > 0.05
+end
+
+local function EndTimeAbsDiff(existing, newEndTime)
+	return math.abs((existing.endTime or 0) - newEndTime)
+end
+
+local function IsEntryExpired(entry, now)
+	return now >= entry.endTime
+end
+
+
+-- C_Timer.After callback used by the SPELL_UPDATE_COOLDOWN handler. Hoisted
+-- to module scope so the event handler can pass a function reference rather
+-- than allocate a fresh closure on every fire — that event can fire 20-50
+-- times/sec during heavy combat. The Engine._spellUpdatePending flag (set
+-- by the OnEvent handler, cleared here) debounces event bursts so that
+-- multiple cooldown changes within 50ms collapse into a single poll.
+local function DeferredCooldownPoll()
+	Engine._spellUpdatePending = nil
+	if not Engine.testActive then
+		Engine:PollAllSpells()
+	end
 end
 
 
@@ -260,6 +368,36 @@ end
 
 
 -- ============================================================================
+-- Build the item registry (potions today; extensible to other consumables)
+-- ============================================================================
+-- Items don't come from C_CooldownViewer, so we maintain our own list of
+-- itemIDs and resolve name/icon lazily. C_Item.GetItemInfo is async — if
+-- the client hasn't cached the item yet, name/icon come back nil and the
+-- GET_ITEM_INFO_RECEIVED listener fills them in later.
+
+function Engine:BuildTrackedItems()
+	wipe(self.trackedItems)
+
+	if not (C_Container and C_Container.GetItemCooldown) then
+		return
+	end
+
+	for _, itemID in ipairs(POTION_ITEMS) do
+		if C_Item and C_Item.RequestLoadItemDataByID then
+			C_Item.RequestLoadItemDataByID(itemID)
+		end
+		local name, icon = GetItemNameIcon(itemID)
+		self.trackedItems[itemID] = {
+			name     = name or ("Item " .. itemID),
+			icon     = icon or 134400,
+			category = ns.CONST.POTION_CATEGORY,
+			kind     = "item",
+		}
+	end
+end
+
+
+-- ============================================================================
 -- Lane routing
 -- ============================================================================
 
@@ -387,15 +525,7 @@ function Engine:PollOneSpell(spellID, tracked)
 	end
 
 	if dObj then
-		local total, remaining
-		local readOk = pcall(function()
-			if dObj.GetTotalDuration then
-				total = dObj:GetTotalDuration()
-			end
-			if dObj.GetRemainingDuration then
-				remaining = dObj:GetRemainingDuration()
-			end
-		end)
+		local readOk, total, remaining = pcall(ReadDObjDurations, dObj)
 
 		-- We need BOTH values to be plain numbers. If either is secret
 		-- (in combat) or missing, fall through to extrapolation below.
@@ -408,9 +538,7 @@ function Engine:PollOneSpell(spellID, tracked)
 			-- as type "number" but trip a separate flag — however
 			-- if our pcall succeeded AND type returned, we're clean).
 			-- If this turns out not to be true, wrap in pcall.
-			local cmpOk, valid = pcall(function()
-				return total > 1.5 and remaining > 0.05
-			end)
+			local cmpOk, valid = pcall(PassesValidThresholds, total, remaining)
 
 			if cmpOk and valid then
 				self._curveEvalSuccess = self._curveEvalSuccess + 1
@@ -433,11 +561,10 @@ function Engine:PollOneSpell(spellID, tracked)
 					cdDuration = total,
 				}
 
-				return {
-					startTime = cdStart,
-					duration  = total,
-					endTime   = cdStart + total,
-				}
+				-- Multi-value return (no result table) — saves ~200 table
+				-- allocs/sec across all tracked spells. Caller signature:
+				--   local active, startTime, duration, endTime = PollOneSpell(...)
+				return true, cdStart, total, cdStart + total
 			end
 		end
 
@@ -466,11 +593,7 @@ function Engine:PollOneSpell(spellID, tracked)
 					cdDuration = known,
 				}
 				self._strategyCUsed = (self._strategyCUsed or 0) + 1
-				return {
-					startTime = now,
-					duration  = known,
-					endTime   = now + known,
-				}
+				return true, now, known, now + known
 			end
 		end
 		return nil
@@ -481,22 +604,22 @@ function Engine:PollOneSpell(spellID, tracked)
 	if rem <= 0 then return nil end
 
 	self._fallbackUsed = self._fallbackUsed + 1
-	return {
-		startTime = cache.cdStart,
-		duration  = cache.cdDuration,
-		endTime   = cache.cdStart + cache.cdDuration,
-	}
+	return true, cache.cdStart, cache.cdDuration, cache.cdStart + cache.cdDuration
 end
 
 
 function Engine:PollAllSpells()
 	if not self:EnsureCurves() then return end
 
-	local seen = {}
+	-- Reuse a single scratch table across ticks instead of allocating one
+	-- every poll; at 10 Hz that's 600 fewer table allocs per minute.
+	self._seenSpells = self._seenSpells or {}
+	local seen = self._seenSpells
+	wipe(seen)
 
 	for spellID, tracked in pairs(self.trackedSpells) do
-		local timing = self:PollOneSpell(spellID, tracked)
-		if timing then
+		local active, startTime, duration, endTime = self:PollOneSpell(spellID, tracked)
+		if active then
 			seen[spellID] = true
 			local existing = self.entries[spellID]
 
@@ -504,9 +627,7 @@ function Engine:PollAllSpells()
 			-- Wrap comparison in pcall in case timing values are still secret.
 			local shouldReplace = not existing
 			if existing then
-				local cmpOk, diff = pcall(function()
-					return math.abs((existing.endTime or 0) - (timing.endTime or 0))
-				end)
+				local cmpOk, diff = pcall(EndTimeAbsDiff, existing, endTime)
 				if not cmpOk or type(diff) ~= "number" or diff > 0.5 then
 					shouldReplace = true
 				end
@@ -518,15 +639,15 @@ function Engine:PollAllSpells()
 					spellID    = spellID,
 					name       = tracked.name,
 					icon       = tracked.icon,
-					startTime  = timing.startTime,
-					duration   = timing.duration,
-					endTime    = timing.endTime,
+					startTime  = startTime,
+					duration   = duration,
+					endTime    = endTime,
 					laneIndex  = self:ResolveLaneIndex(spellID, cat),
 					category   = cat,
 					_source    = "curve-eval",
 				}
 			else
-				existing.endTime = timing.endTime
+				existing.endTime = endTime
 			end
 		end
 	end
@@ -536,9 +657,12 @@ function Engine:PollAllSpells()
 	-- a single failed poll attempt — if the spell's timer in cdTimingCache
 	-- says it's still running, keep showing it. The Tick prune step
 	-- handles natural expiration via endTime.
+	-- Skip item entries: they live in a parallel table and are pruned by
+	-- PollAllItems. Touching them here would delete-then-recreate every
+	-- tick, churning ~50 entry tables/sec on a 5-potion list.
 	local now = GetTime()
 	for spellID, entry in pairs(self.entries) do
-		if not seen[spellID] and entry._source ~= "test" then
+		if not seen[spellID] and entry._source ~= "test" and entry.kind ~= "item" then
 			local cache = self.cdTimingCache[spellID]
 			if cache and (cache.cdStart + cache.cdDuration) > now then
 				-- Cache says this entry is still valid. Keep it; refresh
@@ -548,6 +672,80 @@ function Engine:PollAllSpells()
 				-- No cache, or cache expired. Safe to prune.
 				self.entries[spellID] = nil
 			end
+		end
+	end
+end
+
+
+-- ============================================================================
+-- Item cooldown polling (zero-alloc steady state)
+-- ============================================================================
+-- Items are far simpler than spells: C_Container.GetItemCooldown returns
+-- plain numbers (no secret-value taint, no DurationObject), so we can read
+-- and compare directly. No curve evaluation, no fresh-cast flag dance.
+--
+-- Allocation discipline:
+--   - PollOneItem returns multi-values (no result table)
+--   - PollAllItems reuses self._seenItems via wipe() (no scratch table)
+--   - Existing entries get fields mutated in place (no realloc on refresh)
+--   - New entries allocate the entry table once, on first sighting
+
+function Engine:PollOneItem(itemID)
+	if not (C_Container and C_Container.GetItemCooldown) then
+		return false
+	end
+
+	local startTime, duration = C_Container.GetItemCooldown(itemID)
+	if not startTime or not duration then return false end
+	if duration <= 1.5 then return false end   -- skip GCD-length cooldowns
+	if startTime <= 0 then return false end
+
+	local endTime = startTime + duration
+	if endTime <= GetTime() then return false end
+
+	return true, startTime, duration, endTime
+end
+
+
+function Engine:PollAllItems()
+	self._seenItems = self._seenItems or {}
+	local seen = self._seenItems
+	wipe(seen)
+
+	for itemID, tracked in pairs(self.trackedItems) do
+		local active, startTime, duration, endTime = self:PollOneItem(itemID)
+		if active then
+			seen[itemID] = true
+			local existing = self.entries[itemID]
+			if existing then
+				-- Refresh in place — no allocation. Mirrors how PollAllSpells
+				-- handles its existing entries.
+				existing.startTime = startTime
+				existing.duration  = duration
+				existing.endTime   = endTime
+			else
+				local cat = tracked.category or ns.CONST.POTION_CATEGORY
+				self.entries[itemID] = {
+					spellID    = itemID,   -- lane code reads .spellID; reuse field
+					itemID     = itemID,
+					name       = tracked.name,
+					icon       = tracked.icon,
+					startTime  = startTime,
+					duration   = duration,
+					endTime    = endTime,
+					laneIndex  = self:ResolveLaneIndex(itemID, cat),
+					category   = cat,
+					kind       = "item",
+					_source    = "item-cooldown",
+				}
+			end
+		end
+	end
+
+	-- Prune item entries that finished or were removed from the list.
+	for itemID, entry in pairs(self.entries) do
+		if entry.kind == "item" and not seen[itemID] then
+			self.entries[itemID] = nil
 		end
 	end
 end
@@ -602,9 +800,7 @@ function Engine:Tick()
 	-- if they came from a secret-tainted progress eval, so wrap in pcall.
 	for spellID, entry in pairs(self.entries) do
 		if entry.endTime then
-			local cmpOk, expired = pcall(function()
-				return now >= entry.endTime
-			end)
+			local cmpOk, expired = pcall(IsEntryExpired, entry, now)
 			if cmpOk and expired then
 				self.entries[spellID] = nil
 			end
@@ -613,6 +809,7 @@ function Engine:Tick()
 
 	if not self.testActive then
 		self:PollAllSpells()
+		self:PollAllItems()
 	end
 
 	if ns.Lanes_Refresh then
@@ -638,8 +835,29 @@ function Engine:Start(addon)
 		self._buildScheduled = true
 		C_Timer.After(1.5, function()
 			self:BuildTrackedSpells()
+			self:BuildTrackedItems()
 			self:EnsureCurves()
 		end)
+	end
+
+	-- Item names/icons that weren't cached at BuildTrackedItems time arrive
+	-- via GET_ITEM_INFO_RECEIVED. Update the tracked entry, then nudge the
+	-- Filters tab to refresh the matching row's text in place — no form
+	-- rebuild, no frame allocation.
+	if not self.itemInfoFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+		f:SetScript("OnEvent", function(_, _, itemID, success)
+			if not (success and itemID and Engine.trackedItems[itemID]) then return end
+			local name, icon = GetItemNameIcon(itemID)
+			local tracked = Engine.trackedItems[itemID]
+			if name then tracked.name = name end
+			if icon then tracked.icon = icon end
+			if ns.Options_UpdateTrackedItemDisplay then
+				ns.Options_UpdateTrackedItemDisplay(itemID, name, icon)
+			end
+		end)
+		self.itemInfoFrame = f
 	end
 
 	if not self.specEventFrame then
@@ -650,6 +868,7 @@ function Engine:Start(addon)
 				wipe(self.knownDurations)
 				wipe(self.cdTimingCache)
 				self:BuildTrackedSpells()
+				self:BuildTrackedItems()
 			end
 		end)
 		self.specEventFrame = f
@@ -666,13 +885,16 @@ function Engine:Start(addon)
 		f:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 		f:SetScript("OnEvent", function(_, event)
 			if Engine.testActive then return end
+			-- Debounce: if a deferred poll is already scheduled, don't
+			-- schedule another one. Multiple cooldowns changing in the
+			-- same burst (e.g., a CD-reset proc) collapse into one poll.
+			if Engine._spellUpdatePending then return end
+			Engine._spellUpdatePending = true
 			-- Defer ~50ms; UCS typically fires within 1-2 frames of
-			-- the cast event burst.
-			C_Timer.After(0.05, function()
-				if not Engine.testActive then
-					Engine:PollAllSpells()
-				end
-			end)
+			-- the cast event burst, so we want to wait for it to land
+			-- before polling. DeferredCooldownPoll is module-level —
+			-- no closure allocation per event fire.
+			C_Timer.After(0.05, DeferredCooldownPoll)
 		end)
 		self.spellUpdateFrame = f
 	end

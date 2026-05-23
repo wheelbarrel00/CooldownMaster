@@ -106,6 +106,7 @@ ns.DEFAULTS = {
 		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
 		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
 		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
+		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
 		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
 		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
 		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },

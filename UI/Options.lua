@@ -983,11 +983,20 @@ local function BuildFiltersDefaultsForm(parent)
 		return widget
 	end
 
-	-- Category picker
+	-- Category picker. Two-line label: a clear primary instruction in white,
+	-- and a smaller gray hint that explains the relationship between this
+	-- panel and the per-category sub-tabs in the rail.
 	local pickerLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	pickerLabel:SetText("Select a category to edit its default settings")
+	pickerLabel:SetText("Pick a category to edit its defaults:")
 	pickerLabel:SetTextColor(1, 1, 1)
 	place(pickerLabel, 16)
+
+	local hintLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	hintLabel:SetText("These settings apply to every spell in the chosen category. To override an individual spell, use that category's sub-tab on the left.")
+	hintLabel:SetTextColor(0.7, 0.7, 0.7)
+	hintLabel:SetWidth(parent:GetWidth() - pad * 2 - 30)
+	hintLabel:SetJustifyH("LEFT")
+	place(hintLabel, 28)
 
 	local categoryDropdown = W.CreateDropdown(parent, {
 		label = "", value = filtersState.selectedDefaultsKey,
@@ -1061,6 +1070,19 @@ local function BuildFiltersDefaultsForm(parent)
 end
 
 
+-- Public hook called by Engine when an async GET_ITEM_INFO_RECEIVED arrives
+-- for one of our tracked items. Updates the matching row's name + icon in
+-- place — no frame creation/destruction, no allocation. If the Filters tab
+-- form hasn't been built yet (or has no row for this itemID), it's a no-op
+-- and the next BuildSpellRow call will pick up the now-cached values.
+function ns.Options_UpdateTrackedItemDisplay(itemID, displayName, displayIcon)
+	if not (filtersState.itemRows and filtersState.itemRows[itemID]) then return end
+	local r = filtersState.itemRows[itemID]
+	if displayName and r.name then r.name:SetText(displayName) end
+	if displayIcon and r.icon then r.icon:SetTexture(displayIcon) end
+end
+
+
 -- One row inside a per-category spell list. Renders icon + name +
 -- visible checkbox + lane dropdown. yPos is the TOPLEFT y of this row.
 local function BuildSpellRow(parent, spellID, info, yPos)
@@ -1121,6 +1143,15 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
 
+	-- Register item rows so GET_ITEM_INFO_RECEIVED can update name/icon in
+	-- place when async item data arrives. Keyed by itemID (== spellID for
+	-- item entries by convention). Spells don't need this — their info is
+	-- always cached by the time the row is built.
+	if info.kind == "item" then
+		filtersState.itemRows = filtersState.itemRows or {}
+		filtersState.itemRows[spellID] = { name = name, icon = tex }
+	end
+
 	return row, rowH
 end
 
@@ -1130,7 +1161,15 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 	local pad = 12
 	local rowGap = 4
 
-	-- Find all tracked spells matching this category
+	-- Find all tracked spells/items matching this category. Items live in a
+	-- parallel table populated by Engine:BuildTrackedItems; rows reuse the
+	-- same shape (.spellID is the lookup key — for items, that's itemID).
+	-- Reset the item-row registry so stale FontString refs from a previous
+	-- build can't fire a SetText on a no-longer-shown row.
+	if categoryKey == "potions" and filtersState.itemRows then
+		wipe(filtersState.itemRows)
+	end
+
 	local engine = ns.Engine
 	local matches = {}
 	if engine and engine.trackedSpells then
@@ -1138,6 +1177,14 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 			local key = engine:GetCategoryFilterKey(info.category)
 			if key == categoryKey then
 				matches[#matches + 1] = { spellID = spellID, info = info }
+			end
+		end
+	end
+	if engine and engine.trackedItems then
+		for itemID, info in pairs(engine.trackedItems) do
+			local key = engine:GetCategoryFilterKey(info.category)
+			if key == categoryKey then
+				matches[#matches + 1] = { spellID = itemID, info = info }
 			end
 		end
 	end
@@ -1188,8 +1235,9 @@ local function BuildFiltersFormSurface(panelArea, subTabKey)
 
 	if subTabKey == "defaults" then
 		BuildFiltersDefaultsForm(child)
-	elseif subTabKey == "spells" or subTabKey == "items"
-	    or subTabKey == "buffs"  or subTabKey == "debuffs" then
+	elseif subTabKey == "spells"  or subTabKey == "items"
+	    or subTabKey == "buffs"   or subTabKey == "debuffs"
+	    or subTabKey == "potions" then
 		BuildFiltersSpellListForm(child, subTabKey)
 	else
 		-- Inactive category (offensives / petspells / custom)

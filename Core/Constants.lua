@@ -10,7 +10,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.4.0",
+	VERSION          = "0.5.0",
 
 	-- Slash commands
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster" },
@@ -60,20 +60,32 @@ ns.CONST = {
 	-- is: 0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff. Categories
 	-- without a Blizzard equivalent (offensives, petspells, custom) live in
 	-- defaults but receive no auto-discovered spells in v0.3.
+	-- Synthetic categories (>=100) are emitted by our own pollers and don't
+	-- come from C_CooldownViewer:
+	--   100 = potions (item cooldowns polled via C_Container.GetItemCooldown)
 	CATEGORY_TO_FILTER_KEY = {
-		[0] = "spells",
-		[1] = "items",
-		[2] = "buffs",
-		[3] = "debuffs",
+		[0]   = "spells",
+		[1]   = "items",
+		[2]   = "buffs",
+		[3]   = "debuffs",
+		[100] = "potions",
 	},
+
+	-- Synthetic category IDs (must not collide with Blizzard's 0..3 enum).
+	POTION_CATEGORY = 100,
 
 	-- Display-friendly labels for each filter sub-tab. Order matters — drives
 	-- the sub-tab strip in the Filters tab UI.
 	FILTER_CATEGORIES = {
 		{ key = "spells",     label = "Spells",     active = true  },
-		{ key = "items",      label = "Items",      active = true  },
+		-- Internal key stays "items" for saved-variable compatibility, but
+		-- the displayed label is "Utility" since this category contains
+		-- Blizzard's Utility-tagged spells (Hammer of Justice, Lay on Hands,
+		-- etc.) — not actual inventory items. Real items live in Potions.
+		{ key = "items",      label = "Utility",    active = true  },
 		{ key = "buffs",      label = "Buffs",      active = true  },
 		{ key = "debuffs",    label = "Debuffs",    active = true  },
+		{ key = "potions",    label = "Potions",    active = true  },
 		{ key = "offensives", label = "Offensives", active = false },
 		{ key = "petspells",  label = "Pet Spells", active = false },
 		{ key = "custom",     label = "Custom",     active = false },

@@ -15,6 +15,38 @@ local ADDON_NAME, ns = ...
 local _dragFailWarnTime = 0  -- luacheck: ignore
 
 
+-- Pre-built lookup tables for cooldown countdown text. Built once at file
+-- load to eliminate ~450 string.format allocations/sec the per-icon
+-- OnUpdate (60 Hz) and the per-tick refresh (10 Hz × 3 lanes) produce
+-- combined.
+--
+-- INTEGER_STRINGS covers 0..600 (10 minutes — fits every meaningful CD).
+-- DECIMAL_STRINGS covers 0..100 representing "0.0" through "10.0" in 0.1
+-- steps (the sub-10s range where we show one decimal of precision).
+local INTEGER_STRINGS = {}
+for i = 0, 600 do
+	INTEGER_STRINGS[i] = tostring(i)
+end
+
+local DECIMAL_STRINGS = {}
+for i = 0, 100 do
+	DECIMAL_STRINGS[i] = string.format("%.1f", i / 10)
+end
+
+
+-- Format remaining time. Integer seconds when >10, one decimal when <=10.
+-- Hits the lookup tables above for the common range; falls through to a
+-- live string.format only for unexpected out-of-range values.
+local function FormatTime(remaining)
+	if remaining <= 10 then
+		local idx = math.floor(remaining * 10 + 0.5)
+		return DECIMAL_STRINGS[idx] or string.format("%.1f", remaining)
+	end
+	local idx = math.floor(remaining + 0.5)
+	return INTEGER_STRINGS[idx] or string.format("%d", idx)
+end
+
+
 -- Called from Init.OnEnteringWorld once the world is loaded.
 function ns.Lanes_Build(addon)
 	for i = 1, 3 do
@@ -193,11 +225,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 				self:SetPoint("LEFT", self:GetParent(), "LEFT", x, off)
 			end
 		end
-		if remaining <= 10 then
-			self.time:SetText(string.format("%.1f", remaining))
-		else
-			self.time:SetText(string.format("%d", math.floor(remaining + 0.5)))
-		end
+		self.time:SetText(FormatTime(remaining))
 	end)
 
 	pool[i] = btn
@@ -205,110 +233,129 @@ local function AcquireIcon(laneFrame, i, iconSize)
 end
 
 
--- Format remaining time. Integer seconds when >10, one decimal when <=10.
-local function FormatTime(remaining)
-	if remaining <= 10 then
-		return string.format("%.1f", remaining)
-	end
-	return string.format("%d", math.floor(remaining + 0.5))
-end
-
-
 -- Apply non-structural lane config (size, position, alpha, colors). Cheap
 -- enough to call every refresh; option-panel callbacks invoke it eagerly so
 -- previewing values feels responsive.
-function ns.Lanes_ApplyConfig(laneIndex)
-	local ok, err = pcall(function()
-		local addon = ns.CDM
-		if not addon then return end
-		local laneFrame = addon.lanes and addon.lanes[laneIndex]
-		if not laneFrame then return end
-		local cfg = laneFrame.cfg
-		if not cfg then return end
+-- Body extracted to a module-level function so the pcall wrapper below can
+-- reference it by name instead of allocating a fresh closure every call.
+-- Identical pcall behavior, identical taint protection — just no closure
+-- churn at 30 Hz across 3 lanes.
+local function ApplyConfigBody(laneIndex)
+	local addon = ns.CDM
+	if not addon then return end
+	local laneFrame = addon.lanes and addon.lanes[laneIndex]
+	if not laneFrame then return end
+	local cfg = laneFrame.cfg
+	if not cfg then return end
 
-		-- Resolve foreground / background colors, optionally substituting the
-		-- player's class color when fgClassColor / bgClassColor is set.
-		local _, classToken = UnitClass("player")
-		local classCol = classToken and addon.db.profile.classColors[classToken]
+	-- Resolve foreground / background colors, optionally substituting the
+	-- player's class color when fgClassColor / bgClassColor is set.
+	local _, classToken = UnitClass("player")
+	local classCol = classToken and addon.db.profile.classColors[classToken]
 
-		local bg = cfg.bgColor
-		if cfg.bgClassColor and classCol then bg = classCol end
+	local bg = cfg.bgColor
+	if cfg.bgClassColor and classCol then bg = classCol end
 
-		-- Apply full backdrop with live border settings so changes take effect
-		-- immediately. Re-calling SetBackdrop each tick is cheap.
-		local borderOn = cfg.borderEnabled ~= false
-		local edgeFile = borderOn and "Interface\\Buttons\\WHITE8x8" or ""
-		local edgeSize = borderOn and (cfg.borderSize or 1) or 0
-		local pad      = borderOn and (cfg.borderPadding or 0) or 0
-		pcall(laneFrame.SetBackdrop, laneFrame, {
+	-- Backdrop application. Two competing concerns:
+	--   1. Allocation pressure — calling SetBackdrop with a fresh table
+	--      every refresh allocates two tables (outer + insets) at ~30 Hz
+	--      across 3 lanes (~3,600 allocs/min).
+	--   2. Live updates — Blizzard's BackdropTemplateMixin reference-
+	--      compares the backdropInfo table and skips work when the same
+	--      reference comes back. Mutating the cached fields is invisible
+	--      to that comparison, so border-size/border-color tweaks didn't
+	--      take effect until /reload re-created the lane frame.
+	-- Solution: cache the table for the steady-state case (nothing
+	-- changed → reuse → no allocation, no SetBackdrop call needed), but
+	-- detect structural changes and swap in a fresh reference so
+	-- SetBackdrop re-applies. Allocation only happens when the user
+	-- actually tweaks border settings.
+	local borderOn = cfg.borderEnabled ~= false
+	local edgeFile = borderOn and "Interface\\Buttons\\WHITE8x8" or ""
+	local edgeSize = borderOn and (cfg.borderSize or 1) or 0
+	local pad      = borderOn and (cfg.borderPadding or 0) or 0
+	local bd = laneFrame._backdropCache
+	local needsNew = (not bd)
+		or bd.edgeFile ~= edgeFile
+		or bd.edgeSize ~= edgeSize
+		or bd.insets.left ~= pad
+	if needsNew then
+		bd = {
 			bgFile   = "Interface\\Buttons\\WHITE8x8",
 			edgeFile = edgeFile,
 			edgeSize = edgeSize,
 			insets   = { left = pad, right = pad, top = pad, bottom = pad },
-		})
-		pcall(laneFrame.SetBackdropColor, laneFrame, bg.r, bg.g, bg.b, bg.a or 1)
-		if borderOn then
-			local bc = cfg.borderColor
-			if bc then
-				pcall(laneFrame.SetBackdropBorderColor, laneFrame,
-					bc.r, bc.g, bc.b, bc.a or 1)
-			end
-		else
-			pcall(laneFrame.SetBackdropBorderColor, laneFrame, 0, 0, 0, 0)
+		}
+		laneFrame._backdropCache = bd
+		pcall(laneFrame.SetBackdrop, laneFrame, bd)
+	end
+	pcall(laneFrame.SetBackdropColor, laneFrame, bg.r, bg.g, bg.b, bg.a or 1)
+	if borderOn then
+		local bc = cfg.borderColor
+		if bc then
+			pcall(laneFrame.SetBackdropBorderColor, laneFrame,
+				bc.r, bc.g, bc.b, bc.a or 1)
 		end
+	else
+		pcall(laneFrame.SetBackdropBorderColor, laneFrame, 0, 0, 0, 0)
+	end
 
-		laneFrame:SetSize(cfg.width, cfg.height)
-		-- Do not reposition while the user is dragging — would fight the mouse.
-		-- IsMoving may not exist on all frame types; guard defensively.
-		local isMoving = laneFrame.IsMoving and laneFrame:IsMoving()
-		if not isMoving then
-			laneFrame:ClearAllPoints()
-			laneFrame:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
-		end
-		laneFrame:SetAlpha(cfg.alpha or 1)
+	laneFrame:SetSize(cfg.width, cfg.height)
+	-- Do not reposition while the user is dragging — would fight the mouse.
+	-- IsMoving may not exist on all frame types; guard defensively.
+	local isMoving = laneFrame.IsMoving and laneFrame:IsMoving()
+	if not isMoving then
+		laneFrame:ClearAllPoints()
+		laneFrame:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
+	end
+	laneFrame:SetAlpha(cfg.alpha or 1)
 
-		if laneFrame.label then
-			laneFrame.label:SetText(cfg.frameName or "")
-			laneFrame.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
-		end
+	if laneFrame.label then
+		laneFrame.label:SetText(cfg.frameName or "")
+		laneFrame.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
+	end
 
-		if laneFrame.markers and cfg.laneText then
-			for i = 1, 5 do
-				local m = laneFrame.markers[i]
-				local def = cfg.laneText[i]
-				if m and def then
-					if def.enabled then
-						m:SetText(def.text or "")
-						m:ClearAllPoints()
-						local pos = def.pos or 0
-						if cfg.reversed then pos = 1 - pos end
-						if cfg.vertical then
-							local laneH = cfg.height or 400
-							if i == 1 then
-								m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
-							elseif i == 5 then
-								m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
-							else
-								m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * laneH)
-							end
+	if laneFrame.markers and cfg.laneText then
+		for i = 1, 5 do
+			local m = laneFrame.markers[i]
+			local def = cfg.laneText[i]
+			if m and def then
+				if def.enabled then
+					m:SetText(def.text or "")
+					m:ClearAllPoints()
+					local pos = def.pos or 0
+					if cfg.reversed then pos = 1 - pos end
+					if cfg.vertical then
+						local laneH = cfg.height or 400
+						if i == 1 then
+							m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
+						elseif i == 5 then
+							m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
 						else
-							local laneW = cfg.width or 400
-							if i == 1 then
-								m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
-							elseif i == 5 then
-								m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
-							else
-								m:SetPoint("CENTER", laneFrame, "LEFT", pos * laneW, 0)
-							end
+							m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * laneH)
 						end
-						m:Show()
 					else
-						m:Hide()
+						local laneW = cfg.width or 400
+						if i == 1 then
+							m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
+						elseif i == 5 then
+							m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
+						else
+							m:SetPoint("CENTER", laneFrame, "LEFT", pos * laneW, 0)
+						end
 					end
+					m:Show()
+				else
+					m:Hide()
 				end
 			end
 		end
-	end)
+	end
+end
+
+
+function ns.Lanes_ApplyConfig(laneIndex)
+	local ok, err = pcall(ApplyConfigBody, laneIndex)
 	if not ok then
 		if not ns._lanesApplyConfigErr or (GetTime() - ns._lanesApplyConfigErr) > 5 then
 			ns._lanesApplyConfigErr = GetTime()
@@ -343,97 +390,104 @@ function ns.Lanes_RebuildOne(laneIndex)
 end
 
 
--- Re-render the given lane based on the engine's current entries.
--- Called from Engine:Tick() at ~10 Hz.
-function ns.Lanes_Refresh(laneIndex)
-	local ok, err = pcall(function()
-		local addon = ns.CDM
-		if not addon then return end
-		local laneFrame = addon.lanes and addon.lanes[laneIndex]
-		if not laneFrame then return end
-		local cfg = laneFrame.cfg
-		if not cfg then return end
+-- Body extracted to a module-level function so the pcall wrapper below can
+-- reference it by name instead of allocating a fresh closure every call.
+-- Identical pcall behavior, identical taint protection — just no closure
+-- churn at 30 Hz across 3 lanes.
+local function RefreshBody(laneIndex)
+	local addon = ns.CDM
+	if not addon then return end
+	local laneFrame = addon.lanes and addon.lanes[laneIndex]
+	if not laneFrame then return end
+	local cfg = laneFrame.cfg
+	if not cfg then return end
 
-		-- Apply per-tick config so option changes are visible immediately.
-		ns.Lanes_ApplyConfig(laneIndex)
+	-- Apply per-tick config so option changes are visible immediately.
+	ns.Lanes_ApplyConfig(laneIndex)
 
-		local engine = ns.Engine
-		local entries = engine and engine:GetActiveEntries() or nil
+	local engine = ns.Engine
+	local entries = engine and engine:GetActiveEntries() or nil
 
-		local iconSize = cfg.iconSize or 40
-		local laneW    = cfg.width    or 400
-		local maxTime  = cfg.maxTime  or 120
-		local now      = GetTime()
-		local usable   = math.max(1, laneW - iconSize)
+	local iconSize = cfg.iconSize or 40
+	local laneW    = cfg.width    or 400
+	local maxTime  = cfg.maxTime  or 120
+	local now      = GetTime()
+	local usable   = math.max(1, laneW - iconSize)
 
-		-- Walk entries, place each one. Track count so we can hide leftovers.
-		local i = 0
-		if entries then
-			for _, e in pairs(entries) do
-				if e.endTime
-					-- Only render entries routed to this lane. ResolveLaneIndex
-					-- may shift over time as filter settings change, so we
-					-- consult the latest cached value on each entry.
-					and (e.laneIndex == laneIndex
-					     or (e.laneIndex == nil and laneIndex == 1))
-					-- Filter visibility check (category enabled + per-spell
-					-- override + showByDefault fallback).
-					and (engine:IsSpellVisible(e.spellID, e.category)) then
-					local remaining = e.endTime - now
-					if remaining > 0 then
-						local hideForLong = (remaining > maxTime) and cfg.hideLongTimers
-						if not hideForLong then
-							i = i + 1
-							local btn = AcquireIcon(laneFrame, i, iconSize)
-							btn:SetSize(iconSize, iconSize)
-							if e.icon then
-								btn.tex:SetTexture(e.icon)
-							else
-								btn.tex:SetTexture(nil)
-							end
-							btn.time:SetText(FormatTime(remaining))
-
-							-- Slot 2 (time text) visibility.
-							if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
-								btn.time:Show()
-							else
-								btn.time:Hide()
-							end
-
-							-- Slot 1 (charges) visibility — only when entry has charge data.
-							if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
-								and e.charges and e.maxCharges then
-								btn.charges:SetText(string.format("%d/%d", e.charges, e.maxCharges))
-								btn.charges:Show()
-							else
-								btn.charges:Hide()
-							end
-
-							btn:Show()
-						btn._endTime    = e.endTime
-						btn._duration   = e.duration
-						btn._cfg        = cfg
-						btn._iconSize   = iconSize
-						-- TODO(rendering): stacking — group icons within
-							-- iconSize/2 of each other when cfg.stackEnabled
-							-- TODO(rendering): animation tween between successive
-							-- positions instead of snapping each tick
+	-- Walk entries, place each one. Track count so we can hide leftovers.
+	local i = 0
+	if entries then
+		for _, e in pairs(entries) do
+			if e.endTime
+				-- Only render entries routed to this lane. ResolveLaneIndex
+				-- may shift over time as filter settings change, so we
+				-- consult the latest cached value on each entry.
+				and (e.laneIndex == laneIndex
+				     or (e.laneIndex == nil and laneIndex == 1))
+				-- Filter visibility check (category enabled + per-spell
+				-- override + showByDefault fallback).
+				and (engine:IsSpellVisible(e.spellID, e.category)) then
+				local remaining = e.endTime - now
+				if remaining > 0 then
+					local hideForLong = (remaining > maxTime) and cfg.hideLongTimers
+					if not hideForLong then
+						i = i + 1
+						local btn = AcquireIcon(laneFrame, i, iconSize)
+						btn:SetSize(iconSize, iconSize)
+						if e.icon then
+							btn.tex:SetTexture(e.icon)
+						else
+							btn.tex:SetTexture(nil)
 						end
+						btn.time:SetText(FormatTime(remaining))
+
+						-- Slot 2 (time text) visibility.
+						if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
+							btn.time:Show()
+						else
+							btn.time:Hide()
+						end
+
+						-- Slot 1 (charges) visibility — only when entry has charge data.
+						if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
+							and e.charges and e.maxCharges then
+							btn.charges:SetText(string.format("%d/%d", e.charges, e.maxCharges))
+							btn.charges:Show()
+						else
+							btn.charges:Hide()
+						end
+
+						btn:Show()
+					btn._endTime    = e.endTime
+					btn._duration   = e.duration
+					btn._cfg        = cfg
+					btn._iconSize   = iconSize
+					-- TODO(rendering): stacking — group icons within
+						-- iconSize/2 of each other when cfg.stackEnabled
+						-- TODO(rendering): animation tween between successive
+						-- positions instead of snapping each tick
 					end
 				end
 			end
 		end
+	end
 
-		-- Hide pool slots beyond what we actually used this frame.
-		for j = i + 1, laneFrame.activeIcons do
-			local btn = laneFrame.iconPool[j]
-			if btn then
-				btn._endTime = nil
-				btn:Hide()
-			end
+	-- Hide pool slots beyond what we actually used this frame.
+	for j = i + 1, laneFrame.activeIcons do
+		local btn = laneFrame.iconPool[j]
+		if btn then
+			btn._endTime = nil
+			btn:Hide()
 		end
-		laneFrame.activeIcons = i
-	end)
+	end
+	laneFrame.activeIcons = i
+end
+
+
+-- Re-render the given lane based on the engine's current entries.
+-- Called from Engine:Tick() at ~10 Hz.
+function ns.Lanes_Refresh(laneIndex)
+	local ok, err = pcall(RefreshBody, laneIndex)
 	if not ok then
 		if not ns._lanesRefreshErr or (GetTime() - ns._lanesRefreshErr) > 5 then
 			ns._lanesRefreshErr = GetTime()

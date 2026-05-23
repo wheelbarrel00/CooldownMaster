@@ -15,6 +15,9 @@ desktop.ini
 *.swp
 *.swo
 
+# Claude Code local config
+.claude/
+
 # Local saved variables (if you symlink your WTF for testing)
 WTF/
 SavedVariables/
