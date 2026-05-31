@@ -1,5 +1,25 @@
 # Cooldown Master Changelog
 
+## 0.6.0 — Combat-accurate cooldowns
+
+A ground-up engine rewrite so cooldowns display correctly in combat under Midnight's "secret value" API restrictions. Previously, in-combat timers were extrapolated guesses that were often wrong; now each lane icon shows the real cooldown swipe and countdown, tracks the true cooldown state, and reads as a continuous clock.
+
+### New Features
+- Combat-accurate cooldown display. Under Midnight, addons can no longer read remaining cooldown time in combat — it is a protected value. Each lane icon now renders Blizzard's native cooldown swipe and countdown, fed the cooldown object directly, so the swipe and number stay exact in combat without the addon ever reading the number.
+- Real-time lifecycle driven by the live cooldown state: icons appear and clear exactly when the real cooldown starts and ends, including early clears when a proc or talent resets a cooldown.
+- Continuous M:SS countdown text (4:59, 4:58, ...), with whole seconds under a minute, instead of the default that collapses to bare minutes like "4m". Applies to spells and potions.
+
+### Improvements
+- Engine performance: replaced the per-tick numeric cooldown poll with an event-driven model keyed on cooldown-state changes (`SPELL_UPDATE_COOLDOWN` / `UNIT_SPELLCAST_SUCCEEDED`), and removed the unused curve-evaluation code from the live path.
+- Removed developer chat output that printed on every login and reload ("Engine started", "Tracking N spells", "Curves built"). Engine state is still available on demand via `/cdmaster api`.
+
+### Known limitations
+- Icon position along the lane is approximate for haste- or talent-scaled cooldowns: the exact remaining time is unreadable in combat, so position is estimated from the base duration. The countdown number on the icon is always exact.
+- Charge-based spells may not show their recharge until fully on cooldown.
+
+### Developer notes
+- Added `docs/EXPERIMENTS.md` recording the Midnight secret-value investigation (no readable cooldown number exists in combat; only `isActive`/`isOnGCD` are usable) and the `/cdmaster curvetest` diagnostic that established it.
+
 ## 0.5.0 — Potions, Mage support, and a performance pass
 
 Adds item-cooldown tracking (potions), extends fallback duration coverage to Mage, and includes a broad allocation-reduction pass across the engine and the lane renderer. Also fixes a load-blocking syntax error and a backdrop live-update bug.

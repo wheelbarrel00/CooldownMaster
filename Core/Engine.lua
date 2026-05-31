@@ -164,37 +164,9 @@ local function GetItemNameIcon(itemID)
 end
 
 
--- ============================================================================
--- Hot-path pcall helpers
--- ============================================================================
--- These exist so the Engine tick loops don't allocate a fresh closure on every
--- pcall(function() ... end) call. The pcall — and therefore the secret-value
--- taint protection it provides — is preserved exactly. The only difference is
--- that the function passed to pcall is now defined once at file load rather
--- than per-tick. Cuts ~900 closure allocations per second under typical load.
-
-local function ReadDObjDurations(dObj)
-	local total, remaining
-	if dObj.GetTotalDuration then
-		total = dObj:GetTotalDuration()
-	end
-	if dObj.GetRemainingDuration then
-		remaining = dObj:GetRemainingDuration()
-	end
-	return total, remaining
-end
-
-local function PassesValidThresholds(total, remaining)
-	return total > 1.5 and remaining > 0.05
-end
-
-local function EndTimeAbsDiff(existing, newEndTime)
-	return math.abs((existing.endTime or 0) - newEndTime)
-end
-
-local function IsEntryExpired(entry, now)
-	return now >= entry.endTime
-end
+-- (The old secret-number poll's module-level pcall helpers lived here --
+-- ReadDObjDurations / PassesValidThresholds / EndTimeAbsDiff / IsEntryExpired.
+-- The isActive lifecycle model reads no numbers in combat, so none are needed.)
 
 
 -- C_Timer.After callback used by the SPELL_UPDATE_COOLDOWN handler. Hoisted
@@ -206,7 +178,7 @@ end
 local function DeferredCooldownPoll()
 	Engine._spellUpdatePending = nil
 	if not Engine.testActive then
-		Engine:PollAllSpells()
+		Engine:ScanSpells()
 	end
 end
 
@@ -311,9 +283,6 @@ function Engine:EnsureCurves()
 	self.progressCurve = BuildProgressCurve()
 	if self.readyCurve and self.progressCurve then
 		self._curvesBuilt = true
-		if ns.CDM and ns.CDM.Print then
-			ns.CDM:Print("Curves built: ready + progress")
-		end
 		return true
 	end
 	return false
@@ -361,9 +330,6 @@ function Engine:BuildTrackedSpells()
 		end
 	end
 
-	if ns.CDM and ns.CDM.Print then
-		ns.CDM:Print("Tracking " .. self:CountTracked() .. " spells from Cooldown Viewer.")
-	end
 end
 
 
@@ -505,173 +471,85 @@ function Engine:LearnDuration(spellID, dObj)
 end
 
 
-function Engine:PollOneSpell(spellID, tracked)
-	if not (C_Spell and C_Spell.GetSpellCooldownDuration) then
-		return nil
-	end
+-- ============================================================================
+-- Spell lifecycle scan (combat-safe; replaces the secret-number poll)
+-- ============================================================================
+-- We can no longer read remaining time in combat -- every numeric path is
+-- secret (proven: docs/EXPERIMENTS.md EXP-001/002). So the entry set is driven
+-- off the only readable signals, C_Spell.GetSpellCooldown().isActive/.isOnGCD,
+-- and we keep the opaque DurationObject for the renderer to feed into a native
+-- Cooldown widget (which draws the exact swipe + countdown for us). Icon
+-- POSITION is extrapolated from a duration learned out of combat; the native
+-- widget's text stays exact regardless of any extrapolation error.
 
-	-- Always try the direct read first. Out of combat, values are
-	-- readable. In combat, they're often secret — but pcall+type check
-	-- catches that cleanly. If the read fails, we fall through to
-	-- Strategy B (cache extrapolation).
-	local dObj
-	if tracked.hasCharges and C_Spell.GetSpellChargeDuration then
-		local cOk, cD = pcall(C_Spell.GetSpellChargeDuration, spellID)
-		if cOk then dObj = cD end
-	end
-	if not dObj then
-		local ok, d = pcall(C_Spell.GetSpellCooldownDuration, spellID)
-		if ok then dObj = d end
-	end
+function Engine:ScanSpells()
+	if not (C_Spell and C_Spell.GetSpellCooldown) then return end
 
-	if dObj then
-		local readOk, total, remaining = pcall(ReadDObjDurations, dObj)
-
-		-- We need BOTH values to be plain numbers. If either is secret
-		-- (in combat) or missing, fall through to extrapolation below.
-		if readOk
-			and type(total) == "number"
-			and type(remaining) == "number" then
-
-			-- Comparisons are safe here because type() == "number"
-			-- guarantees the value isn't secret (secret values report
-			-- as type "number" but trip a separate flag — however
-			-- if our pcall succeeded AND type returned, we're clean).
-			-- If this turns out not to be true, wrap in pcall.
-			local cmpOk, valid = pcall(PassesValidThresholds, total, remaining)
-
-			if cmpOk and valid then
-				self._curveEvalSuccess = self._curveEvalSuccess + 1
-
-				local now = GetTime()
-				local cdStart = now - (total - remaining)
-
-				-- Persist to saved vars so /reload doesn't lose learning.
-				-- Only update if we don't already have a value, OR if the
-				-- newly observed value is significantly different (talent
-				-- change, etc.).
-				local prev = self.knownDurations[spellID]
-				if not prev or math.abs(prev - total) > 1 then
-					self.knownDurations[spellID] = total
-					self:SavePersistedDuration(spellID, total)
-				end
-
-				self.cdTimingCache[spellID] = {
-					cdStart    = cdStart,
-					cdDuration = total,
-				}
-
-				-- Multi-value return (no result table) — saves ~200 table
-				-- allocs/sec across all tracked spells. Caller signature:
-				--   local active, startTime, duration, endTime = PollOneSpell(...)
-				return true, cdStart, total, cdStart + total
-			end
-		end
-
-		-- Read attempted, failed or returned secret values.
-		-- Track in counter only if we actually got something back —
-		-- a nil dObj wouldn't be a "fail."
-		if readOk then
-			self._curveEvalFail = self._curveEvalFail + 1
-		end
-	end
-
-	-- Strategy B fallback: extrapolate from cache built earlier.
-	local cache = self.cdTimingCache[spellID]
-	if not cache then
-		-- Strategy C: We have a KNOWN duration (hardcoded or persisted)
-		-- but no cache. If this is being polled because of an event
-		-- trigger (set by OnSpellUpdate below), assume a fresh cast.
-		-- The "freshly cast" flag is consumed once per spell.
-		if self._freshCastFlags and self._freshCastFlags[spellID] then
-			self._freshCastFlags[spellID] = nil
-			local known = self.knownDurations[spellID]
-			if known and known > 1.5 then
-				local now = GetTime()
-				self.cdTimingCache[spellID] = {
-					cdStart    = now,
-					cdDuration = known,
-				}
-				self._strategyCUsed = (self._strategyCUsed or 0) + 1
-				return true, now, known, now + known
-			end
-		end
-		return nil
-	end
-
-	local now = GetTime()
-	local rem = (cache.cdStart + cache.cdDuration) - now
-	if rem <= 0 then return nil end
-
-	self._fallbackUsed = self._fallbackUsed + 1
-	return true, cache.cdStart, cache.cdDuration, cache.cdStart + cache.cdDuration
-end
-
-
-function Engine:PollAllSpells()
-	if not self:EnsureCurves() then return end
-
-	-- Reuse a single scratch table across ticks instead of allocating one
-	-- every poll; at 10 Hz that's 600 fewer table allocs per minute.
+	-- Reuse one scratch table across scans (no per-scan alloc).
 	self._seenSpells = self._seenSpells or {}
 	local seen = self._seenSpells
 	wipe(seen)
 
-	for spellID, tracked in pairs(self.trackedSpells) do
-		local active, startTime, duration, endTime = self:PollOneSpell(spellID, tracked)
-		if active then
-			seen[spellID] = true
-			local existing = self.entries[spellID]
+	local now = GetTime()
+	local inCombat = InCombatLockdown()
 
-			-- Decide whether to replace the entry or just refresh endTime.
-			-- Wrap comparison in pcall in case timing values are still secret.
-			local shouldReplace = not existing
-			if existing then
-				local cmpOk, diff = pcall(EndTimeAbsDiff, existing, endTime)
-				if not cmpOk or type(diff) ~= "number" or diff > 0.5 then
-					shouldReplace = true
-				end
+	for spellID, tracked in pairs(self.trackedSpells) do
+		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+		---@diagnostic disable-next-line: undefined-field
+		if ok and info and info.isActive and not info.isOnGCD then
+			seen[spellID] = true
+
+			-- Opaque handle for display only -- never read in combat. Charge
+			-- spells expose their recharge timer via the charge duration.
+			local dObj
+			if tracked.hasCharges and C_Spell.GetSpellChargeDuration then
+				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
+				if cok then dObj = cd end
+			end
+			if not dObj and C_Spell.GetSpellCooldownDuration then
+				local dok, d = pcall(C_Spell.GetSpellCooldownDuration, spellID, true)
+				if dok then dObj = d end
 			end
 
-			if shouldReplace then
+			-- Out of combat the numbers are readable, so learn the true
+			-- (talent/haste-adjusted) duration to feed in-combat extrapolation.
+			if not inCombat and dObj then
+				self:LearnDuration(spellID, dObj)
+			end
+
+			local existing = self.entries[spellID]
+			if not existing then
+				-- New cooldown. Extrapolate position from a known duration;
+				-- the native widget shows the true countdown either way.
 				local cat = tracked.category or 0
+				local duration = self.knownDurations[spellID] or 30
 				self.entries[spellID] = {
-					spellID    = spellID,
-					name       = tracked.name,
-					icon       = tracked.icon,
-					startTime  = startTime,
-					duration   = duration,
-					endTime    = endTime,
-					laneIndex  = self:ResolveLaneIndex(spellID, cat),
-					category   = cat,
-					_source    = "curve-eval",
+					spellID   = spellID,
+					name      = tracked.name,
+					icon      = tracked.icon,
+					startTime = now,
+					duration  = duration,
+					endTime   = now + duration,
+					laneIndex = self:ResolveLaneIndex(spellID, cat),
+					category  = cat,
+					dObj      = dObj,
+					_source   = "isactive",
 				}
 			else
-				existing.endTime = endTime
+				-- Same cooldown still running: keep the extrapolated position
+				-- (don't reset startTime), just refresh the opaque handle.
+				existing.dObj = dObj or existing.dObj
 			end
 		end
 	end
 
-	-- Prune entries that were not seen this poll, BUT preserve entries
-	-- where we still have a valid cache. The cache is more reliable than
-	-- a single failed poll attempt — if the spell's timer in cdTimingCache
-	-- says it's still running, keep showing it. The Tick prune step
-	-- handles natural expiration via endTime.
-	-- Skip item entries: they live in a parallel table and are pruned by
-	-- PollAllItems. Touching them here would delete-then-recreate every
-	-- tick, churning ~50 entry tables/sec on a 5-potion list.
-	local now = GetTime()
+	-- isActive is authoritative for removal: anything no longer active has
+	-- ended OR been reset by a proc. Either way it leaves the timeline now.
+	-- Items live in a parallel table (PollAllItems prunes them); test entries
+	-- are managed by Tick.
 	for spellID, entry in pairs(self.entries) do
-		if not seen[spellID] and entry._source ~= "test" and entry.kind ~= "item" then
-			local cache = self.cdTimingCache[spellID]
-			if cache and (cache.cdStart + cache.cdDuration) > now then
-				-- Cache says this entry is still valid. Keep it; refresh
-				-- endTime from the cache to be safe.
-				entry.endTime = cache.cdStart + cache.cdDuration
-			else
-				-- No cache, or cache expired. Safe to prune.
-				self.entries[spellID] = nil
-			end
+		if entry._source ~= "test" and entry.kind ~= "item" and not seen[spellID] then
+			self.entries[spellID] = nil
 		end
 	end
 end
@@ -794,21 +672,20 @@ end
 
 function Engine:Tick()
 	self._tickCount = self._tickCount + 1
-	local now = GetTime()
 
-	-- Prune naturally-expired entries. endTime values could be tainted
-	-- if they came from a secret-tainted progress eval, so wrap in pcall.
-	for spellID, entry in pairs(self.entries) do
-		if entry.endTime then
-			local cmpOk, expired = pcall(IsEntryExpired, entry, now)
-			if cmpOk and expired then
+	if self.testActive then
+		-- Test entries carry plain endTimes; expire them so the preview
+		-- counts down and clears. Live spell entries are managed by
+		-- ScanSpells (isActive removal), never by endTime -- isActive is
+		-- the truth, and our extrapolated endTime can be wrong.
+		local now = GetTime()
+		for spellID, entry in pairs(self.entries) do
+			if entry._source == "test" and entry.endTime and now >= entry.endTime then
 				self.entries[spellID] = nil
 			end
 		end
-	end
-
-	if not self.testActive then
-		self:PollAllSpells()
+	else
+		self:ScanSpells()
 		self:PollAllItems()
 	end
 
@@ -836,7 +713,6 @@ function Engine:Start(addon)
 		C_Timer.After(1.5, function()
 			self:BuildTrackedSpells()
 			self:BuildTrackedItems()
-			self:EnsureCurves()
 		end)
 	end
 
@@ -874,12 +750,9 @@ function Engine:Start(addon)
 		self.specEventFrame = f
 	end
 
-	-- SPELL_UPDATE_COOLDOWN listener — fires when ANY cooldown changes.
-	-- Schedules a deferred poll so UNIT_SPELLCAST_SUCCEEDED has a chance
-	-- to set fresh-cast flags before we run the poll. Without the defer,
-	-- there's a race: SPELL_UPDATE_COOLDOWN may fire before UCS, causing
-	-- PollAllSpells to skip the spell (no flag yet), and then UCS sets
-	-- the flag but no poll runs.
+	-- SPELL_UPDATE_COOLDOWN listener: fires when any cooldown changes (start,
+	-- end, or proc reset). Debounced via _spellUpdatePending so a burst of
+	-- changes within 50ms collapses into a single ScanSpells.
 	if not self.spellUpdateFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("SPELL_UPDATE_COOLDOWN")
@@ -899,43 +772,17 @@ function Engine:Start(addon)
 		self.spellUpdateFrame = f
 	end
 
-	-- UNIT_SPELLCAST_SUCCEEDED listener — fires when a specific spell
-	-- is cast successfully. We use this to set the "fresh cast" flag
-	-- for that one spell, so Strategy C can seed its cache from a
-	-- known-duration value when direct reads are tainted in combat.
+	-- UNIT_SPELLCAST_SUCCEEDED listener: a successful cast usually starts a
+	-- cooldown, so scan immediately for a responsive icon rather than waiting
+	-- for the next tick. isActive (read inside ScanSpells) is authoritative,
+	-- so we don't need to match the exact cast spellID or chase overrides.
 	if not self.castSucceededFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-		f:SetScript("OnEvent", function(_, event, unit, _, spellID)
+		f:SetScript("OnEvent", function(_, _, unit)
 			if Engine.testActive then return end
 			if unit ~= "player" then return end
-			if not spellID then return end
-			-- The spell that was cast may not be in trackedSpells if it's
-			-- a base ID and we track the override (or vice versa). Try
-			-- both: direct match first, then a matching override.
-			local matchedID
-			if Engine.trackedSpells[spellID] then
-				matchedID = spellID
-			else
-				-- Sweep trackedSpells looking for an override match.
-				-- This is rare but covers cases like Avenging Wrath
-				-- variants where the talent override has a different ID
-				-- than the cast event reports.
-				for trackedID, info in pairs(Engine.trackedSpells) do
-					if info.cooldownID and Engine.cdIDToSpellID
-						and Engine.cdIDToSpellID[info.cooldownID] == spellID then
-						matchedID = trackedID
-						break
-					end
-				end
-			end
-			if matchedID then
-				Engine._freshCastFlags = Engine._freshCastFlags or {}
-				Engine._freshCastFlags[matchedID] = true
-				Engine._castEventCount = (Engine._castEventCount or 0) + 1
-				-- Immediate poll to consume the flag while it's fresh.
-				Engine:PollAllSpells()
-			end
+			Engine:ScanSpells()
 		end)
 		self.castSucceededFrame = f
 	end
@@ -953,9 +800,6 @@ function Engine:Start(addon)
 		self.tickFrame = f
 	end
 
-	if ns.CDM and ns.CDM.Print then
-		ns.CDM:Print("Engine started: curve-evaluation strategy")
-	end
 end
 
 
@@ -1000,5 +844,200 @@ function Engine:RunAPIDiagnostic()
 				(probe.GetRemainingDuration and "GetRemaining " or "") ..
 				(probe.EvaluateRemainingDuration and "Evaluate " or ""))
 		end
+	end
+end
+
+
+-- ============================================================================
+-- Curve-eval probe (opt-in diagnostic: /cdmaster curvetest)
+-- ============================================================================
+-- Settles empirically whether the curve-evaluation strategy the v0.2.0 notes
+-- CLAIMED (but never actually shipped) can de-taint secret cooldown values in
+-- COMBAT. For each spell currently on cooldown it classifies every candidate
+-- data path with issecretvalue() -- the canonical Midnight taint detector --
+-- so each path reports a definitive SECRET / <number> / nil / ERR instead of
+-- the fragile type()=="number" guess the live engine uses today.
+--
+-- Touches nothing in the live poll path; runs only when invoked. The full
+-- classification (plain strings only -- never a stored secret value) is saved
+-- to db.profile._curveProbe so the OUTCOME is finally written down.
+
+local function ProbeClassify(issecret, fn, ...)
+	if type(fn) ~= "function" then return "no-method" end
+	local ok, v = pcall(fn, ...)
+	if not ok then return "ERR: " .. tostring(v) end   -- v is the error message
+	if v == nil then return "nil" end
+	-- Must confirm not-secret BEFORE touching the value with format/tostring.
+	-- Without a detector we cannot, so we refuse to risk it.
+	if not issecret then return "no-detector" end
+	if issecret(v) then return "SECRET" end
+	local t = type(v)
+	if t == "number" then return string.format("%.3f", v) end
+	if t == "boolean" then return tostring(v) end
+	return t
+end
+
+
+local function ProbeDObj(cdm, issecret, label, dObj, stepCurve, linCurve, idCurve)
+	if dObj == nil then
+		cdm:Print("  " .. label .. ": <no DurationObject returned>")
+		return { dObj = false }
+	end
+	local rec = {
+		dObj      = true,
+		remaining = ProbeClassify(issecret, dObj.GetRemainingDuration, dObj),
+		total     = ProbeClassify(issecret, dObj.GetTotalDuration, dObj),
+		isZero    = ProbeClassify(issecret, dObj.IsZero, dObj),
+		-- Correct signature is EvaluateRemainingDuration(curve [, modifier]);
+		-- modifier is OPTIONAL, so we omit it. (Probe v1/v2 wrongly passed -1
+		-- as the modifier, which the API rejected with "bad argument #3".)
+		step      = stepCurve and ProbeClassify(issecret, dObj.EvaluateRemainingDuration, dObj, stepCurve) or "n/a",
+		linear    = linCurve  and ProbeClassify(issecret, dObj.EvaluateRemainingDuration, dObj, linCurve) or "n/a",
+		identity  = idCurve   and ProbeClassify(issecret, dObj.EvaluateRemainingDuration, dObj, idCurve) or "n/a",
+	}
+	cdm:Print(string.format("  %s raw : rem=%s  total=%s  isZero=%s", label, rec.remaining, rec.total, rec.isZero))
+	-- One eval per line: the error text is the whole point now, and it would be
+	-- unreadable crammed three-to-a-line.
+	cdm:Print(string.format("  %s eval step    : %s", label, rec.step))
+	cdm:Print(string.format("  %s eval linear  : %s", label, rec.linear))
+	cdm:Print(string.format("  %s eval identity: %s", label, rec.identity))
+	return rec
+end
+
+
+local function ProbeUsableNum(s)
+	local n = tonumber(s)
+	return n ~= nil and n >= 0   -- excludes the -1 eval-default sentinel
+end
+
+
+function Engine:RunCurveProbe()
+	local cdm = ns.CDM
+	if not (cdm and cdm.Print) then return end
+
+	local issecret = _G.issecretvalue   -- canonical Midnight taint detector
+	local inCombat = InCombatLockdown()
+
+	cdm:Print("===== Curve-eval probe =====")
+	cdm:Print("In combat: " .. (inCombat and "|cff00ff00YES|r" or "|cffff5555no|r (the real test is IN combat)"))
+	cdm:Print("issecretvalue() present: " .. tostring(issecret ~= nil))
+	cdm:Print("legend: SECRET=taint-blocked  <number>=usable plain value  ERR=call failed")
+
+	if not (C_Spell and C_Spell.GetSpellCooldownDuration and C_Spell.GetSpellCooldown) then
+		cdm:Print("C_Spell cooldown API missing -- cannot probe.")
+		return
+	end
+
+	self:EnsureCurves()
+	local stepCurve = self.readyCurve      -- Step: remaining -> {1 ready, 0 on-cd}
+	local linCurve  = self.progressCurve   -- Linear: 0..600 -> 0..1
+
+	-- Identity curve: 0..600 -> 0..600. If THIS de-taints, the result is the
+	-- remaining time in seconds outright -- the timeline holy grail.
+	local idCurve
+	if C_CurveUtil and C_CurveUtil.CreateCurve and Enum and Enum.LuaCurveType and Enum.LuaCurveType.Linear then
+		idCurve = C_CurveUtil.CreateCurve()
+		if idCurve then
+			idCurve:SetType(Enum.LuaCurveType.Linear)
+			idCurve:AddPoint(0, 0)
+			idCurve:AddPoint(MAX_DURATION, MAX_DURATION)
+		end
+	end
+	cdm:Print(string.format("Curves built: step=%s linear=%s identity=%s",
+		tostring(stepCurve ~= nil), tostring(linCurve ~= nil), tostring(idCurve ~= nil)))
+
+	-- Find up to 5 tracked spells currently on cooldown, via the taint-safe
+	-- boolean path (isActive/isOnGCD are not secret-protected -- Skiron relies
+	-- on exactly this).
+	local onCD = {}
+	for spellID, tracked in pairs(self.trackedSpells) do
+		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+		---@diagnostic disable-next-line: undefined-field
+		if ok and info and info.isActive and not info.isOnGCD then
+			onCD[#onCD + 1] = { id = spellID, name = tracked.name }
+			if #onCD >= 3 then break end
+		end
+	end
+
+	if #onCD == 0 then
+		cdm:Print("|cffff5555No tracked spells on cooldown right now.|r Put a few on CD (in combat) and re-run /cdmaster curvetest.")
+	end
+
+	local log = { inCombat = inCombat, hasIssecret = issecret ~= nil, spells = {} }
+
+	for _, s in ipairs(onCD) do
+		cdm:Print(string.format("|cffEBB706[%d] %s|r", s.id, tostring(s.name)))
+
+		-- Legacy plain-number API: C_Spell.GetSpellCooldown(id) returns a table
+		-- with startTime/duration/modRate (plus the known-readable isActive/
+		-- isOnGCD booleans). If start+duration are plain in combat, the timeline
+		-- can be EXACT instead of extrapolated. This is the last untested source.
+		local sc = {}
+		local okI, info = pcall(C_Spell.GetSpellCooldown, s.id)
+		if okI and info then
+			sc.startTime = ProbeClassify(issecret, function() return info.startTime end)
+			sc.duration  = ProbeClassify(issecret, function() return info.duration end)
+			sc.modRate   = ProbeClassify(issecret, function() return info.modRate end)
+			---@diagnostic disable-next-line: undefined-field
+			sc.isActive  = ProbeClassify(issecret, function() return info.isActive end)
+			---@diagnostic disable-next-line: undefined-field
+			sc.isOnGCD   = ProbeClassify(issecret, function() return info.isOnGCD end)
+			cdm:Print(string.format("  GetSpellCooldown: start=%s  dur=%s  modRate=%s  isActive=%s  isOnGCD=%s",
+				sc.startTime, sc.duration, sc.modRate, sc.isActive, sc.isOnGCD))
+		else
+			cdm:Print("  GetSpellCooldown: <call failed>")
+		end
+
+		local okA, dA = pcall(C_Spell.GetSpellCooldownDuration, s.id)
+		local okB, dB = pcall(C_Spell.GetSpellCooldownDuration, s.id, true)
+		log.spells[#log.spells + 1] = {
+			id = s.id, name = s.name,
+			sc = sc,
+			A = ProbeDObj(cdm, issecret, "A (id)     ", okA and dA or nil, stepCurve, linCurve, idCurve),
+			B = ProbeDObj(cdm, issecret, "B (id,true)", okB and dB or nil, stepCurve, linCurve, idCurve),
+		}
+	end
+
+	-- Verdict: did anything hand back a usable plain number in combat? Track the
+	-- legacy GetSpellCooldown start+duration, raw DurationObject reads, the step
+	-- curve (low cardinality) and the continuous curves (linear/identity)
+	-- separately -- they can each de-taint independently.
+	local oldApiUsable, rawUsable, stepUsable, contUsable = false, false, false, false
+	for _, sp in ipairs(log.spells) do
+		if type(sp.sc) == "table"
+			and ProbeUsableNum(sp.sc.startTime) and ProbeUsableNum(sp.sc.duration) then
+			oldApiUsable = true
+		end
+		for _, v in pairs({ sp.A, sp.B }) do
+			if type(v) == "table" then
+				if ProbeUsableNum(v.remaining) then rawUsable = true end
+				if ProbeUsableNum(v.step) then stepUsable = true end
+				if ProbeUsableNum(v.linear) or ProbeUsableNum(v.identity) then contUsable = true end
+			end
+		end
+	end
+
+	cdm:Print("===== Verdict =====")
+	if not inCombat then
+		cdm:Print("Out of combat -- values are normally readable here, so this is only a baseline. |cffEBB706Re-run IN COMBAT for the real test.|r")
+	elseif #onCD == 0 then
+		cdm:Print("No data captured (nothing was on cooldown).")
+	else
+		cdm:Print("Old-API start+dur usable:         " .. tostring(oldApiUsable))
+		cdm:Print("Raw DurationObject usable:        " .. tostring(rawUsable))
+		cdm:Print("Curve STEP de-taints:             " .. tostring(stepUsable))
+		cdm:Print("Curve CONTINUOUS (lin/id) usable: " .. tostring(contUsable))
+		if oldApiUsable or rawUsable or contUsable then
+			cdm:Print("|cff00ff00A plain remaining-time number IS available in combat -> EXACT timeline possible.|r")
+		elseif stepUsable then
+			cdm:Print("|cffEBB706Only the step curve de-taints -> ready/not-ready only, no position. Timeline stays extrapolated; option C for exact display.|r")
+		else
+			cdm:Print("|cffff5555No plain number in combat -> hybrid option C: extrapolated position + native Cooldown widgets.|r")
+		end
+	end
+
+	if cdm.db and cdm.db.profile then
+		cdm.db.profile._curveProbe = log
+		cdm:Print("Saved to db.profile._curveProbe (written down for next time).")
 	end
 end

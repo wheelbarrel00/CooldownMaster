@@ -165,6 +165,13 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "curvetest" or input == "curveprobe" then
+		if ns.Engine and ns.Engine.RunCurveProbe then
+			ns.Engine:RunCurveProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
 	elseif input == "spells" then
 		self:OnSlashSpells()
 
@@ -223,7 +230,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | spells | haste | frames | slot")
+		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | spells | haste | frames | slot")
 	end
 end
 

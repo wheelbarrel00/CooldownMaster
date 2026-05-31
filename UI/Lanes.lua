@@ -33,17 +33,38 @@ for i = 0, 100 do
 	DECIMAL_STRINGS[i] = string.format("%.1f", i / 10)
 end
 
+-- MINSEC_STRINGS covers 60..600 as "m:ss" (e.g. 119 -> "1:59"), except whole
+-- minutes which collapse to a bare minute count (120 -> "2") so the boundary
+-- reads "2", then "1:59", "1:58", ...
+local MINSEC_STRINGS = {}
+for i = 60, 600 do
+	local m = math.floor(i / 60)
+	local s = i % 60
+	if s == 0 then
+		MINSEC_STRINGS[i] = tostring(m)
+	else
+		MINSEC_STRINGS[i] = string.format("%d:%02d", m, s)
+	end
+end
 
--- Format remaining time. Integer seconds when >10, one decimal when <=10.
--- Hits the lookup tables above for the common range; falls through to a
--- live string.format only for unexpected out-of-range values.
+
+-- Format remaining time. One decimal when <=10s, integer seconds up to 60s,
+-- then m:ss (whole minutes shown bare). Hits the lookup tables above for the
+-- common range; falls through to a live string.format only for unexpected
+-- out-of-range values.
 local function FormatTime(remaining)
 	if remaining <= 10 then
 		local idx = math.floor(remaining * 10 + 0.5)
 		return DECIMAL_STRINGS[idx] or string.format("%.1f", remaining)
 	end
 	local idx = math.floor(remaining + 0.5)
-	return INTEGER_STRINGS[idx] or string.format("%d", idx)
+	if idx < 60 then
+		return INTEGER_STRINGS[idx] or string.format("%d", idx)
+	end
+	local s = idx % 60
+	return MINSEC_STRINGS[idx]
+		or (s == 0 and string.format("%d", idx / 60))
+		or string.format("%d:%02d", math.floor(idx / 60), s)
 end
 
 
@@ -152,6 +173,38 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 end
 
 
+-- Native cooldown countdown formatter. The remaining time is secret in combat,
+-- so we cannot format it ourselves -- but the Cooldown widget calls this
+-- privileged formatter with the (secret) value and renders the result. These
+-- breakpoints are Blizzard's defaults minus the minute-collapse one, giving a
+-- continuous clock: whole seconds under 1:00, then M:SS all the way up (instead
+-- of the default that shows bare minutes like "4m" above 2 minutes).
+local CDFormatter   -- nil = untried, false = unavailable, object = ready
+local function GetCountdownFormatter()
+	if CDFormatter ~= nil then return CDFormatter or nil end
+	if not (C_StringUtil and C_StringUtil.CreateNumericRuleFormatter
+		and Enum and Enum.NumericRuleFormatRounding) then
+		CDFormatter = false
+		return nil
+	end
+	local f = C_StringUtil.CreateNumericRuleFormatter()
+	if not (f and f.SetBreakpoints) then
+		CDFormatter = false
+		return nil
+	end
+	local Up = Enum.NumericRuleFormatRounding.Up
+	-- LS lacks the formatter's type def; SetBreakpoints takes the table (Skiron ships this).
+	---@diagnostic disable-next-line: redundant-parameter
+	f:SetBreakpoints({
+		{ threshold = 0,  displayStyle = "secondsOnly", step = 1, rounding = Up, format = "%d" },
+		{ threshold = 60, displayStyle = "clock",       step = 1, rounding = Up, format = "%d:%02d",
+			components = { { div = 60 }, { mod = 60 } } },
+	})
+	CDFormatter = f
+	return f
+end
+
+
 -- Acquire (or create) the i'th icon button on a lane frame.
 local function AcquireIcon(laneFrame, i, iconSize)
 	local pool = laneFrame.iconPool
@@ -164,6 +217,20 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn.tex = btn:CreateTexture(nil, "ARTWORK")
 	btn.tex:SetAllPoints(btn)
 	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim default icon border
+
+	-- Native cooldown swipe + countdown. In combat the remaining time is a
+	-- secret value we cannot read (see docs/EXPERIMENTS.md), so we feed this
+	-- widget the opaque DurationObject via SetCooldownFromDurationObject and let
+	-- Blizzard render the exact swipe + number. Items / test use SetCooldown.
+	btn.cd = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
+	btn.cd:SetAllPoints(btn)
+	btn.cd:SetDrawEdge(false)
+	btn.cd:SetDrawBling(false)
+	btn.cd:SetHideCountdownNumbers(false)
+	if btn.cd.SetCountdownFormatter then
+		local fmt = GetCountdownFormatter()
+		if fmt then btn.cd:SetCountdownFormatter(fmt) end
+	end
 
 	btn.time = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	btn.time:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
@@ -198,7 +265,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn:SetScript("OnUpdate", function(self)
 		if not self._endTime then return end
 		local remaining = self._endTime - GetTime()
-		if remaining <= 0 then return end
+		if remaining < 0 then remaining = 0 end   -- extrapolation underran; clamp to ready end
 		local cfg = self._cfg
 		if not cfg then return end
 		self:SetAlpha((cfg.iconAlpha) or 1)
@@ -225,7 +292,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 				self:SetPoint("LEFT", self:GetParent(), "LEFT", x, off)
 			end
 		end
-		self.time:SetText(FormatTime(remaining))
+		-- Countdown text is owned by the native Cooldown widget now.
 	end)
 
 	pool[i] = btn
@@ -428,8 +495,12 @@ local function RefreshBody(laneIndex)
 				-- override + showByDefault fallback).
 				and (engine:IsSpellVisible(e.spellID, e.category)) then
 				local remaining = e.endTime - now
-				if remaining > 0 then
-					local hideForLong = (remaining > maxTime) and cfg.hideLongTimers
+				-- Spell entries are kept alive by isActive (ScanSpells removes
+				-- them at the true cooldown end), so render them even if our
+				-- extrapolated remaining ran out -- position clamps at the ready
+				-- end and the native widget shows the true countdown.
+				if remaining > 0 or e._source == "isactive" then
+					local hideForLong = remaining > maxTime and cfg.hideLongTimers
 					if not hideForLong then
 						i = i + 1
 						local btn = AcquireIcon(laneFrame, i, iconSize)
@@ -439,14 +510,26 @@ local function RefreshBody(laneIndex)
 						else
 							btn.tex:SetTexture(nil)
 						end
-						btn.time:SetText(FormatTime(remaining))
-
-						-- Slot 2 (time text) visibility.
-						if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
-							btn.time:Show()
-						else
-							btn.time:Hide()
+						-- Feed the native cooldown once per cooldown instance,
+						-- keyed on spellID+startTime so a reused pool slot re-feeds
+						-- when it switches spells. The widget renders the exact
+						-- swipe + countdown -- the only combat-safe way to show
+						-- real remaining time (we never read the number ourselves).
+						if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
+							btn._cdSpellID = e.spellID
+							btn._cdStart   = e.startTime
+							if e.dObj and btn.cd.SetCooldownFromDurationObject then
+								pcall(btn.cd.SetCooldownFromDurationObject, btn.cd, e.dObj)
+							elseif e.startTime and e.duration then
+								btn.cd:SetCooldown(e.startTime, e.duration)   -- items / test: plain numbers
+							end
 						end
+
+						-- Native widget owns the countdown text; the slot-2 toggle
+						-- just controls whether its number is drawn.
+						local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
+						btn.cd:SetHideCountdownNumbers(not showTime)
+						btn.time:Hide()
 
 						-- Slot 1 (charges) visibility — only when entry has charge data.
 						if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
@@ -472,11 +555,15 @@ local function RefreshBody(laneIndex)
 		end
 	end
 
-	-- Hide pool slots beyond what we actually used this frame.
+	-- Hide pool slots beyond what we actually used this frame. Clear the native
+	-- cooldown and instance keys so a reused slot re-feeds cleanly next time.
 	for j = i + 1, laneFrame.activeIcons do
 		local btn = laneFrame.iconPool[j]
 		if btn then
-			btn._endTime = nil
+			btn._endTime   = nil
+			btn._cdSpellID = nil
+			btn._cdStart   = nil
+			if btn.cd then btn.cd:Clear() end
 			btn:Hide()
 		end
 	end
