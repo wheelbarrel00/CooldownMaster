@@ -1,5 +1,29 @@
 # Cooldown Master Changelog
 
+## 0.7.0 — All-class coverage and a reliability pass
+
+Cooldown position baselines now cover every class and spec instead of just Paladin and Mage, so icons land in sensible places on first sight regardless of what you play. This release also fixes a cluster of Filters and spec-swap bugs, makes test mode actually work, and includes a substantial allocation-reduction pass on the live engine.
+
+### New Features
+- Baseline cooldown coverage for all classes and specs. The addon already discovered every class's spells dynamically, but the first-impression icon position relied on a hardcoded duration table that only covered Paladin and Mage; every other class fell back to a flat default until each spell was seen once. Positions are now seeded from the game's own base-cooldown data for whatever you're playing, so icons start in the right place on any class. The countdown number on each icon was already exact in all cases; this improves only the icon's resting position along the lane.
+
+### Bug Fixes
+- Filters: spells that Blizzard lists in more than one Cooldown Viewer category (for example an Essential cooldown that is also a tracked buff) no longer get reassigned to the wrong sub-tab. Each spell now keeps its primary category, so it appears in the expected Filters list and routes to the lane you'd expect.
+- Filters: the per-category spell lists were a one-time snapshot taken the first time you opened a sub-tab. Opening Filters before spell discovery finished left "No spells discovered yet" stuck for the session, and the lists didn't refresh after a spec change. They now rebuild whenever the spell registry does.
+- Test mode now works from all three entry points (the `/cdmaster test` command, the Global tab button, and a minimap middle-click). Previously these printed "Test mode on" but nothing happened, because the toggle never reached the engine.
+- Learned cooldown durations now persist between sessions as intended. The save step was never being called, so the addon re-learned every spell from scratch on each login instead of remembering them permanently.
+- Changing specialization no longer leaves cooldown positions wrong until a `/reload`. The addon was clearing its learned durations on spec change without reloading the saved and baseline values, so every cooldown briefly extrapolated from a flat default.
+- A party member changing spec no longer wipes your own learned durations. The specialization event is now filtered to the player.
+
+### Improvements
+- Engine allocation pass. The cooldown scan no longer runs on every frame tick; cooldown changes are caught by game events (cast, cooldown-change, and bag-cooldown for potions) with a low-frequency safety sweep behind them. A cast that fires two events now collapses into a single scan instead of two. Together this removes the bulk of the addon's steady-state memory churn during sustained combat.
+- Lane configuration (size, position, colors, markers) is no longer re-applied on every render frame. It is now applied once when a lane is built and again only when you actually change a setting, removing redundant layout work at roughly 30 updates per second across three lanes.
+- Dragging the Width, Height, X, Y, or Anchor sliders in a lane's Appearance settings no longer leaks a frame per slider step. These now update the existing lane in place instead of destroying and recreating it.
+
+### Developer notes
+- Added `/cdmaster seedtest`, a diagnostic that reports how many of the current spec's tracked spells have a learned, hardcoded, or game-seeded baseline, with sample values to sanity-check against tooltips.
+- Duration precedence is now explicit: learned (talent-adjusted, observed out of combat) takes priority over hardcoded fallbacks and game-seeded baselines, which take priority over a flat default. Hardcoded and seeded baselines no longer suppress learning the real value.
+
 ## 0.6.0 — Combat-accurate cooldowns
 
 A ground-up engine rewrite so cooldowns display correctly in combat under Midnight's "secret value" API restrictions. Previously, in-combat timers were extrapolated guesses that were often wrong; now each lane icon shows the real cooldown swipe and countdown, tracks the true cooldown state, and reads as a continuous clock.

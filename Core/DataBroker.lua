@@ -29,10 +29,13 @@ function ns.DataBroker_Init(addon)
 				addon.db.profile.global.unlockFrames = not addon.db.profile.global.unlockFrames
 				addon:Print("Frames " ..
 					(addon.db.profile.global.unlockFrames and "unlocked" or "locked"))
+				-- Lane drag-labels show/hide off this flag; the per-tick
+				-- config apply that used to repaint them is gone.
+				if ns.Lanes_RefreshUnlockState then
+					ns.Lanes_RefreshUnlockState(addon)
+				end
 			elseif button == "MiddleButton" then
-				addon.testing = not addon.testing
-				addon:Print("Test mode " ..
-					(addon.testing and "on" or "off"))
+				addon:ToggleTestMode()
 			end
 		end,
 

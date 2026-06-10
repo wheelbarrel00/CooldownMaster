@@ -32,7 +32,8 @@ local Engine = ns.Engine
 Engine.trackedSpells   = {}   -- [spellID] = { name, icon, category, hasCharges, cooldownID }
 Engine.trackedItems    = {}   -- [itemID]  = { name, icon, category, kind = "item" }
 Engine.cdIDToSpellID   = {}   -- [cooldownID] = spellID  (reverse lookup)
-Engine.knownDurations  = {}   -- [spellID] = total duration in seconds (learned)
+Engine.knownDurations  = {}   -- [spellID] = duration in seconds (LEARNED out of combat / persisted; talent-adjusted, best quality)
+Engine.baselineDurations = {} -- [spellID] = duration in seconds (hardcoded fallback or GetSpellBaseCooldown seed; base values, used only when nothing learned)
 Engine.cdTimingCache   = {}   -- [spellID] = { cdStart, cdDuration } (extrapolation cache)
 Engine.entries         = {}   -- [spellID|itemID] = { spellID, name, icon, startTime, duration, endTime, ... }
 Engine.cooldownViewerFound = false
@@ -169,17 +170,31 @@ end
 -- The isActive lifecycle model reads no numbers in combat, so none are needed.)
 
 
--- C_Timer.After callback used by the SPELL_UPDATE_COOLDOWN handler. Hoisted
--- to module scope so the event handler can pass a function reference rather
--- than allocate a fresh closure on every fire — that event can fire 20-50
--- times/sec during heavy combat. The Engine._spellUpdatePending flag (set
--- by the OnEvent handler, cleared here) debounces event bursts so that
--- multiple cooldown changes within 50ms collapse into a single poll.
+-- C_Timer.After callback for the deferred scan. Hoisted to module scope so
+-- event handlers pass a function reference rather than allocate a fresh
+-- closure on every fire — SPELL_UPDATE_COOLDOWN can fire 20-50 times/sec
+-- during heavy combat.
 local function DeferredCooldownPoll()
 	Engine._spellUpdatePending = nil
 	if not Engine.testActive then
 		Engine:ScanSpells()
 	end
+end
+
+
+-- Shared debounce for both spell-cooldown event paths. A successful cast
+-- fires UNIT_SPELLCAST_SUCCEEDED and SPELL_UPDATE_COOLDOWN within a few
+-- frames of each other; one flag + one 100ms window collapses the pair (and
+-- any proc burst) into a single ScanSpells. Worst-case event-driven scan
+-- rate is therefore 10/sec — the same ceiling the old every-tick scan had —
+-- but the typical rate is one scan per cast or proc burst. Each ScanSpells
+-- pass allocates one GetSpellCooldown info table per tracked spell, so scan
+-- count is the addon's dominant GC knob.
+local SCAN_DEBOUNCE = 0.1
+local function ScheduleDeferredScan()
+	if Engine._spellUpdatePending then return end
+	Engine._spellUpdatePending = true
+	C_Timer.After(SCAN_DEBOUNCE, DeferredCooldownPoll)
 end
 
 
@@ -227,11 +242,15 @@ function Engine:LoadPersistedDurations()
 		end
 	end
 
-	-- Layer hardcoded fallbacks UNDER persisted (persisted wins because
-	-- it's potentially talent-adjusted from real observation).
+	-- Hardcoded fallbacks go in the BASELINE table, not knownDurations.
+	-- They used to be layered into knownDurations directly, which made
+	-- LearnDuration's "already known" guard treat them as learned -- so the
+	-- real talent-adjusted duration was never learned for any spell with a
+	-- fallback, contradicting the table's own documentation. Baselines now
+	-- only fill the gap until a real observation lands.
 	for spellID, duration in pairs(FALLBACK_DURATIONS) do
-		if not self.knownDurations[spellID] then
-			self.knownDurations[spellID] = duration
+		if not self.baselineDurations[spellID] then
+			self.baselineDurations[spellID] = duration
 		end
 	end
 end
@@ -290,6 +309,54 @@ end
 
 
 -- ============================================================================
+-- Baseline duration seeding (all classes, no hardcoded tables)
+-- ============================================================================
+-- GetSpellBaseCooldown(spellID) returns the spell's BASE cooldown in
+-- milliseconds (no haste/talent adjustments). If it's readable on Midnight,
+-- it lets us seed a sane icon-position baseline for every tracked spell of
+-- every class at registry-build time -- replacing per-class hardcoded tables.
+-- Verify in-game with /cdmaster seedtest. Precedence at lookup time:
+-- learned/persisted > hardcoded fallback > this seed > 30s default.
+
+-- pcall body: read + validate to plain seconds. Runs entirely inside pcall
+-- so a comparison against a secret value (if the detector were ever
+-- unavailable) fails closed instead of erroring up the stack.
+local function ReadBaseCooldownSeconds(spellID)
+	local cdMS = GetSpellBaseCooldown(spellID)
+	if cdMS == nil then return nil end
+	local issecret = _G.issecretvalue
+	if issecret and issecret(cdMS) then return nil end
+	if type(cdMS) ~= "number" then return nil end
+	-- Skip GCD-length and zero results (charge spells commonly report 0
+	-- here; their recharge is learned from observation instead).
+	if cdMS <= 1500 then return nil end
+	return cdMS / 1000
+end
+
+
+function Engine:SeedBaselineDurations()
+	if type(GetSpellBaseCooldown) ~= "function" then
+		self._seedAPIPresent = false
+		return
+	end
+	self._seedAPIPresent = true
+
+	for spellID in pairs(self.trackedSpells) do
+		-- Learned values are better (talent-adjusted observation), and an
+		-- existing baseline (hand-verified hardcoded entry or earlier seed)
+		-- is not worth overwriting. Only fill genuine gaps.
+		if not self.knownDurations[spellID]
+			and not self.baselineDurations[spellID] then
+			local ok, secs = pcall(ReadBaseCooldownSeconds, spellID)
+			if ok and secs then
+				self.baselineDurations[spellID] = secs
+			end
+		end
+	end
+end
+
+
+-- ============================================================================
 -- Build the spell registry from Cooldown Viewer
 -- ============================================================================
 
@@ -316,20 +383,33 @@ function Engine:BuildTrackedSpells()
 						effectiveID = info.overrideSpellID
 					end
 
-					local name, icon = GetSpellNameIcon(effectiveID)
-					self.trackedSpells[effectiveID] = {
-						name       = name,
-						icon       = icon,
-						category   = info.category,
-						hasCharges = info.charges,
-						cooldownID = cooldownID,
-					}
+					-- The same spell can appear in more than one Cooldown
+					-- Viewer category (e.g. an Essential cooldown that is
+					-- also a Tracked Buff). The loop scans categories in
+					-- ascending order, so keep the FIRST entry: the lowest
+					-- category (Essential/Utility) becomes the spell's
+					-- primary category for filter lists and lane routing.
+					-- Later duplicates still record their cooldownID mapping.
+					if effectiveID and not self.trackedSpells[effectiveID] then
+						local name, icon = GetSpellNameIcon(effectiveID)
+						self.trackedSpells[effectiveID] = {
+							name       = name,
+							icon       = icon,
+							category   = info.category,
+							hasCharges = info.charges,
+							cooldownID = cooldownID,
+						}
+					end
 					self.cdIDToSpellID[cooldownID] = effectiveID
 				end
 			end
 		end
 	end
 
+	-- Fill duration baselines for every spell the registry just discovered --
+	-- this is what makes icon positions sane on classes that have no
+	-- hardcoded fallback table (everything except Paladin/Mage).
+	self:SeedBaselineDurations()
 end
 
 
@@ -442,25 +522,42 @@ end
 -- Poll loop
 -- ============================================================================
 
+-- pcall bodies for LearnDuration, hoisted to module scope. The inline
+-- closures they replace allocated two functions per call -- and LearnDuration
+-- runs on every scan for each active spell that hasn't learned yet, so a
+-- spell whose duration object never yields a total (some charge spells)
+-- churned closures indefinitely while out of combat.
+local function ReadTotalDuration(dObj)
+	if dObj.GetTotalDuration then
+		return dObj:GetTotalDuration()
+	end
+	return nil
+end
+
+local function ReadRemainingDuration(dObj)
+	if dObj.GetRemainingDuration then
+		return dObj:GetRemainingDuration()
+	end
+	return nil
+end
+
+
 function Engine:LearnDuration(spellID, dObj)
+	-- Guard on knownDurations ONLY -- a baseline (hardcoded or seeded) must
+	-- not block learning, since the observed value is talent-adjusted and
+	-- strictly better than any base number.
 	if self.knownDurations[spellID] then return end
 	if not dObj then return end
 	if InCombatLockdown() then return end
 
-	local ok, total = pcall(function()
-		if dObj.GetTotalDuration then
-			return dObj:GetTotalDuration()
-		end
-		return nil
-	end)
+	local ok, total = pcall(ReadTotalDuration, dObj)
 	if ok and type(total) == "number" and total > 1.5 then
 		self.knownDurations[spellID] = total
-		local rOk, remaining = pcall(function()
-			if dObj.GetRemainingDuration then
-				return dObj:GetRemainingDuration()
-			end
-			return nil
-		end)
+		-- Persist to AceDB -- this call was missing, so "learn once, ever"
+		-- never survived a /reload and re-learning started from scratch each
+		-- session. One number write per spell per learn; no churn.
+		self:SavePersistedDuration(spellID, total)
+		local rOk, remaining = pcall(ReadRemainingDuration, dObj)
 		if rOk and type(remaining) == "number" and remaining > 0 then
 			self.cdTimingCache[spellID] = {
 				cdStart    = GetTime() - (total - remaining),
@@ -499,16 +596,23 @@ function Engine:ScanSpells()
 		if ok and info and info.isActive and not info.isOnGCD then
 			seen[spellID] = true
 
-			-- Opaque handle for display only -- never read in combat. Charge
-			-- spells expose their recharge timer via the charge duration.
+			-- Opaque handle for display only -- never read in combat. We get
+			-- here only because isActive is true (the spell is fully on cooldown
+			-- / out of charges), so GetSpellCooldownDuration is the canonical
+			-- source for the remaining time -- including a charge spell's recharge
+			-- once it's depleted. The charge-duration object is only a fallback:
+			-- some spells the Cooldown Viewer flags hasCharges=true (e.g. Touch of
+			-- the Magi) hand back a charge object that resolves to "no cooldown",
+			-- which renders a blank icon with no swipe or number. Preferring the
+			-- cooldown duration avoids that shadowing.
 			local dObj
-			if tracked.hasCharges and C_Spell.GetSpellChargeDuration then
-				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
-				if cok then dObj = cd end
-			end
-			if not dObj and C_Spell.GetSpellCooldownDuration then
+			if C_Spell.GetSpellCooldownDuration then
 				local dok, d = pcall(C_Spell.GetSpellCooldownDuration, spellID, true)
 				if dok then dObj = d end
+			end
+			if not dObj and tracked.hasCharges and C_Spell.GetSpellChargeDuration then
+				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
+				if cok then dObj = cd end
 			end
 
 			-- Out of combat the numbers are readable, so learn the true
@@ -522,7 +626,13 @@ function Engine:ScanSpells()
 				-- New cooldown. Extrapolate position from a known duration;
 				-- the native widget shows the true countdown either way.
 				local cat = tracked.category or 0
-				local duration = self.knownDurations[spellID] or 30
+				-- Position extrapolation quality ladder: learned (talent-
+				-- adjusted observation) > baseline (hardcoded or API base
+				-- cooldown) > 30s default. The native widget's countdown
+				-- text is exact regardless of which one we use here.
+				local duration = self.knownDurations[spellID]
+					or self.baselineDurations[spellID]
+					or 30
 				self.entries[spellID] = {
 					spellID   = spellID,
 					name      = tracked.name,
@@ -663,6 +773,11 @@ function Engine:StopTestMode()
 			self.entries[spellID] = nil
 		end
 	end
+	-- Repopulate live entries immediately. The tick sweep now runs at 1 Hz,
+	-- so without this the lanes would sit empty for up to a second after
+	-- leaving test mode. One user-triggered scan; no steady-state cost.
+	self:ScanSpells()
+	self:PollAllItems()
 end
 
 
@@ -685,8 +800,19 @@ function Engine:Tick()
 			end
 		end
 	else
-		self:ScanSpells()
-		self:PollAllItems()
+		-- Safety-net cadence only (every 10th tick = 1 Hz). Cooldown edges
+		-- are caught by the event paths (SPELL_UPDATE_COOLDOWN /
+		-- UNIT_SPELLCAST_SUCCEEDED / BAG_UPDATE_COOLDOWN); this sweep exists
+		-- for anything they miss, e.g. events dropped across a loading
+		-- screen. Scanning on every tick allocated one GetSpellCooldown
+		-- info table per tracked spell per tick (~400 tables/sec at 40
+		-- tracked spells) for data that almost never changed between ticks.
+		self._scanCounter = (self._scanCounter or 0) + 1
+		if self._scanCounter >= 10 then
+			self._scanCounter = 0
+			self:ScanSpells()
+			self:PollAllItems()
+		end
 	end
 
 	if ns.Lanes_Refresh then
@@ -713,6 +839,11 @@ function Engine:Start(addon)
 		C_Timer.After(1.5, function()
 			self:BuildTrackedSpells()
 			self:BuildTrackedItems()
+			-- Discovery may land after the Filters tab was first opened;
+			-- drop its cached lists so they rebuild from the fresh registry.
+			if ns.Options_InvalidateFilterLists then
+				ns.Options_InvalidateFilterLists()
+			end
 		end)
 	end
 
@@ -738,53 +869,71 @@ function Engine:Start(addon)
 
 	if not self.specEventFrame then
 		local f = CreateFrame("Frame")
-		f:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+		-- Unit-filtered: the unfiltered event also fires when PARTY members
+		-- change spec, and each of those fires would wipe our learned
+		-- durations for no reason.
+		f:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 		f:SetScript("OnEvent", function(_, event)
 			if event == "PLAYER_SPECIALIZATION_CHANGED" then
 				wipe(self.knownDurations)
 				wipe(self.cdTimingCache)
+				-- Re-layer persisted + hardcoded fallback durations under the
+				-- fresh slate. Without this the runtime table stayed empty
+				-- until the next /reload (which reloads persisted anyway), so
+				-- every new cooldown extrapolated from the 30s default.
+				self:LoadPersistedDurations()
 				self:BuildTrackedSpells()
 				self:BuildTrackedItems()
+				if ns.Options_InvalidateFilterLists then
+					ns.Options_InvalidateFilterLists()
+				end
 			end
 		end)
 		self.specEventFrame = f
 	end
 
 	-- SPELL_UPDATE_COOLDOWN listener: fires when any cooldown changes (start,
-	-- end, or proc reset). Debounced via _spellUpdatePending so a burst of
-	-- changes within 50ms collapses into a single ScanSpells.
+	-- end, or proc reset). Routed through the shared ScheduleDeferredScan
+	-- debounce so a burst of changes collapses into a single ScanSpells.
 	if not self.spellUpdateFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-		f:SetScript("OnEvent", function(_, event)
+		f:SetScript("OnEvent", function()
 			if Engine.testActive then return end
-			-- Debounce: if a deferred poll is already scheduled, don't
-			-- schedule another one. Multiple cooldowns changing in the
-			-- same burst (e.g., a CD-reset proc) collapse into one poll.
-			if Engine._spellUpdatePending then return end
-			Engine._spellUpdatePending = true
-			-- Defer ~50ms; UCS typically fires within 1-2 frames of
-			-- the cast event burst, so we want to wait for it to land
-			-- before polling. DeferredCooldownPoll is module-level —
-			-- no closure allocation per event fire.
-			C_Timer.After(0.05, DeferredCooldownPoll)
+			ScheduleDeferredScan()
 		end)
 		self.spellUpdateFrame = f
 	end
 
 	-- UNIT_SPELLCAST_SUCCEEDED listener: a successful cast usually starts a
-	-- cooldown, so scan immediately for a responsive icon rather than waiting
-	-- for the next tick. isActive (read inside ScanSpells) is authoritative,
-	-- so we don't need to match the exact cast spellID or chase overrides.
+	-- cooldown. isActive (read inside ScanSpells) is authoritative, so we
+	-- don't need to match the exact cast spellID or chase overrides. Routed
+	-- through the shared debounce: the cast also fires SPELL_UPDATE_COOLDOWN
+	-- a few frames later, and the old immediate scan here meant every cast
+	-- paid for two full scans ~50ms apart.
 	if not self.castSucceededFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 		f:SetScript("OnEvent", function(_, _, unit)
 			if Engine.testActive then return end
 			if unit ~= "player" then return end
-			Engine:ScanSpells()
+			ScheduleDeferredScan()
 		end)
 		self.castSucceededFrame = f
+	end
+
+	-- BAG_UPDATE_COOLDOWN listener: item cooldowns (potions) have their own
+	-- start/refresh event, which keeps potion icons appearing promptly now
+	-- that the tick sweep runs at 1 Hz. PollAllItems reads plain multi-values
+	-- (no table allocation, ~5 items), so it needs no debounce.
+	if not self.bagCooldownFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("BAG_UPDATE_COOLDOWN")
+		f:SetScript("OnEvent", function()
+			if Engine.testActive then return end
+			Engine:PollAllItems()
+		end)
+		self.bagCooldownFrame = f
 	end
 
 	if not self.tickFrame then
@@ -844,6 +993,61 @@ function Engine:RunAPIDiagnostic()
 				(probe.GetRemainingDuration and "GetRemaining " or "") ..
 				(probe.EvaluateRemainingDuration and "Evaluate " or ""))
 		end
+	end
+end
+
+
+-- Baseline-seeding probe (opt-in diagnostic: /cdmaster seedtest). Reports
+-- whether GetSpellBaseCooldown produced usable seconds for the current
+-- spec's tracked spells, and which spells have no baseline from any source.
+function Engine:RunSeedDiagnostic()
+	local cdm = ns.CDM
+	if not (cdm and cdm.Print) then return end
+
+	cdm:Print("===== Baseline duration seeding =====")
+	cdm:Print("GetSpellBaseCooldown present: "
+		.. tostring(type(GetSpellBaseCooldown) == "function"))
+
+	local learned, hardcoded, seeded, missing = 0, 0, 0, 0
+	local sampleSeeded, sampleMissing = {}, {}
+	for spellID, tracked in pairs(self.trackedSpells) do
+		if self.knownDurations[spellID] then
+			learned = learned + 1
+		elseif FALLBACK_DURATIONS[spellID] then
+			hardcoded = hardcoded + 1
+		elseif self.baselineDurations[spellID] then
+			seeded = seeded + 1
+			if #sampleSeeded < 10 then
+				sampleSeeded[#sampleSeeded + 1] = string.format("%s = %.0fs",
+					tostring(tracked.name), self.baselineDurations[spellID])
+			end
+		else
+			missing = missing + 1
+			if #sampleMissing < 10 then
+				sampleMissing[#sampleMissing + 1] = tostring(tracked.name)
+			end
+		end
+	end
+
+	cdm:Print(string.format(
+		"Tracked %d | learned %d | hardcoded %d | API-seeded %d | no baseline %d",
+		learned + hardcoded + seeded + missing,
+		learned, hardcoded, seeded, missing))
+	if #sampleSeeded > 0 then
+		cdm:Print("API-seeded samples (sanity-check these against tooltips):")
+		for _, s in ipairs(sampleSeeded) do cdm:Print("  " .. s) end
+	end
+	if #sampleMissing > 0 then
+		cdm:Print("No baseline (position uses 30s default until learned):")
+		for _, s in ipairs(sampleMissing) do cdm:Print("  " .. s) end
+	end
+
+	if seeded > 0 then
+		cdm:Print("|cff00ff00Verdict: API seeding works on this client.|r Best read on a class WITHOUT hardcoded fallbacks (anything but Paladin/Mage).")
+	elseif missing == 0 then
+		cdm:Print("|cffEBB706Verdict: inconclusive here -- every tracked spell already has a learned or hardcoded value. Re-run on another class.|r")
+	else
+		cdm:Print("|cffff5555Verdict: API produced nothing usable. Hardcoded tables (Route 2) needed for uncovered classes.|r")
 	end
 end
 

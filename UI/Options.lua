@@ -172,6 +172,11 @@ local function BuildGlobalTab(content)
 		cb:SetChecked(CDM.db.profile.global[key])
 		cb:SetScript("OnClick", function(self)
 			CDM.db.profile.global[key] = self:GetChecked() and true or false
+			-- Lane drag-labels show/hide off this flag. The per-tick config
+			-- apply that used to repaint them is gone, so push it explicitly.
+			if key == "unlockFrames" and ns.Lanes_RefreshUnlockState then
+				ns.Lanes_RefreshUnlockState(CDM)
+			end
 		end)
 		return cb
 	end
@@ -210,12 +215,12 @@ local function BuildGlobalTab(content)
 		prev = MakeCheck(t[1], t[2], prev, 0)
 	end
 
-	-- Test button at the bottom.
-	local testBtn = Theme.CreateButton(content, "Open Test Panel", 180, 30)
+	-- Test button at the bottom. Label says what it does -- it toggles the
+	-- engine's sample cooldowns in Lane 1, it never opened a panel.
+	local testBtn = Theme.CreateButton(content, "Toggle Test Mode", 180, 30)
 	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
 	testBtn:SetScript("OnClick", function()
-		CDM.testing = not CDM.testing
-		CDM:Print("Test mode " .. (CDM.testing and "ON" or "OFF"))
+		CDM:ToggleTestMode()
 	end)
 end
 
@@ -236,8 +241,9 @@ end
 --   Right column: scrollable form for the selected section.
 --
 -- All field onChange callbacks call ns.Lanes_Refresh(laneIndex) to give an
--- immediate live preview. Structural changes (size/position/anchor) also
--- call ns.Lanes_RebuildOne(laneIndex).
+-- immediate live preview (Lanes_ApplyConfig handles size/position/anchor in
+-- place). Only the Enabled toggle calls ns.Lanes_RebuildOne(laneIndex), since
+-- creating/destroying the frame is genuinely structural.
 -- ---------------------------------------------------------------------------
 
 local LANES_INNER_RAIL_W = 160
@@ -295,6 +301,9 @@ end
 
 
 local function RefreshLane(laneIndex)
+	-- Config is no longer applied on every render tick (GC/layout churn),
+	-- so option changes must push it explicitly before re-rendering.
+	if ns.Lanes_ApplyConfig then ns.Lanes_ApplyConfig(laneIndex) end
 	if ns.Lanes_Refresh then ns.Lanes_Refresh(laneIndex) end
 end
 
@@ -444,29 +453,34 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 		return widget
 	end
 
+	-- Size / position / anchor are applied live by Lanes_ApplyConfig on every
+	-- refresh, so RefreshLane is enough here. These used to call RebuildLane,
+	-- which destroys and recreates the whole lane frame -- WoW frames are never
+	-- garbage-collected, so dragging a slider leaked one abandoned frame (plus
+	-- label, markers, and icon pool) per step. Rebuild is only for `enabled`.
 	place(W.CreateSlider(parent, {
 		label = "Width", min = 1, max = 600, step = 1,
 		value = cfg.width, width = 240,
-		onChange = function(v) cfg.width = v; RebuildLane(laneIndex) end,
+		onChange = function(v) cfg.width = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
 		label = "Height", min = 1, max = 600, step = 1,
 		value = cfg.height, width = 240,
-		onChange = function(v) cfg.height = v; RebuildLane(laneIndex) end,
+		onChange = function(v) cfg.height = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
 		label = "X Offset", min = -500, max = 500, step = 1,
 		value = cfg.x, width = 240,
-		onChange = function(v) cfg.x = v; RebuildLane(laneIndex) end,
+		onChange = function(v) cfg.x = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
 		label = "Y Offset", min = -500, max = 500, step = 1,
 		value = cfg.y, width = 240,
-		onChange = function(v) cfg.y = v; RebuildLane(laneIndex) end,
+		onChange = function(v) cfg.y = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateDropdown(parent, {
 		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
-		onChange = function(v) cfg.anchor = v; RebuildLane(laneIndex) end,
+		onChange = function(v) cfg.anchor = v; RefreshLane(laneIndex) end,
 	}))
 
 	local secFG = W.CreateSectionHeader(parent, "Foreground")
@@ -1083,6 +1097,27 @@ function ns.Options_UpdateTrackedItemDisplay(itemID, displayName, displayIcon)
 end
 
 
+-- Public hook called by Engine after it rebuilds the tracked spell/item
+-- registries (login discovery, spec change). Drops the cached per-category
+-- list surfaces so they rebuild from the fresh registries — without this,
+-- each list is a one-time snapshot of whenever its sub-tab was first opened
+-- ("No spells discovered yet" sticking forever, stale lists after a spec
+-- swap). The Defaults sub-tab only reflects saved settings, so its surface
+-- stays cached. If the Filters tab has been built, the currently selected
+-- sub-tab is rebuilt immediately (mirrors the Defaults dropdown's
+-- hide-and-rebuild pattern) so the form area is never left empty.
+function ns.Options_InvalidateFilterLists()
+	for key, surf in pairs(filtersState.formFrames) do
+		if key ~= "defaults" then
+			surf:Hide()
+			filtersState.formFrames[key] = nil
+		end
+	end
+	if filtersState.itemRows then wipe(filtersState.itemRows) end
+	if filtersState._refresh then filtersState._refresh() end
+end
+
+
 -- One row inside a per-category spell list. Renders icon + name +
 -- visible checkbox + lane dropdown. yPos is the TOPLEFT y of this row.
 local function BuildSpellRow(parent, spellID, info, yPos)
@@ -1424,9 +1459,11 @@ local function BuildColorsTab(content)
 				local c = profile.classColors[token]
 				c.r, c.g, c.b = r, g, b
 				c.a = a or 1
-				-- TODO(rendering): tell each lane that uses class color to redraw.
-				if ns.Lanes_Refresh then
-					for li = 1, 3 do ns.Lanes_Refresh(li) end
+				-- Class-color substitution happens in Lanes_ApplyConfig,
+				-- which no longer runs per tick -- push it explicitly.
+				for li = 1, 3 do
+					if ns.Lanes_ApplyConfig then ns.Lanes_ApplyConfig(li) end
+					if ns.Lanes_Refresh then ns.Lanes_Refresh(li) end
 				end
 			end,
 		})

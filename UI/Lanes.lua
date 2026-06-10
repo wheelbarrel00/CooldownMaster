@@ -170,6 +170,12 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.index = index
 
 	addon.lanes[index] = f
+
+	-- Apply full config (markers, label, border, alpha) once at creation.
+	-- Marker positioning lives only in ApplyConfigBody, and the per-tick
+	-- refresh no longer applies config -- without this call, lanes built at
+	-- login would render with unpositioned markers.
+	ns.Lanes_ApplyConfig(index)
 end
 
 
@@ -451,8 +457,7 @@ function ns.Lanes_RebuildOne(laneIndex)
 	end
 
 	if cfg.enabled then
-		ns.Lanes_CreateLane(addon, laneIndex, cfg)
-		ns.Lanes_ApplyConfig(laneIndex)
+		ns.Lanes_CreateLane(addon, laneIndex, cfg)   -- applies config itself
 	end
 end
 
@@ -469,8 +474,12 @@ local function RefreshBody(laneIndex)
 	local cfg = laneFrame.cfg
 	if not cfg then return end
 
-	-- Apply per-tick config so option changes are visible immediately.
-	ns.Lanes_ApplyConfig(laneIndex)
+	-- ApplyConfig is NOT called here anymore. It used to run on every refresh
+	-- (10 Hz x 3 lanes), re-anchoring the frame, re-setting the label, and
+	-- repositioning all five markers each tick for config that almost never
+	-- changes. Config is now applied explicitly: once at lane creation, and
+	-- by every option-change path (the Lanes/Colors tab callbacks call
+	-- Lanes_ApplyConfig before refreshing).
 
 	local engine = ns.Engine
 	local entries = engine and engine:GetActiveEntries() or nil
@@ -518,11 +527,23 @@ local function RefreshBody(laneIndex)
 						if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
 							btn._cdSpellID = e.spellID
 							btn._cdStart   = e.startTime
+							-- Prefer the opaque DurationObject (exact swipe +
+							-- countdown in combat). But if it's missing OR the
+							-- privileged setter throws (stale/secret handle, or a
+							-- charge-duration object that resolved to nothing), the
+							-- widget would be left with no cooldown at all -- a
+							-- bright icon, no swipe, no number, pinned by isActive.
+							-- So always fall back to plain extrapolated numbers,
+							-- which still render a correct-looking countdown.
+							local fed = false
 							if e.dObj and btn.cd.SetCooldownFromDurationObject then
-								pcall(btn.cd.SetCooldownFromDurationObject, btn.cd, e.dObj)
-							elseif e.startTime and e.duration then
-								btn.cd:SetCooldown(e.startTime, e.duration)   -- items / test: plain numbers
+								fed = pcall(btn.cd.SetCooldownFromDurationObject, btn.cd, e.dObj)
 							end
+							if not fed and e.startTime and e.duration then
+								btn.cd:SetCooldown(e.startTime, e.duration)   -- items / test / dObj-feed fallback
+							end
+							btn._cdFedPath = fed and "dObj" or "numbers"
+							e._cdFedPath   = btn._cdFedPath   -- surfaced by /cdmaster debug
 						end
 
 						-- Native widget owns the countdown text; the slot-2 toggle

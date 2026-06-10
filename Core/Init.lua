@@ -18,7 +18,6 @@ _G[ns.CONST.ADDON_NAME] = CDM   -- expose globally so `/dump CooldownMaster` wor
 CDM.version = ns.CONST.VERSION
 CDM.lanes = {}        -- runtime lane frames, keyed 1..3
 CDM.cooldowns = {}    -- active cooldown objects
-CDM.testing = false
 
 
 -- AceAddon lifecycle: called once after all addon files have loaded.
@@ -148,8 +147,7 @@ function CDM:OnSlash(input)
 		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
 
 	elseif input == "test" then
-		self.testing = not self.testing
-		self:Print("Test mode: " .. (self.testing and "|cff00ff00on|r" or "|cffff5555off|r"))
+		self:ToggleTestMode()
 
 	elseif input == "reset" then
 		self.db:ResetProfile()
@@ -168,6 +166,13 @@ function CDM:OnSlash(input)
 	elseif input == "curvetest" or input == "curveprobe" then
 		if ns.Engine and ns.Engine.RunCurveProbe then
 			ns.Engine:RunCurveProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "seedtest" then
+		if ns.Engine and ns.Engine.RunSeedDiagnostic then
+			ns.Engine:RunSeedDiagnostic()
 		else
 			self:Print("Engine not loaded.")
 		end
@@ -200,7 +205,7 @@ function CDM:OnSlash(input)
 		end
 		self:Print("Active entries: " .. engine:CountEntries())
 		self:Print("C_CooldownViewer found: " .. tostring(engine.cooldownViewerFound))
-		self:Print("Test mode: " .. (self.testing and "on" or "off"))
+		self:Print("Test mode: " .. (engine.testActive and "on" or "off"))
 		self:Print("unlockFrames = " .. tostring(self.db.profile.global.unlockFrames))
 		for i = 1, 3 do
 			local f = self.lanes and self.lanes[i]
@@ -217,21 +222,56 @@ function CDM:OnSlash(input)
 				CDM:Print("Lane " .. i .. ": <not created>")
 			end
 		end
+		-- Per-lane countdown-number toggle ([cd.time] = iconText slot 2). If a
+		-- lane has this off, its icons show a swipe but no number -- a common
+		-- "missing timer" cause that's config, not a bug.
+		for i = 1, 3 do
+			local laneCfg = self.db.profile.lanes[i]
+			local t2 = laneCfg and laneCfg.iconText and laneCfg.iconText[2]
+			self:Print(string.format("Lane %d [cd.time] number: %s",
+				i, t2 and tostring(t2.enabled) or "n/a"))
+		end
 		local now = GetTime()
 		for uid, e in pairs(engine.entries) do
 			local remaining = (e.endTime or now) - now
 			if remaining < 0 then remaining = 0 end
-			self:Print(string.format("  [%d] %s (id=%s) %.1fs lane=%s",
+			-- dObj present? charges? feed path? These pinpoint why the native
+			-- Cooldown widget might render no swipe/number for this entry.
+			local tracked = engine.trackedSpells and engine.trackedSpells[e.spellID]
+			self:Print(string.format("  [%d] %s (id=%s) %.1fs lane=%s dObj=%s charges=%s src=%s fed=%s",
 				uid,
 				tostring(e.name),
 				tostring(e.spellID),
 				remaining,
-				tostring(e.laneIndex)))
+				tostring(e.laneIndex),
+				e.dObj ~= nil and "yes" or "NO",
+				tracked and tostring(tracked.hasCharges) or "?",
+				tostring(e._source),
+				tostring(e._cdFedPath)))
 		end
 
 	else
-		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | spells | haste | frames | slot")
+		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste | frames | slot")
 	end
+end
+
+
+-- Toggle the engine's test entries (sample cooldowns in Lane 1). All three
+-- entry points (slash, Global tab button, minimap middle-click) route here.
+-- Engine.testActive is the single source of truth; the old CDM.testing flag
+-- only ever drove chat prints and never started the engine's test mode.
+function CDM:ToggleTestMode()
+	local engine = ns.Engine
+	if not engine then
+		self:Print("Engine not loaded.")
+		return
+	end
+	if engine.testActive then
+		engine:StopTestMode()
+	else
+		engine:StartTestMode()
+	end
+	self:Print("Test mode: " .. (engine.testActive and "|cff00ff00on|r" or "|cffff5555off|r"))
 end
 
 
@@ -250,7 +290,12 @@ function CDM:OnSlashSpells()
 			cat     = t.category,
 			charges = t.hasCharges,
 			cdid    = t.cooldownID,
-			base    = engine.baseCooldowns and engine.baseCooldowns[spellID] or 0,
+			-- Same precedence the renderer uses: learned beats baseline.
+			-- (The old engine.baseCooldowns table never existed; this
+			-- column printed 0.0 for every spell.)
+			base    = engine.knownDurations[spellID]
+				or engine.baselineDurations[spellID]
+				or 0,
 		})
 	end
 	table.sort(list, function(a, b) return a.name < b.name end)
