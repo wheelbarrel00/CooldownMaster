@@ -1,8 +1,8 @@
 ## Interface: 11507
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker. Designed to complement Blizzard's built-in Cooldown Manager.
-## Author: Cliff
-## Version: 0.7.0
+## Author: Wheelbarrel00
+## Version: 0.8.0
 ## SavedVariables: CooldownMasterDB
 ## IconTexture: Interface\Icons\Spell_Holy_BorrowedTime
 ## OptionalDeps: Masque, Titan, Bazooka, ChocolateBar

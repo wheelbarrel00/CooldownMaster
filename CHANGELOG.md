@@ -1,5 +1,15 @@
 # Cooldown Master Changelog
 
+## 0.8.0 — Midnight 12.0.7 compatibility
+
+A maintenance release that brings the retail build current with the latest Midnight patch and tidies packaging metadata on the Classic builds. No gameplay or tracking behavior changes.
+
+### Improvements
+- Retail interface compatibility updated to WoW 12.0.7, so the addon loads without the out-of-date warning on the current Midnight patch.
+
+### Maintenance
+- Corrected the Author field on the Burning Crusade Classic and Vanilla Classic builds to match the retail build.
+
 ## 0.7.0 — All-class coverage and a reliability pass
 
 Cooldown position baselines now cover every class and spec instead of just Paladin and Mage, so icons land in sensible places on first sight regardless of what you play. This release also fixes a cluster of Filters and spec-swap bugs, makes test mode actually work, and includes a substantial allocation-reduction pass on the live engine.
