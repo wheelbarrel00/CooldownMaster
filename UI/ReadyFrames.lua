@@ -1,13 +1,4 @@
---[[
-	Cooldown Master - UI/ReadyFrames.lua
-	"Ready" notification frames that flash an icon when a cooldown finishes.
---]]
-
 local ADDON_NAME, ns = ...
-
--- ---------------------------------------------------------------------------
--- Internal helpers
--- ---------------------------------------------------------------------------
 
 local ICON_SIZE = 40
 
@@ -45,15 +36,13 @@ local function RelayoutReadyFrame(f)
 	local xOff     = cfg.iconOffset or 0
 	local step     = iconSize + yPad
 
-	-- Visible margin from frame edge to first icon: account for the border so
-	-- icons don't get clipped by it. xPadding is additional user-set margin.
+	-- Border inset is added to the margin so icons aren't clipped by the border.
 	local borderOn  = cfg.borderEnabled == true or cfg.borderEnabled == nil
 	local borderIns = borderOn and ((cfg.borderSize or 0) + (cfg.borderPadding or 0)) or 0
 	local margin    = borderIns + xPad
 
 	local active   = {}
 
-	-- Collect visible (active) icons
 	for i = 1, #f.iconPool do
 		local btn = f.iconPool[i]
 		if btn and btn:IsShown() then
@@ -66,23 +55,18 @@ local function RelayoutReadyFrame(f)
 		btn:ClearAllPoints()
 		if cfg.growDirection == "UP" then
 			btn:SetPoint("BOTTOM", f, "BOTTOM", xOff, margin + step * (k - 1))
-		else  -- DOWN (default)
+		else
 			btn:SetPoint("TOP", f, "TOP", xOff, -margin - step * (k - 1))
 		end
 	end
 
-	-- Resize frame to fit active icons + margins on both ends
 	local count    = math.max(1, #active)
 	local innerH   = (count - 1) * step + iconSize
 	f:SetSize(iconSize + margin * 2, innerH + margin * 2)
 end
 
--- ---------------------------------------------------------------------------
--- Public API
--- ---------------------------------------------------------------------------
-
 function ns.ReadyFrames_Build(addon)
-	-- One-time saved-data cleanup: repair any non-table color values written by older bug.
+	-- Repair saved cfg fields corrupted by an older bug (e.g. color tables written as scalars).
 	for i = 1, 3 do
 		local cfg = addon.db.profile.readyFrames[i]
 		if cfg then
@@ -133,7 +117,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	f.iconPool  = {}
 	f.activeIcons = 0
 
-	-- Drag scripts (mirrors Lanes.lua)
 	f:SetScript("OnMouseDown", function(self, button)
 		if button ~= "LeftButton" then return end
 		local cdm = _G.CooldownMaster
@@ -163,7 +146,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	end)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
-		-- Drag handling first
 		if self._isDragging then
 			local cursorX, cursorY = GetCursorPosition()
 			local scale = self:GetEffectiveScale()
@@ -182,7 +164,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			return
 		end
 
-		-- Icon fade / expiry tick
 		local cfg = self.cfg
 		local cfgAlpha = (cfg and cfg.iconAlpha) or 1
 		local timeEnabled = cfg and cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
@@ -201,7 +182,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 					btn:SetAlpha(cfgAlpha)
 				end
 
-				-- Update countdown text if slot 2 is enabled
 				if btn._readyTime > 0 then
 					if timeEnabled then
 						if btn._readyTime <= 10 then
@@ -221,7 +201,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		end
 	end)
 
-	-- Unlock-state label
 	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	label:SetPoint("CENTER")
 	label:SetText(cfg.frameName)
@@ -250,7 +229,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 
 	local cfg = target.cfg
 
-	-- Find a free slot (hidden button or new slot beyond pool size)
 	local slot = nil
 	for i = 1, #target.iconPool do
 		local btn = target.iconPool[i]
@@ -270,7 +248,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	btn._totalReadyTime = cfg.normalDuration or 5
 	btn:SetAlpha(cfg.iconAlpha or 1)
 
-	-- Charges overlay (slot 1)
 	if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
 	   and entry.charges and entry.maxCharges then
 		btn.charges:SetText(string.format("%d/%d", entry.charges, entry.maxCharges))
@@ -279,7 +256,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 		btn.charges:Hide()
 	end
 
-	-- Initial countdown text (slot 2)
 	if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
 		local t = btn._readyTime
 		if t <= 10 then
@@ -296,7 +272,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 
 	RelayoutReadyFrame(target)
 
-	-- Sound
 	local soundName = cfg.normalSound
 	if soundName and soundName ~= "None" then
 		local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
@@ -337,7 +312,7 @@ function ns.ReadyFrames_ApplyConfig(index)
 		end
 
 		local borderOn = cfg.borderEnabled ~= false
-		-- Repair corrupted color values (could be scalars from older bug).
+		-- Repair color cfg corrupted by an older bug (scalars instead of tables).
 		if type(cfg.bgColor) ~= "table" then
 			cfg.bgColor = { r = 0.1, g = 0.1, b = 0.1, a = 0.85 }
 		end

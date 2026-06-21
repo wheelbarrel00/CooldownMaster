@@ -1,12 +1,3 @@
---[[
-	Cooldown Master - DataBroker.lua
-
-	Registers a LibDataBroker-1.1 launcher so the addon shows up in panel
-	addons like Titan Panel, Bazooka, and ChocolateBar. Also creates a
-	LibDBIcon-1.0 minimap button as a fallback for users who don't run a
-	panel addon.
---]]
-
 local ADDON_NAME, ns = ...
 
 local LDB     = LibStub("LibDataBroker-1.1", true)
@@ -29,8 +20,7 @@ function ns.DataBroker_Init(addon)
 				addon.db.profile.global.unlockFrames = not addon.db.profile.global.unlockFrames
 				addon:Print("Frames " ..
 					(addon.db.profile.global.unlockFrames and "unlocked" or "locked"))
-				-- Lane drag-labels show/hide off this flag; the per-tick
-				-- config apply that used to repaint them is gone.
+				-- No per-tick config apply repaints lane drag-labels anymore, so refresh them here.
 				if ns.Lanes_RefreshUnlockState then
 					ns.Lanes_RefreshUnlockState(addon)
 				end
@@ -49,7 +39,6 @@ function ns.DataBroker_Init(addon)
 		end,
 	})
 
-	-- Minimap button (only registers if LibDBIcon is available).
 	if LDBIcon then
 		LDBIcon:Register(ns.CONST.ADDON_NAME, launcher, addon.db.profile.dataBroker.minimap)
 	end
@@ -58,7 +47,6 @@ function ns.DataBroker_Init(addon)
 end
 
 
--- Helper to toggle the minimap button from inside the options panel.
 function ns.DataBroker_ToggleMinimap(addon)
 	if not LDBIcon then return end
 	local hidden = addon.db.profile.dataBroker.minimap.hide

@@ -1,3 +1,7 @@
+# Code Comment Style
+
+Only the rare, genuinely-needed one-liner code note. Default to NO comment. Keep a comment only when it's a short why/gotcha that prevents a bug or explains a non-obvious decision the code can't express (taint workaround, Blizzard API quirk, event-ordering requirement, source of a magic constant, "required empty stub — do not remove"). Remove restating/narration/banner-divider/docstring-header/end-of-block comments and commented-out code. Applies to all authored Lua/XML/TOC; never touch vendored Libs/ or generated/locale files.
+
 # Custom Commands
 
 ## Command: "git sequence"

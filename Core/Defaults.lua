@@ -1,9 +1,3 @@
---[[
-	Cooldown Master - Defaults.lua
-	Default saved-variables structure (account-wide, single profile).
-	Mirrors the option panel layout so each tab maps to a sub-table.
---]]
-
 local ADDON_NAME, ns = ...
 
 local function lane(frameName)
@@ -12,11 +6,11 @@ local function lane(frameName)
 		frameName      = frameName,
 		reversed       = false,
 		vertical       = false,
-		mode           = "LINEAR",      -- LINEAR | LOG (Linear (%))
+		mode           = "LINEAR",
 		maxTime        = 120,
 		hideLongTimers = true,
 		overrideAutohide = false,
-		primaryTracking   = "NONE",     -- NONE | GCD | SWING (where allowed)
+		primaryTracking   = "NONE",
 		primaryReverse    = false,
 		secondaryTracking = "GCD",
 		secondaryReverse  = false,
@@ -25,7 +19,6 @@ local function lane(frameName)
 		stTexture      = "CDM Smooth",
 		stColor        = { r = 1, g = 1, b = 1, a = 1 },
 
-		-- Appearance
 		width          = 400,
 		height         = 44,
 		x              = 0,
@@ -44,7 +37,6 @@ local function lane(frameName)
 		borderPadding  = 5,
 		borderSize     = 5,
 
-		-- Icons
 		iconSize       = 40,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
@@ -62,17 +54,15 @@ local function lane(frameName)
 			{ enabled = true, text = "100%",  pos = 1    },
 		},
 
-		-- Stacking
 		stackEnabled       = false,
 		stackRaiseHover    = false,
-		stackStyle         = "GROUPED",   -- GROUPED | SPREAD
+		stackStyle         = "GROUPED",
 		stackGrowDirection = "UP",
 		stackHeight        = 80,
 	}
 end
 
 ns.DEFAULTS = {
-	-- Top-level toggles (Global tab)
 	global = {
 		firstRun         = true,
 		previousVersion  = "0.0.0",
@@ -90,17 +80,14 @@ ns.DEFAULTS = {
 		hideIgnored      = true,
 	},
 
-	-- Class color overrides (Colors tab)
 	classColors = {},  -- populated from CONST.CLASS_COLORS at first run
 
-	-- Lanes (3 lanes, configurable independently)
 	lanes = {
 		[1] = lane("Lane 1"),
 		[2] = lane("Lane 2"),
 		[3] = lane("Lane 3"),
 	},
 
-	-- Filters (Defaults / Spells / Items / Buffs / Debuffs / Offensives / Petspells / Custom)
 	filters = {
 		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
 		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
@@ -112,15 +99,9 @@ ns.DEFAULTS = {
 		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
 	},
 
-	-- Per-spell overrides keyed by spellID. Filled in as the user adjusts
-	-- entries via the Filters tab. Shape:
-	--   spellOverrides[spellID] = {
-	--       visible = true|false,    -- per-spell on/off (nil = use category default)
-	--       lane    = 1|2|3|nil,     -- per-spell lane override (nil = use category default)
-	--   }
+	-- spellOverrides[spellID] = { visible = true|false|nil, lane = 1|2|3|nil }; nil fields fall back to category default
 	spellOverrides = {},
 
-	-- LibDataBroker / minimap button state
 	dataBroker = {
 		minimap = { hide = false },
 	},

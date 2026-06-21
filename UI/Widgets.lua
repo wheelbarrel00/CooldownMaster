@@ -1,22 +1,9 @@
---[[
-	Cooldown Master - UI/Widgets.lua
-
-	Hand-rolled themed widget vocabulary used by the options panel.
-	No AceGUI; pure CreateFrame. Each constructor returns a root frame
-	that callers position with one :SetPoint call. Each widget exposes
-	:SetValue / :GetValue and fires its onChange callback when the user
-	changes the value.
-
-	Visuals match Theme.lua: red panels, yellow text, dark inset readouts.
---]]
-
 local ADDON_NAME, ns = ...
 
 ns.Widgets = {}
 local Widgets = ns.Widgets
 
 
--- Local convenience aliases so widgets don't reach into globals more than once.
 local RGB     = ns.CONST.RGB
 local YELLOW  = RGB.YELLOW
 local RED     = RGB.RED
@@ -25,8 +12,7 @@ local PANEL_BG     = RGB.PANEL_BG
 local PANEL_BORDER = RGB.PANEL_BORDER
 
 
--- Apply a flat colored backdrop. Mirrors Theme.ApplyBackdrop but lets us
--- avoid a circular file dependency at load time.
+-- Duplicates Theme.ApplyBackdrop to avoid a load-time circular file dependency.
 local function applyBackdrop(frame, fillColor, borderColor)
 	frame:SetBackdrop({
 		bgFile   = "Interface\\Buttons\\WHITE8x8",
@@ -41,9 +27,6 @@ local function applyBackdrop(frame, fillColor, borderColor)
 end
 
 
--- ---------------------------------------------------------------------------
--- Section header: thin yellow line with a centered yellow label.
--- ---------------------------------------------------------------------------
 function Widgets.CreateSectionHeader(parent, labelText)
 	local f = CreateFrame("Frame", nil, parent)
 	f:SetHeight(18)
@@ -71,9 +54,6 @@ function Widgets.CreateSectionHeader(parent, labelText)
 end
 
 
--- ---------------------------------------------------------------------------
--- Checkbox: native UICheckButtonTemplate with a white label to the right.
--- ---------------------------------------------------------------------------
 function Widgets.CreateCheckbox(parent, cfg)
 	cfg = cfg or {}
 	local root = CreateFrame("Frame", nil, parent)
@@ -103,10 +83,6 @@ function Widgets.CreateCheckbox(parent, cfg)
 end
 
 
--- ---------------------------------------------------------------------------
--- Slider: yellow label above, themed track with red square handle, min/max
--- end labels, editable centered value box below.
--- ---------------------------------------------------------------------------
 function Widgets.CreateSlider(parent, cfg)
 	cfg = cfg or {}
 	local width = cfg.width or 220
@@ -138,25 +114,21 @@ function Widgets.CreateSlider(parent, cfg)
 	maxLabel:SetText(tostring(maxV))
 	maxLabel:SetTextColor(1, 1, 1)
 
-	-- Native slider on top of our track for input handling.
 	local slider = CreateFrame("Slider", nil, track, "OptionsSliderTemplate")
 	slider:SetOrientation("HORIZONTAL")
 	slider:SetMinMaxValues(minV, maxV)
 	slider:SetValueStep(step)
 	slider:SetObeyStepOnDrag(true)
 	slider:SetAllPoints(track)
-	-- Hide template's text rows; we draw our own.
 	if slider.Low  then slider.Low:Hide()  end
 	if slider.High then slider.High:Hide() end
 	if slider.Text then slider.Text:Hide() end
 
-	-- Replace the slider thumb with a red square.
 	local thumb = slider:CreateTexture(nil, "OVERLAY")
 	thumb:SetColorTexture(RED.r, RED.g, RED.b, 1)
 	thumb:SetSize(10, 16)
 	slider:SetThumbTexture(thumb)
 
-	-- Editable value box, centered under the track.
 	local edit = CreateFrame("EditBox", nil, root,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	edit:SetPoint("TOP", track, "BOTTOM", 0, -2)
@@ -167,7 +139,7 @@ function Widgets.CreateSlider(parent, cfg)
 	edit:SetTextInsets(2, 2, 1, 1)
 	applyBackdrop(edit, { r = 0.05, g = 0.05, b = 0.05, a = 1 }, PANEL_BORDER)
 
-	-- Internal flags so set/get/onChange don't recurse.
+	-- Guards against slider<->edit<->onChange feedback recursion.
 	local syncing = false
 
 	local function fmt(v)
@@ -207,7 +179,6 @@ function Widgets.CreateSlider(parent, cfg)
 		end
 	end)
 
-	-- Initial value.
 	local initialV = cfg.value
 	if type(initialV) ~= "number" then initialV = minV end
 	slider:SetValue(initialV)
@@ -231,9 +202,6 @@ function Widgets.CreateSlider(parent, cfg)
 end
 
 
--- ---------------------------------------------------------------------------
--- Dropdown: red button with yellow chevron; click to expand a vertical list.
--- ---------------------------------------------------------------------------
 function Widgets.CreateDropdown(parent, cfg)
 	cfg = cfg or {}
 	local width = cfg.width or 180
@@ -262,7 +230,6 @@ function Widgets.CreateDropdown(parent, cfg)
 	chev:SetText("v")
 	chev:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
 
-	-- Dropdown list. Created once, parented to root, hidden by default.
 	local list = CreateFrame("Frame", nil, root,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
@@ -291,7 +258,6 @@ function Widgets.CreateDropdown(parent, cfg)
 		if root._onChange then root._onChange(value) end
 	end
 
-	-- Build option rows.
 	local rowH = 20
 	for i, opt in ipairs(options) do
 		local row = CreateFrame("Button", nil, list,
@@ -323,7 +289,6 @@ function Widgets.CreateDropdown(parent, cfg)
 		if list:IsShown() then list:Hide() else list:Show() end
 	end)
 
-	-- Disabled appearance: dim and unclickable.
 	function root:SetEnabled(enabled)
 		if enabled then
 			btn:Enable()
@@ -345,10 +310,6 @@ function Widgets.CreateDropdown(parent, cfg)
 end
 
 
--- ---------------------------------------------------------------------------
--- Color picker: 20x20 swatch + label. Click swatch to open Blizzard's
--- ColorPickerFrame. Supports both modern (12.0+) and legacy APIs.
--- ---------------------------------------------------------------------------
 function Widgets.CreateColorPicker(parent, cfg)
 	cfg = cfg or {}
 	local hasAlpha = cfg.hasAlpha ~= false
@@ -380,7 +341,6 @@ function Widgets.CreateColorPicker(parent, cfg)
 		if root._onChange then root._onChange(c.r, c.g, c.b, c.a) end
 	end
 
-	-- Build the table the picker calls during interaction.
 	local function buildPickerInfo()
 		local startR, startG, startB, startA =
 			root._color.r, root._color.g, root._color.b, root._color.a
@@ -428,7 +388,7 @@ function Widgets.CreateColorPicker(parent, cfg)
 
 	swatch:SetScript("OnClick", function()
 		local info = buildPickerInfo()
-		-- Prefer modern API; fall back to legacy.
+		-- Prefer modern SetupColorPickerAndShow (12.0+); fall back to legacy OpenColorPicker.
 		if ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow then
 			local ok = pcall(ColorPickerFrame.SetupColorPickerAndShow, ColorPickerFrame, info)
 			if ok then return end
@@ -454,10 +414,6 @@ function Widgets.CreateColorPicker(parent, cfg)
 end
 
 
--- ---------------------------------------------------------------------------
--- EditBox: single-line input with yellow border on focus. Fires onChange on
--- text change AND on focus loss.
--- ---------------------------------------------------------------------------
 function Widgets.CreateEditBox(parent, cfg)
 	cfg = cfg or {}
 	local width = cfg.width or 200

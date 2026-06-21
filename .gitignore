@@ -18,6 +18,10 @@ desktop.ini
 # Claude Code local config
 .claude/
 
+# Local comment-cleanup verifier (tooling)
+docs/verify_comments_only.py
+__pycache__/
+
 # Local saved variables (if you symlink your WTF for testing)
 WTF/
 SavedVariables/

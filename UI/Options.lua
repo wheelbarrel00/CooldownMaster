@@ -1,26 +1,9 @@
---[[
-	Cooldown Master - UI/Options.lua
-
-	Custom main panel hosting horizontal tabs along the top edge:
-	  Global | Lanes | Ready | Bars | Filters | Colors | Profiles | Import/Export | Changelog
-
-	Each tab populates a single content area below the tab bar. Sub-tabs
-	(Lane 1/2/3, etc.) are built by the per-tab modules in this same folder.
-
-	v0.1 status: panel + tab-switching is live. The Global tab is populated as
-	a working example. Other tabs render a placeholder header until their
-	modules are filled in.
---]]
-
 local ADDON_NAME, ns = ...
 
 local Theme = ns.Theme
 
--- Tab definitions. Each entry: { id, label, builder }
--- The builder is called once, the first time the tab is shown, and receives
--- the content frame to populate.
 local TABS = {
-	{ id = "global",       label = "Global",        builder = nil }, -- assigned below
+	{ id = "global",       label = "Global",        builder = nil },
 	{ id = "lanes",        label = "Lanes",         builder = nil },
 	{ id = "filters",      label = "Filters",       builder = nil },
 	{ id = "colors",       label = "Colors",        builder = nil },
@@ -29,15 +12,11 @@ local TABS = {
 	{ id = "changelog",    label = "Changelog",     builder = nil },
 }
 
-local panel  -- the main panel frame; created lazily on first open
+local panel
 local tabButtons = {}
 local tabContents = {}
 local currentTabID
 
-
--- ---------------------------------------------------------------------------
--- Panel construction
--- ---------------------------------------------------------------------------
 
 local function BuildPanel()
 	panel = CreateFrame("Frame", "CooldownMasterOptionsPanel", UIParent,
@@ -54,7 +33,6 @@ local function BuildPanel()
 
 	Theme.ApplyBackdrop(panel)
 
-	-- Header bar (yellow title, red close button)
 	local header = Theme.CreateHeader(panel, ns.CONST.ADDON_DISPLAY)
 	header:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -10)
 
@@ -67,13 +45,11 @@ local function BuildPanel()
 	closeBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -8)
 	closeBtn:SetScript("OnClick", function() panel:Hide() end)
 
-	-- Tab bar
 	local tabBar = CreateFrame("Frame", nil, panel)
 	tabBar:SetPoint("TOPLEFT",  panel, "TOPLEFT",  10, -Theme.PANEL.HEADER_H - 4)
 	tabBar:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -Theme.PANEL.HEADER_H - 4)
 	tabBar:SetHeight(Theme.PANEL.TAB_H)
 
-	-- Content area (everything below the tabs)
 	local content = CreateFrame("Frame", nil, panel,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	content:SetPoint("TOPLEFT",     tabBar, "BOTTOMLEFT",  0, -Theme.PANEL.TAB_GAP)
@@ -84,7 +60,6 @@ local function BuildPanel()
 
 	panel.content = content
 
-	-- Build each tab button along the bar.
 	local x = 0
 	for _, def in ipairs(TABS) do
 		local b = Theme.CreateTab(tabBar, def.label, 105)
@@ -96,7 +71,6 @@ local function BuildPanel()
 end
 
 
--- Sub-frame for a single tab's content. Created lazily.
 local function GetOrCreateTabContent(id)
 	if tabContents[id] then return tabContents[id] end
 
@@ -105,13 +79,11 @@ local function GetOrCreateTabContent(id)
 	f:Hide()
 	tabContents[id] = f
 
-	-- Find the matching builder and run it.
 	for _, def in ipairs(TABS) do
 		if def.id == id then
 			if def.builder then
 				def.builder(f)
 			else
-				-- Placeholder for tabs we haven't filled in yet.
 				local fs = Theme.CreateHeader(f, def.label, "GameFontNormalHuge")
 				fs:SetPoint("CENTER")
 				local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -150,10 +122,6 @@ function ns.Options_Toggle()
 end
 
 
--- ---------------------------------------------------------------------------
--- Global tab (working example so v0.1 has at least one filled-in tab)
--- ---------------------------------------------------------------------------
-
 local function BuildGlobalTab(content)
 	local CDM = ns.CDM
 	local pad = Theme.PANEL.CONTENT_PAD
@@ -161,7 +129,6 @@ local function BuildGlobalTab(content)
 	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
 	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
-	-- Three checkboxes in a row: Always / In Group / In Instance
 	local function MakeCheck(label, key, anchor, xOff)
 		local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 		cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", xOff or 0, -4)
@@ -172,8 +139,7 @@ local function BuildGlobalTab(content)
 		cb:SetChecked(CDM.db.profile.global[key])
 		cb:SetScript("OnClick", function(self)
 			CDM.db.profile.global[key] = self:GetChecked() and true or false
-			-- Lane drag-labels show/hide off this flag. The per-tick config
-			-- apply that used to repaint them is gone, so push it explicitly.
+			-- Per-tick config apply is gone, so push the drag-label repaint explicitly.
 			if key == "unlockFrames" and ns.Lanes_RefreshUnlockState then
 				ns.Lanes_RefreshUnlockState(CDM)
 			end
@@ -202,7 +168,6 @@ local function BuildGlobalTab(content)
 		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
 	end)
 
-	-- Single-column toggles below.
 	local prev = cbAlways
 	local toggles = {
 		{ "Unlock Frames",         "unlockFrames"   },
@@ -215,8 +180,6 @@ local function BuildGlobalTab(content)
 		prev = MakeCheck(t[1], t[2], prev, 0)
 	end
 
-	-- Test button at the bottom. Label says what it does -- it toggles the
-	-- engine's sample cooldowns in Lane 1, it never opened a panel.
 	local testBtn = Theme.CreateButton(content, "Toggle Test Mode", 180, 30)
 	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
 	testBtn:SetScript("OnClick", function()
@@ -224,27 +187,10 @@ local function BuildGlobalTab(content)
 	end)
 end
 
--- Wire the Global builder into the TABS list.
 for _, def in ipairs(TABS) do
 	if def.id == "global" then def.builder = BuildGlobalTab end
 end
 
-
--- ---------------------------------------------------------------------------
--- Lanes tab
---
--- Layout:
---   [Lane 1][Lane 2][Lane 3] sub-tabs at the top.
---   Left column (160px): inner-rail with section names. "General" and
---   "Appearance" are active. "Icons", "Stacking", "Text" are placeholders
---   for v0.3.
---   Right column: scrollable form for the selected section.
---
--- All field onChange callbacks call ns.Lanes_Refresh(laneIndex) to give an
--- immediate live preview (Lanes_ApplyConfig handles size/position/anchor in
--- place). Only the Enabled toggle calls ns.Lanes_RebuildOne(laneIndex), since
--- creating/destroying the frame is genuinely structural.
--- ---------------------------------------------------------------------------
 
 local LANES_INNER_RAIL_W = 160
 local LANES_SECTION_LIST = {
@@ -282,17 +228,16 @@ local TEXTURE_OPTIONS_FG = { { value = "CDM Smooth", text = "CDM Smooth" } }
 local TEXTURE_OPTIONS_BORDER = { { value = "CDM Shadow", text = "CDM Shadow" } }
 
 
--- Module-locals: which lane and section the user is currently viewing.
 local lanesState = {
 	laneIndex   = 1,
 	sectionID   = "general",
 	subTabBtns  = {},
 	railRows    = {},
-	formFrames  = {},  -- [laneIndex][sectionID] = scroll content frame
+	formFrames  = {},
 }
 
-local YELLOW  -- assigned in BuildLanesTab once Constants are guaranteed loaded
-local lanesPanelArea  -- captured form-area frame, set in BuildLanesTab
+local YELLOW
+local lanesPanelArea
 
 
 local function GetLaneCfg(laneIndex)
@@ -301,8 +246,7 @@ end
 
 
 local function RefreshLane(laneIndex)
-	-- Config is no longer applied on every render tick (GC/layout churn),
-	-- so option changes must push it explicitly before re-rendering.
+	-- Config is no longer applied per render tick, so push it explicitly before re-rendering.
 	if ns.Lanes_ApplyConfig then ns.Lanes_ApplyConfig(laneIndex) end
 	if ns.Lanes_Refresh then ns.Lanes_Refresh(laneIndex) end
 end
@@ -313,8 +257,6 @@ local function RebuildLane(laneIndex)
 end
 
 
--- Build the General form for the given lane. Parent must be a content frame
--- already sized inside the scroll child.
 local function BuildLaneGeneralForm(parent, laneIndex)
 	local W = ns.Widgets
 	local cfg = GetLaneCfg(laneIndex)
@@ -379,9 +321,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		onChange = function(v) cfg.overrideAutohide = v; RefreshLane(laneIndex) end,
 	}))
 
-	-- Secondary-tracking block. On Midnight, Blizzard's Cooldown Manager owns
-	-- secondary tracking, so we hide these controls instead of letting the
-	-- user think they configure something live.
+	-- On Midnight retail, Blizzard's Cooldown Manager owns secondary tracking, so hide these controls.
 	if not ns.Compat.IS_RETAIL then
 		local secTrack = W.CreateSectionHeader(parent, "Secondary Tracking")
 		secTrack:SetWidth(parent:GetWidth() - pad * 2)
@@ -439,7 +379,6 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 end
 
 
--- Build the Appearance form.
 local function BuildLaneAppearanceForm(parent, laneIndex)
 	local W = ns.Widgets
 	local cfg = GetLaneCfg(laneIndex)
@@ -453,11 +392,7 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 		return widget
 	end
 
-	-- Size / position / anchor are applied live by Lanes_ApplyConfig on every
-	-- refresh, so RefreshLane is enough here. These used to call RebuildLane,
-	-- which destroys and recreates the whole lane frame -- WoW frames are never
-	-- garbage-collected, so dragging a slider leaked one abandoned frame (plus
-	-- label, markers, and icon pool) per step. Rebuild is only for `enabled`.
+	-- Use RefreshLane, not RebuildLane: WoW frames are never GC'd, so a slider calling RebuildLane leaked one lane frame (plus label/markers/icon pool) per step. Rebuild is only for `enabled`.
 	place(W.CreateSlider(parent, {
 		label = "Width", min = 1, max = 600, step = 1,
 		value = cfg.width, width = 240,
@@ -579,10 +514,6 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 end
 
 
--- ---------------------------------------------------------------------------
--- Stacking form
--- ---------------------------------------------------------------------------
-
 local STACK_STYLE_OPTIONS = {
 	{ value = "GROUPED", text = "Grouped"         },
 	{ value = "SPREAD",  text = "Spread (coming soon)" },
@@ -623,8 +554,7 @@ local function BuildLaneStackingForm(parent, laneIndex)
 		label = "Raise On Mouseover", checked = cfg.stackRaiseHover,
 		onChange = function(v)
 			cfg.stackRaiseHover = v
-			-- No immediate refresh needed; OnEnter/OnLeave handlers are
-			-- always attached. Effect is only meaningful when stacking is on.
+			-- No refresh needed: OnEnter/OnLeave handlers are always attached.
 		end,
 	}))
 
@@ -638,10 +568,7 @@ local function BuildLaneStackingForm(parent, laneIndex)
 		onChange = function(v) cfg.stackStyle = v; RefreshLane(laneIndex) end,
 	}))
 
-	-- Grow Direction options depend on cfg.vertical. The dropdown is built
-	-- when this form is first shown; switching Vertical on the General tab
-	-- and coming back here will rebuild the form with updated options on
-	-- next visit (forms are built lazily per-lane per-section).
+	-- Grow Direction options are snapshotted from cfg.vertical at first build; toggling Vertical updates them only on next visit (forms build lazily per-lane per-section).
 	local growOpts = cfg.vertical and GROW_DIR_V or GROW_DIR_H
 	place(W.CreateDropdown(parent, {
 		label = "Grow Direction", value = cfg.stackGrowDirection,
@@ -750,8 +677,6 @@ local function BuildLaneTextForm(parent, laneIndex)
 end
 
 
--- Build a scroll-frame + content child for a particular (lane, section).
--- Returns the outer scroll frame so the caller can show/hide it.
 local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
 	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", panelArea, "TOPLEFT", 0, 0)
@@ -785,13 +710,10 @@ end
 
 
 local function ShowLaneSection(panelArea, laneIndex, sectionID)
-	-- Hide every previously built form for this lane, then show the requested
-	-- one (build it lazily).
 	lanesState.formFrames[laneIndex] = lanesState.formFrames[laneIndex] or {}
 	for _, surf in pairs(lanesState.formFrames[laneIndex]) do
 		surf:Hide()
 	end
-	-- Hide other lanes' forms too.
 	for li, sections in pairs(lanesState.formFrames) do
 		if li ~= laneIndex then
 			for _, surf in pairs(sections) do surf:Hide() end
@@ -808,7 +730,6 @@ local function ShowLaneSection(panelArea, laneIndex, sectionID)
 	lanesState.laneIndex = laneIndex
 	lanesState.sectionID = sectionID
 
-	-- Re-color the rail rows to indicate the active section.
 	for _, row in ipairs(lanesState.railRows) do
 		local active = row._sectionID == sectionID
 		if row._isActiveSection then
@@ -820,20 +741,18 @@ local function ShowLaneSection(panelArea, laneIndex, sectionID)
 		end
 	end
 
-	-- Re-color sub-tab buttons.
 	for li, btn in ipairs(lanesState.subTabBtns) do
 		btn:SetSelected(li == laneIndex)
 	end
 end
 
 
-YELLOW = ns.CONST.RGB.YELLOW  -- module-local; used by ShowLaneSection above
+YELLOW = ns.CONST.RGB.YELLOW
 
 
 local function BuildLanesTab(content)
 	local pad = Theme.PANEL.CONTENT_PAD
 
-	-- Sub-tab strip (Lane 1 / Lane 2 / Lane 3).
 	local subBar = CreateFrame("Frame", nil, content)
 	subBar:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 	subBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -pad, -pad)
@@ -844,17 +763,14 @@ local function BuildLanesTab(content)
 	for i = 1, 3 do
 		local b = Theme.CreateTab(subBar, "Lane " .. i, 90)
 		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
-		-- OnClick is rebound below once lanesPanelArea exists.
 		lanesState.subTabBtns[i] = b
 		x = x + 90 + Theme.PANEL.TAB_GAP
 	end
 
-	-- Below the sub-tabs: a body frame that holds the rail + the form area.
 	local body = CreateFrame("Frame", nil, content)
 	body:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
 	body:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
 
-	-- Inner-rail (left column).
 	local rail = CreateFrame("Frame", nil, body,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	rail:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
@@ -863,20 +779,17 @@ local function BuildLanesTab(content)
 	Theme.ApplyBackdrop(rail,
 		{ r = 0, g = 0, b = 0, a = 0.4 }, ns.CONST.RGB.PANEL_BORDER)
 
-	-- Form area (right column). Forms (one per lane+section) live inside.
 	local formArea = CreateFrame("Frame", nil, body)
 	formArea:SetPoint("TOPLEFT", rail, "TOPRIGHT", 8, 0)
 	formArea:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
 	lanesPanelArea = formArea
 
-	-- Now that formArea exists, wire sub-tab clicks.
 	for i, b in ipairs(lanesState.subTabBtns) do
 		b:SetScript("OnClick", function()
 			ShowLaneSection(formArea, i, lanesState.sectionID)
 		end)
 	end
 
-	-- Build rail rows.
 	wipe(lanesState.railRows)
 	local ry = -8
 	for _, sec in ipairs(LANES_SECTION_LIST) do
@@ -923,27 +836,20 @@ local function BuildLanesTab(content)
 		ry = ry - 26
 	end
 
-	-- Initial selection: Lane 1 / General.
 	ShowLaneSection(formArea, lanesState.laneIndex, lanesState.sectionID)
 end
 
--- Wire it in.
 for _, def in ipairs(TABS) do
 	if def.id == "lanes" then def.builder = BuildLanesTab end
 end
 
 
--- ---------------------------------------------------------------------------
--- Filters tab — controls which discovered spells / items / buffs / debuffs
--- get rendered in lanes, plus per-spell lane routing overrides.
--- ---------------------------------------------------------------------------
-
 local FILTERS_INNER_RAIL_W = 160
 
 local filtersState = {
-	selectedSubTab          = "defaults",  -- "defaults" or category key
-	selectedDefaultsKey     = "spells",    -- which category's defaults are shown
-	formFrames              = {},          -- [subTabKey] = scroll frame
+	selectedSubTab          = "defaults",
+	selectedDefaultsKey     = "spells",
+	formFrames              = {},
 	railRows                = {},
 }
 
@@ -958,7 +864,6 @@ local function GetSpellOverride(spellID)
 	return p.spellOverrides[spellID]
 end
 
--- Lane dropdown options (1/2/3) plus "Default" sentinel that maps to nil.
 local FILTER_LANE_OPTIONS = {
 	{ value = 0, text = "Default" },  -- 0 = nil sentinel; stored as nil
 	{ value = 1, text = "Lane 1"  },
@@ -972,7 +877,6 @@ local FILTER_LANE_FOR_DEFAULTS = {
 	{ value = 3, text = "Lane 3" },
 }
 
--- Categories the Defaults sub-tab can edit. Order matches FILTER_CATEGORIES.
 local function BuildDefaultsCategoryDropdownOptions()
 	local opts = {}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
@@ -982,9 +886,6 @@ local function BuildDefaultsCategoryDropdownOptions()
 end
 
 
--- Build the body of the Defaults sub-tab: a category-picker dropdown plus a
--- form showing the selected category's enabled / showByDefault / threshold /
--- defaultLane settings.
 local function BuildFiltersDefaultsForm(parent)
 	local W = ns.Widgets
 	local pad = 12
@@ -997,9 +898,6 @@ local function BuildFiltersDefaultsForm(parent)
 		return widget
 	end
 
-	-- Category picker. Two-line label: a clear primary instruction in white,
-	-- and a smaller gray hint that explains the relationship between this
-	-- panel and the per-category sub-tabs in the rail.
 	local pickerLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	pickerLabel:SetText("Pick a category to edit its defaults:")
 	pickerLabel:SetTextColor(1, 1, 1)
@@ -1018,8 +916,6 @@ local function BuildFiltersDefaultsForm(parent)
 		width = 200,
 		onChange = function(v)
 			filtersState.selectedDefaultsKey = v
-			-- Rebuild the form rows below for the new category by triggering
-			-- a tab refresh (cheapest approach: hide/rebuild the surface).
 			if filtersState.formFrames["defaults"] then
 				filtersState.formFrames["defaults"]:Hide()
 				filtersState.formFrames["defaults"] = nil
@@ -1029,10 +925,8 @@ local function BuildFiltersDefaultsForm(parent)
 	})
 	place(categoryDropdown)
 
-	-- Spacer
 	y = y - 4
 
-	-- Selected category's settings
 	local key = filtersState.selectedDefaultsKey
 	local cfg = GetFilterCfg(key)
 	if not cfg then
@@ -1044,7 +938,6 @@ local function BuildFiltersDefaultsForm(parent)
 		return
 	end
 
-	-- Find the display label for this category
 	local label = key
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
 		if def.key == key then label = def.label; break end
@@ -1084,11 +977,6 @@ local function BuildFiltersDefaultsForm(parent)
 end
 
 
--- Public hook called by Engine when an async GET_ITEM_INFO_RECEIVED arrives
--- for one of our tracked items. Updates the matching row's name + icon in
--- place — no frame creation/destruction, no allocation. If the Filters tab
--- form hasn't been built yet (or has no row for this itemID), it's a no-op
--- and the next BuildSpellRow call will pick up the now-cached values.
 function ns.Options_UpdateTrackedItemDisplay(itemID, displayName, displayIcon)
 	if not (filtersState.itemRows and filtersState.itemRows[itemID]) then return end
 	local r = filtersState.itemRows[itemID]
@@ -1097,15 +985,7 @@ function ns.Options_UpdateTrackedItemDisplay(itemID, displayName, displayIcon)
 end
 
 
--- Public hook called by Engine after it rebuilds the tracked spell/item
--- registries (login discovery, spec change). Drops the cached per-category
--- list surfaces so they rebuild from the fresh registries — without this,
--- each list is a one-time snapshot of whenever its sub-tab was first opened
--- ("No spells discovered yet" sticking forever, stale lists after a spec
--- swap). The Defaults sub-tab only reflects saved settings, so its surface
--- stays cached. If the Filters tab has been built, the currently selected
--- sub-tab is rebuilt immediately (mirrors the Defaults dropdown's
--- hide-and-rebuild pattern) so the form area is never left empty.
+-- Drop cached per-category list surfaces after Engine rebuilds the spell/item registries; without this each list is a one-time snapshot (stale after spec swap, "No spells discovered yet" sticking forever). Defaults stays cached as it only reflects saved settings.
 function ns.Options_InvalidateFilterLists()
 	for key, surf in pairs(filtersState.formFrames) do
 		if key ~= "defaults" then
@@ -1118,8 +998,6 @@ function ns.Options_InvalidateFilterLists()
 end
 
 
--- One row inside a per-category spell list. Renders icon + name +
--- visible checkbox + lane dropdown. yPos is the TOPLEFT y of this row.
 local function BuildSpellRow(parent, spellID, info, yPos)
 	local W = ns.Widgets
 	local rowH = 26
@@ -1128,14 +1006,12 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	row:SetSize(parent:GetWidth() - 24, rowH)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yPos)
 
-	-- Icon
 	local tex = row:CreateTexture(nil, "ARTWORK")
 	tex:SetSize(20, 20)
 	tex:SetPoint("LEFT", row, "LEFT", 0, 0)
 	if info.icon then tex:SetTexture(info.icon) end
 	tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-	-- Name
 	local name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	name:SetPoint("LEFT", tex, "RIGHT", 8, 0)
 	name:SetWidth(180)
@@ -1143,7 +1019,6 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	name:SetText(info.name or ("Spell " .. spellID))
 	name:SetTextColor(1, 1, 1)
 
-	-- Visible checkbox (using a small inline checkbox via Widgets)
 	local override = GetSpellOverride(spellID)
 	local categoryKey = ns.Engine and ns.Engine:GetCategoryFilterKey(info.category)
 	local fcfg = categoryKey and GetFilterCfg(categoryKey)
@@ -1161,7 +1036,6 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	cb:SetPoint("LEFT", name, "RIGHT", 8, 0)
 
-	-- Lane dropdown
 	local laneVal = override.lane or 0  -- 0 sentinel for "Default"
 	local dd = W.CreateDropdown(row, {
 		label = "",
@@ -1178,10 +1052,7 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
 
-	-- Register item rows so GET_ITEM_INFO_RECEIVED can update name/icon in
-	-- place when async item data arrives. Keyed by itemID (== spellID for
-	-- item entries by convention). Spells don't need this — their info is
-	-- always cached by the time the row is built.
+	-- Register item rows (keyed by itemID == spellID by convention) so async GET_ITEM_INFO_RECEIVED can update name/icon in place. Spells are always cached by build time.
 	if info.kind == "item" then
 		filtersState.itemRows = filtersState.itemRows or {}
 		filtersState.itemRows[spellID] = { name = name, icon = tex }
@@ -1191,16 +1062,11 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 end
 
 
--- Build the per-category spell list for Spells/Items/Buffs/Debuffs sub-tabs.
 local function BuildFiltersSpellListForm(parent, categoryKey)
 	local pad = 12
 	local rowGap = 4
 
-	-- Find all tracked spells/items matching this category. Items live in a
-	-- parallel table populated by Engine:BuildTrackedItems; rows reuse the
-	-- same shape (.spellID is the lookup key — for items, that's itemID).
-	-- Reset the item-row registry so stale FontString refs from a previous
-	-- build can't fire a SetText on a no-longer-shown row.
+	-- Items live in a parallel table (Engine:BuildTrackedItems); rows key on .spellID, which is itemID for items. Reset itemRows so stale FontString refs can't SetText a no-longer-shown row.
 	if categoryKey == "potions" and filtersState.itemRows then
 		wipe(filtersState.itemRows)
 	end
@@ -1224,7 +1090,6 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		end
 	end
 
-	-- Sort by name (stable)
 	table.sort(matches, function(a, b)
 		local an = (a.info.name or ""):lower()
 		local bn = (b.info.name or ""):lower()
@@ -1242,7 +1107,6 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		return
 	end
 
-	-- Header row
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
 	header:SetText(string.format("%d spells tracked. Toggle visibility and override lane routing per spell.", #matches))
@@ -1258,7 +1122,6 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 end
 
 
--- Build the scroll surface for one Filters sub-tab.
 local function BuildFiltersFormSurface(panelArea, subTabKey)
 	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT",     panelArea, "TOPLEFT",     0,   0)
@@ -1275,7 +1138,6 @@ local function BuildFiltersFormSurface(panelArea, subTabKey)
 	    or subTabKey == "potions" then
 		BuildFiltersSpellListForm(child, subTabKey)
 	else
-		-- Inactive category (offensives / petspells / custom)
 		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		fs:SetPoint("CENTER")
 		fs:SetText("Coming in v0.4")
@@ -1300,7 +1162,6 @@ local function ShowFiltersSubTab(panelArea, subTabKey)
 
 	filtersState.selectedSubTab = subTabKey
 
-	-- Update visual selected state on rail rows
 	for _, row in ipairs(filtersState.railRows) do
 		if row.key == subTabKey then
 			row.label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
@@ -1323,19 +1184,16 @@ local function BuildFiltersTab(content)
 	local header = Theme.CreateHeader(content, "Filters", "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
-	-- Left rail with sub-tab buttons
 	local rail = CreateFrame("Frame", nil, content)
 	rail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -10)
 	rail:SetSize(FILTERS_INNER_RAIL_W, 1)
 
-	-- Form area to the right of rail
 	local formArea = CreateFrame("Frame", nil, content)
 	formArea:SetPoint("TOPLEFT",     rail, "TOPRIGHT",    12, 0)
 	formArea:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
 
 	wipe(filtersState.railRows)
 
-	-- The "Defaults" entry at the top of the rail, then the FILTER_CATEGORIES.
 	local railEntries = {
 		{ key = "defaults", label = "Defaults", active = true },
 	}
@@ -1380,12 +1238,10 @@ local function BuildFiltersTab(content)
 		y = y - 24
 	end
 
-	-- Refresh hook so the Defaults sub-tab dropdown can request a rebuild.
 	filtersState._refresh = function()
 		ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
 	end
 
-	-- Initial selection
 	ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
 end
 
@@ -1393,10 +1249,6 @@ for _, def in ipairs(TABS) do
 	if def.id == "filters" then def.builder = BuildFiltersTab end
 end
 
-
--- ---------------------------------------------------------------------------
--- Colors tab — class color overrides used by class-color toggles in Lanes.
--- ---------------------------------------------------------------------------
 
 local CLASS_TOKENS_RETAIL = {
 	"DEATHKNIGHT", "DEMONHUNTER", "DRUID", "EVOKER", "HUNTER",
@@ -1435,7 +1287,6 @@ local function BuildColorsTab(content)
 
 	local tokens = ns.Compat.IS_RETAIL and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC
 
-	-- 3 columns x N rows grid. Each cell gets a color picker.
 	local cols = 3
 	local cellW = math.floor((Theme.PANEL.WIDTH - pad * 2 - 40) / cols)
 	local cellH = 30
@@ -1459,8 +1310,7 @@ local function BuildColorsTab(content)
 				local c = profile.classColors[token]
 				c.r, c.g, c.b = r, g, b
 				c.a = a or 1
-				-- Class-color substitution happens in Lanes_ApplyConfig,
-				-- which no longer runs per tick -- push it explicitly.
+				-- Class-color substitution in Lanes_ApplyConfig no longer runs per tick, so push it explicitly.
 				for li = 1, 3 do
 					if ns.Lanes_ApplyConfig then ns.Lanes_ApplyConfig(li) end
 					if ns.Lanes_Refresh then ns.Lanes_Refresh(li) end

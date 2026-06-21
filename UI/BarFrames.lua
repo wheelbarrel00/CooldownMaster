@@ -1,32 +1,6 @@
---[[
-	Cooldown Master - UI/BarFrames.lua
-	Status-bar style cooldown frames (Bar Frame 1/2/3).
-
-	Each Bar Frame is a container that holds N horizontal status bars — one per
-	currently-active cooldown that routes here. Bar = icon on the left + a
-	status bar on the right that empties as the cooldown ticks down + countdown
-	text + spell name.
-
-	Architecture mirrors UI/ReadyFrames.lua:
-	  - Container has drag/persist/label/backdrop driven by ApplyConfig
-	  - Per-frame OnUpdate runs at 60 Hz
-	  - Throttled (~10 Hz) reconciliation against Engine.entries decides which
-	    bars exist; per-frame value/text update keeps fill smooth at 60 Hz
-	  - Routing: Bar Frame 1 with 1->2->3 fallback if 1 disabled
-
-	v1 supports: vertical stack with UP/DOWN grow direction, single bar texture.
-	Deferred: transition indicator, LEFT/RIGHT growth, custom bar textures
-	via LSM dropdown.
---]]
-
 local ADDON_NAME, ns = ...
 
--- Cached statusbar fallback texture
 local DEFAULT_BAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
-
--- ---------------------------------------------------------------------------
--- Internal helpers
--- ---------------------------------------------------------------------------
 
 local function FormatTime(remaining)
 	if remaining <= 10 then
@@ -36,9 +10,6 @@ local function FormatTime(remaining)
 end
 
 
--- Acquire (or create) the i'th bar widget on a bar frame. Each bar is a
--- composite widget: container frame + icon texture + StatusBar + name text +
--- countdown text.
 local function AcquireBar(f, index)
 	local pool = f.barPool
 	local bar  = pool[index]
@@ -48,17 +19,14 @@ local function AcquireBar(f, index)
 	local barH = cfg.barHeight or 24
 	local iconSize = cfg.iconSize or barH
 
-	-- Container
 	bar = CreateFrame("Frame", "CooldownMaster_BarFrame_"..f.index.."_Bar_"..index, f)
 	bar:SetSize(cfg.barWidth or 240, barH)
 
-	-- Icon on the left
 	bar.icon = bar:CreateTexture(nil, "ARTWORK")
 	bar.icon:SetPoint("LEFT", bar, "LEFT", 0, 0)
 	bar.icon:SetSize(iconSize, iconSize)
 	bar.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-	-- StatusBar fills the rest
 	bar.sb = CreateFrame("StatusBar", nil, bar)
 	bar.sb:SetPoint("LEFT",  bar.icon, "RIGHT", 0, 0)
 	bar.sb:SetPoint("RIGHT", bar,      "RIGHT", 0, 0)
@@ -67,18 +35,15 @@ local function AcquireBar(f, index)
 	bar.sb:SetValue(1)
 	bar.sb:SetStatusBarTexture(cfg.barTexture or DEFAULT_BAR_TEXTURE)
 
-	-- Background behind the StatusBar (shows as the empty portion)
 	bar.sbBg = bar.sb:CreateTexture(nil, "BACKGROUND")
 	bar.sbBg:SetAllPoints(bar.sb)
 	bar.sbBg:SetTexture(cfg.barTexture or DEFAULT_BAR_TEXTURE)
 
-	-- Name text, anchored LEFT inside the statusbar
 	bar.name = bar.sb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	bar.name:SetPoint("LEFT", bar.sb, "LEFT", 4, 0)
 	bar.name:SetJustifyH("LEFT")
 	bar.name:SetTextColor(1, 1, 1, 1)
 
-	-- Countdown text, anchored RIGHT inside the statusbar
 	bar.time = bar.sb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	bar.time:SetPoint("RIGHT", bar.sb, "RIGHT", -4, 0)
 	bar.time:SetJustifyH("RIGHT")
@@ -90,8 +55,6 @@ local function AcquireBar(f, index)
 end
 
 
--- Apply per-bar config (texture, colors, geometry) to one bar widget.
--- Called when a bar is acquired or when ApplyConfig refreshes the frame.
 local function PaintBar(bar, cfg)
 	local barH     = cfg.barHeight or 24
 	local iconSize = cfg.iconSize  or barH
@@ -114,8 +77,6 @@ local function PaintBar(bar, cfg)
 end
 
 
--- Reposition all currently-shown bars in the frame based on grow direction
--- and padding. Also resizes the container to fit.
 local function RelayoutBarFrame(f)
 	local cfg      = f.cfg
 	local barW     = cfg.barWidth  or 240
@@ -136,7 +97,7 @@ local function RelayoutBarFrame(f)
 		bar:ClearAllPoints()
 		if cfg.growDirection == "DOWN" then
 			bar:SetPoint("TOP", f, "TOP", xPad, -xPad - step * (k - 1))
-		else  -- UP (default)
+		else
 			bar:SetPoint("BOTTOM", f, "BOTTOM", xPad, xPad + step * (k - 1))
 		end
 	end
@@ -146,32 +107,24 @@ local function RelayoutBarFrame(f)
 end
 
 
--- Find or create a bar slot for the given spellID. Reuses an unused slot if
--- one exists; otherwise extends the pool.
 local function GetOrCreateBarForSpell(f, spellID, entry)
-	-- Already showing this spell?
 	for i = 1, #f.barPool do
 		local bar = f.barPool[i]
 		if bar and bar:IsShown() and bar._spellID == spellID then
 			return bar
 		end
 	end
-	-- Find a hidden pool slot
 	for i = 1, #f.barPool do
 		local bar = f.barPool[i]
 		if bar and not bar:IsShown() then
-			return AcquireBar(f, i)  -- already exists, just return
+			return AcquireBar(f, i)
 		end
 	end
-	-- Create a fresh slot
 	local idx = #f.barPool + 1
 	return AcquireBar(f, idx)
 end
 
 
--- Walk Engine.entries and reconcile against currently-shown bars. New entries
--- get a bar; bars whose entry no longer exists get hidden and freed.
--- Returns true if the active set changed (so caller knows to relayout).
 local function ReconcileBars(f)
 	local addon = ns.CDM
 	if not addon then return false end
@@ -183,7 +136,6 @@ local function ReconcileBars(f)
 	local now = GetTime()
 	local changed = false
 
-	-- Build a set of spellIDs that should currently have a bar
 	local wanted = {}
 	for spellID, entry in pairs(entries) do
 		if entry.endTime and entry.endTime > now then
@@ -191,7 +143,6 @@ local function ReconcileBars(f)
 		end
 	end
 
-	-- Remove bars whose spell is no longer in entries
 	for i = 1, #f.barPool do
 		local bar = f.barPool[i]
 		if bar and bar:IsShown() then
@@ -203,7 +154,6 @@ local function ReconcileBars(f)
 		end
 	end
 
-	-- Add bars for entries that don't have one yet
 	for spellID, entry in pairs(wanted) do
 		local found = false
 		for i = 1, #f.barPool do
@@ -230,8 +180,6 @@ local function ReconcileBars(f)
 end
 
 
--- Per-frame value/text update: smooth StatusBar fill and countdown text at
--- 60 Hz. Reads endTime/duration that were stashed on each bar by Reconcile.
 local function UpdateBarValues(f)
 	local now = GetTime()
 	local cfg = f.cfg
@@ -254,12 +202,7 @@ local function UpdateBarValues(f)
 end
 
 
--- ---------------------------------------------------------------------------
--- Public API
--- ---------------------------------------------------------------------------
-
 function ns.BarFrames_Build(addon)
-	-- Defensive cleanup of saved values (in case of partial migrations)
 	for i = 1, 3 do
 		local cfg = addon.db.profile.barFrames[i]
 		if cfg then
@@ -302,7 +245,6 @@ function ns.BarFrames_CreateFrame(addon, index, cfg)
 	f.activeBars = 0
 	f._reconcileAccum = 0
 
-	-- Drag handling (mirrors Lanes/ReadyFrames)
 	f:SetScript("OnMouseDown", function(self, button)
 		if button ~= "LeftButton" then return end
 		local cdm = _G.CooldownMaster
@@ -332,7 +274,6 @@ function ns.BarFrames_CreateFrame(addon, index, cfg)
 	end)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
-		-- Drag handling first
 		if self._isDragging then
 			local cursorX, cursorY = GetCursorPosition()
 			local scale = self:GetEffectiveScale()
@@ -351,10 +292,9 @@ function ns.BarFrames_CreateFrame(addon, index, cfg)
 			return
 		end
 
-		-- 60 Hz: smooth value + text update
 		UpdateBarValues(self)
 
-		-- ~10 Hz: reconcile against Engine.entries (add new bars, remove finished)
+		-- Throttle Engine.entries reconciliation to ~10 Hz; value/text fill stays per-frame
 		self._reconcileAccum = (self._reconcileAccum or 0) + elapsed
 		if self._reconcileAccum >= 0.1 then
 			self._reconcileAccum = 0
@@ -364,7 +304,6 @@ function ns.BarFrames_CreateFrame(addon, index, cfg)
 		end
 	end)
 
-	-- Unlock-state label (matches Lanes/Ready pattern)
 	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	label:SetPoint("CENTER")
 	label:SetText(cfg.frameName or ("Bar Frame " .. index))
@@ -385,7 +324,7 @@ function ns.BarFrames_ApplyConfig(index)
 		local cfg = addon.db.profile.barFrames[index]
 		if not cfg then return end
 
-		-- Repair guards (in case sliders ever wrote a scalar by accident)
+		-- Coerce color tables back if a slider ever wrote a scalar over them
 		if type(cfg.bgColor)     ~= "table" then cfg.bgColor     = { r = 0.1, g = 0.1, b = 0.1, a = 0.85 } end
 		if type(cfg.borderColor) ~= "table" then cfg.borderColor = { r = 0,   g = 0,   b = 0,   a = 1    } end
 		if type(cfg.barColor)    ~= "table" then cfg.barColor    = { r = 0.92, g = 0.72, b = 0.02, a = 1 } end
@@ -393,14 +332,13 @@ function ns.BarFrames_ApplyConfig(index)
 
 		f.cfg = cfg
 
-		-- Re-anchor (only if not currently dragging)
+		-- Skip re-anchoring mid-drag so a config refresh can't snap the frame off the cursor
 		local isMoving = f.IsMoving and f:IsMoving()
 		if not isMoving then
 			f:ClearAllPoints()
 			f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -120)
 		end
 
-		-- Container backdrop
 		local borderOn = cfg.borderEnabled == true
 		local edgeFile = borderOn and "Interface\\Buttons\\WHITE8x8" or ""
 		local edgeSize = borderOn and (cfg.borderSize or 1) or 0
@@ -421,13 +359,11 @@ function ns.BarFrames_ApplyConfig(index)
 		end
 		f:SetAlpha(cfg.alpha or 1)
 
-		-- Repaint each existing bar with current config
 		for i = 1, #f.barPool do
 			local bar = f.barPool[i]
 			if bar then PaintBar(bar, cfg) end
 		end
 
-		-- Label
 		if f.label then
 			f.label:SetText(cfg.frameName or "")
 			f.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)

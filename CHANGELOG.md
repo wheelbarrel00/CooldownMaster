@@ -1,5 +1,9 @@
 # Cooldown Master Changelog
 
+## 0.8.1 — Some code clean up
+
+Some code clean up.
+
 ## 0.8.0 — Midnight 12.0.7 compatibility
 
 A maintenance release that brings the retail build current with the latest Midnight patch and tidies packaging metadata on the Classic builds. No gameplay or tracking behavior changes.

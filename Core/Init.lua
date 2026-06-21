@@ -1,56 +1,38 @@
---[[
-	Cooldown Master - Init.lua
-	Main addon object, initialization, slash commands.
---]]
-
 local ADDON_NAME, ns = ...
 
 local AceAddon = LibStub("AceAddon-3.0")
 local AceDB    = LibStub("AceDB-3.0")
 
--- Create the addon. We mix in AceConsole and AceEvent for slash commands and
--- event registration; everything else (DataBroker, options, engine) attaches
--- in their own files.
 local CDM = AceAddon:NewAddon(ns.CONST.ADDON_NAME, "AceConsole-3.0", "AceEvent-3.0")
 ns.CDM = CDM
 _G[ns.CONST.ADDON_NAME] = CDM   -- expose globally so `/dump CooldownMaster` works in-game
 
 CDM.version = ns.CONST.VERSION
-CDM.lanes = {}        -- runtime lane frames, keyed 1..3
-CDM.cooldowns = {}    -- active cooldown objects
+CDM.lanes = {}
+CDM.cooldowns = {}
 
 
--- AceAddon lifecycle: called once after all addon files have loaded.
 function CDM:OnInitialize()
-	-- Single account-wide profile. Storing under "default" inside an AceDB so we
-	-- still get profile-handling utilities (copy / reset / export) for free,
-	-- without exposing per-character profiles in the UI.
+	-- Account-wide: one fixed "Default" profile, so AceDB copy/reset/export still work without exposing per-character profiles.
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
 
-	-- v0.3.0 migration: scope was reduced to lanes only. Strip orphaned
-	-- bar/ready saved values and the obsolete defaultBar/defaultReady filter
-	-- routing keys. Safe to run repeatedly; later versions can drop this block.
 	self:MigrateV030()
 
-	-- Seed class color overrides on first run if the user hasn't customised them.
 	if next(self.db.profile.classColors) == nil then
 		for class, rgb in pairs(ns.CONST.CLASS_COLORS) do
 			self.db.profile.classColors[class] = { r = rgb.r, g = rgb.g, b = rgb.b }
 		end
 	end
 
-	-- Slash commands → opens the options panel (or runs subcommands).
 	for _, cmd in ipairs(ns.CONST.SLASH_COMMANDS) do
 		self:RegisterChatCommand(cmd, "OnSlash")
 	end
 
-	-- Stub hooks; real implementations live in their own files.
 	if ns.DataBroker_Init then ns.DataBroker_Init(self) end
 end
 
 
--- One-time cleanup of saved values left over from the pre-0.3.0 multi-frame
--- scope (Bars + Ready). Idempotent; can be removed in a later major version.
+-- One-time migration off the pre-0.3.0 Bars/Ready scope. Idempotent; safe to delete in a later major version.
 function CDM:MigrateV030()
 	local p = self.db and self.db.profile
 	if not p then return end
@@ -67,9 +49,6 @@ function CDM:MigrateV030()
 		end
 	end
 
-	-- Fold the legacy perSpellRouting map into spellOverrides, where Filters
-	-- now stores both visibility and lane preferences in one shape:
-	--   spellOverrides[spellID] = { visible = bool, lane = int|nil }
 	if type(p.perSpellRouting) == "table" then
 		p.spellOverrides = p.spellOverrides or {}
 		for spellID, laneIdx in pairs(p.perSpellRouting) do
@@ -87,7 +66,6 @@ function CDM:MigrateV030()
 end
 
 
--- Called by AceAddon after OnInitialize, when the addon is enabled.
 function CDM:OnEnable()
 	self:RegisterEvent("PLAYER_LOGIN",          "OnPlayerLogin")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
@@ -105,31 +83,25 @@ end
 
 
 function CDM:OnEnteringWorld()
-	-- Hook point for spawning lane frames once world data is available.
 	if ns.Lanes_Build then ns.Lanes_Build(self) end
 
-	-- Wire SPELL_UPDATE_COOLDOWN + visibility events into the engine.
 	if ns.Events and ns.Events.Register and not self._eventsWired then
 		ns.Events.Register(self)
 		self._eventsWired = true
 	end
 
-	-- Boot the cooldown engine. Safe to call again on subsequent world enters;
-	-- Engine:Start() is idempotent (it reuses the same tick frame).
+	-- Idempotent across world enters: Engine:Start reuses the same tick frame.
 	if ns.Engine and ns.Engine.Start then
 		ns.Engine:Start(self)
 	end
 
-	-- Schedule the one-shot frame discovery probe (2s delay so Blizzard's UI
-	-- has time to construct its frames after login).
+	-- 2s delay lets Blizzard build its UI frames after login before we probe for them.
 	if ns.Engine and ns.Engine.ScheduleFrameDiscovery then
 		ns.Engine:ScheduleFrameDiscovery()
 	end
 end
 
 
--- Slash command dispatcher. `/cdmaster` opens the options panel; subcommands give
--- quick keyboard access to common actions.
 function CDM:OnSlash(input)
 	input = (input or ""):trim():lower()
 
@@ -222,9 +194,7 @@ function CDM:OnSlash(input)
 				CDM:Print("Lane " .. i .. ": <not created>")
 			end
 		end
-		-- Per-lane countdown-number toggle ([cd.time] = iconText slot 2). If a
-		-- lane has this off, its icons show a swipe but no number -- a common
-		-- "missing timer" cause that's config, not a bug.
+		-- iconText[2] is the [cd.time] number; off means swipe-but-no-number (config, not a bug).
 		for i = 1, 3 do
 			local laneCfg = self.db.profile.lanes[i]
 			local t2 = laneCfg and laneCfg.iconText and laneCfg.iconText[2]
@@ -235,8 +205,6 @@ function CDM:OnSlash(input)
 		for uid, e in pairs(engine.entries) do
 			local remaining = (e.endTime or now) - now
 			if remaining < 0 then remaining = 0 end
-			-- dObj present? charges? feed path? These pinpoint why the native
-			-- Cooldown widget might render no swipe/number for this entry.
 			local tracked = engine.trackedSpells and engine.trackedSpells[e.spellID]
 			self:Print(string.format("  [%d] %s (id=%s) %.1fs lane=%s dObj=%s charges=%s src=%s fed=%s",
 				uid,
@@ -256,10 +224,6 @@ function CDM:OnSlash(input)
 end
 
 
--- Toggle the engine's test entries (sample cooldowns in Lane 1). All three
--- entry points (slash, Global tab button, minimap middle-click) route here.
--- Engine.testActive is the single source of truth; the old CDM.testing flag
--- only ever drove chat prints and never started the engine's test mode.
 function CDM:ToggleTestMode()
 	local engine = ns.Engine
 	if not engine then
@@ -290,9 +254,6 @@ function CDM:OnSlashSpells()
 			cat     = t.category,
 			charges = t.hasCharges,
 			cdid    = t.cooldownID,
-			-- Same precedence the renderer uses: learned beats baseline.
-			-- (The old engine.baseCooldowns table never existed; this
-			-- column printed 0.0 for every spell.)
 			base    = engine.knownDurations[spellID]
 				or engine.baselineDurations[spellID]
 				or 0,
@@ -338,7 +299,6 @@ function CDM:OnSlashHaste()
 end
 
 
--- AceConsole's Print() prefix is plain text; override to use our themed prefix.
 function CDM:Print(...)
 	print(ns.ChatPrefix() .. table.concat({ tostringall(...) }, " "))
 end

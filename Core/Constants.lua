@@ -1,24 +1,16 @@
---[[
-	Cooldown Master - Constants.lua
-	Theme colors, version info, and shared lookup tables.
---]]
-
 local ADDON_NAME, ns = ...
 
 ns.CONST = {
-	-- Branding
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.8.0",
+	VERSION          = "0.8.1",
 
-	-- Slash commands
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster" },
 
-	-- Saved variables key (account-wide; matches TOC entry)
+	-- Must match ## SavedVariables in the .toc.
 	SV_KEY           = "CooldownMasterDB",
 
-	-- Theme colors as hex strings (for |cff codes and chat output)
 	HEX = {
 		RED          = "6D0501",
 		YELLOW       = "EBB706",
@@ -26,7 +18,6 @@ ns.CONST = {
 		GREY         = "888888",
 	},
 
-	-- Theme colors as 0-1 RGB tables (for SetVertexColor / SetColorTexture / SetTextColor)
 	RGB = {
 		RED          = { r = 0.4275, g = 0.0196, b = 0.0039, a = 1 },
 		RED_DIM      = { r = 0.2500, g = 0.0150, b = 0.0030, a = 1 },
@@ -37,8 +28,6 @@ ns.CONST = {
 		BODY_TEXT    = { r = 1.0000, g = 1.0000, b = 1.0000, a = 1 },
 	},
 
-	-- Default class colors used by Lanes "Class Color" toggles.
-	-- Matches the original CDTL2 Colors tab (image 3).
 	CLASS_COLORS = {
 		DEATHKNIGHT  = { r = 0.77, g = 0.12, b = 0.23 },
 		DEMONHUNTER  = { r = 0.64, g = 0.19, b = 0.79 },
@@ -55,14 +44,8 @@ ns.CONST = {
 		WARRIOR      = { r = 0.78, g = 0.61, b = 0.43 },
 	},
 
-	-- Maps Blizzard's Cooldown Viewer numeric category enum to the string keys
-	-- used by db.profile.filters[*]. The numeric enum (Enum.CooldownViewerCategory)
-	-- is: 0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff. Categories
-	-- without a Blizzard equivalent (offensives, petspells, custom) live in
-	-- defaults but receive no auto-discovered spells in v0.3.
-	-- Synthetic categories (>=100) are emitted by our own pollers and don't
-	-- come from C_CooldownViewer:
-	--   100 = potions (item cooldowns polled via C_Container.GetItemCooldown)
+	-- Keys are Blizzard's Enum.CooldownViewerCategory (0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff);
+	-- 100+ are our own synthetic categories (100 = potions, polled via C_Container.GetItemCooldown).
 	CATEGORY_TO_FILTER_KEY = {
 		[0]   = "spells",
 		[1]   = "items",
@@ -71,17 +54,12 @@ ns.CONST = {
 		[100] = "potions",
 	},
 
-	-- Synthetic category IDs (must not collide with Blizzard's 0..3 enum).
 	POTION_CATEGORY = 100,
 
-	-- Display-friendly labels for each filter sub-tab. Order matters — drives
-	-- the sub-tab strip in the Filters tab UI.
+	-- Order matters: drives the Filters sub-tab strip order.
 	FILTER_CATEGORIES = {
 		{ key = "spells",     label = "Spells",     active = true  },
-		-- Internal key stays "items" for saved-variable compatibility, but
-		-- the displayed label is "Utility" since this category contains
-		-- Blizzard's Utility-tagged spells (Hammer of Justice, Lay on Hands,
-		-- etc.) — not actual inventory items. Real items live in Potions.
+		-- key stays "items" for saved-variable back-compat; label "Utility" is Blizzard's Utility-tagged spells, not inventory items.
 		{ key = "items",      label = "Utility",    active = true  },
 		{ key = "buffs",      label = "Buffs",      active = true  },
 		{ key = "debuffs",    label = "Debuffs",    active = true  },
@@ -92,12 +70,10 @@ ns.CONST = {
 	},
 }
 
--- Helper: wrap text in a color escape using a HEX entry
 function ns.Colorize(hex, text)
 	return string.format("|cff%s%s|r", hex, tostring(text))
 end
 
--- Helper: prefix used in chat output, "[Cooldown Master]" with theme colors.
 function ns.ChatPrefix()
 	return string.format("|cff%s[%s]|r ",
 		ns.CONST.HEX.YELLOW, ns.CONST.ADDON_DISPLAY)
