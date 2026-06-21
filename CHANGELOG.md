@@ -1,5 +1,26 @@
 # Cooldown Master Changelog
 
+## 0.10.0 — Ready Frames parity
+
+Ready Frames gains the full feature set it was known for: spells route to any of the three boxes, important cooldowns can be highlighted, and boxes lay out and animate the way you'd expect.
+
+### New Features
+- **Per-box ready routing.** Each Filters category now has a Ready Box setting, and any spell can override it, so ready notifications can be split across boxes 1, 2, and 3 (or turned off per spell) instead of all landing in one box.
+- **Highlight for important cooldowns.** Flag a spell as Important (Filters tab) to make its ready popup stand out with a Border, Glow, or Flash style in a color you pick, using its own hold duration and sound. Each box configures these on a new Highlight section.
+- **Pinned spells.** Flag a spell as Pinned to keep its ready icon up until the box is rebuilt, instead of fading on the normal timer.
+- **More grow directions.** Ready boxes can grow Down, Up, Left, Right, or centered vertically/horizontally.
+- **Pop-in flash.** Ready icons now bounce in when they appear.
+- **Post-Combat Hide.** An optional per-box timer that clears the box a set number of seconds after combat ends (0 = off).
+- **Built-in ready sounds.** The Ready Sound list now includes a few built-in chimes, so you can hear a ready alert without installing extra sound media. Any LibSharedMedia sounds you have are still listed.
+
+### Bug Fixes
+- The minimap button's hide state and position now follow profile switches instead of staying stuck on the profile you logged in with.
+- Cooldowns first seen during combat no longer keep an approximate resting position after their real length is learned; the icon re-centers once the true cooldown is known. The countdown number was always exact.
+- Charge-based spells (Shimmer, Fire Blast) once again appear only when the spell is fully on cooldown, not while a charge is still available. A partial recharge isn't a cooldown, so it no longer shows in a lane or pops a ready frame.
+
+### Improvements
+- Ready boxes fade out smoothly when they empty instead of snapping off.
+
 ## 0.9.0 — Ready Frames
 
 The timeline-style **Ready Frames** display is back, the lane visibility and auto-hide settings now work, lanes gain a Timeline mode, and charge-based spells display correctly.

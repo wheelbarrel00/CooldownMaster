@@ -2,6 +2,27 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.10.0",
+		sections = {
+			{ head = "New Features", items = {
+				"Ready Frames routing: each Filters category has a Ready Box setting, and any spell can override it, so ready popups can be split across the three boxes (or turned off per spell) instead of all landing in one box.",
+				"Highlight for Important spells: flag a spell Important to make its ready popup stand out with a Border, Glow, or Flash in a color you choose, with its own hold time and sound (new Highlight section per box).",
+				"Pinned spells: flag a spell Pinned to keep its ready icon up until the box is rebuilt.",
+				"More ready grow directions: Down, Up, Left, Right, or centered.",
+				"Pop-in flash on ready icons, and built-in ready sounds so you can hear an alert without extra sound media.",
+				"Post-Combat Hide: an optional per-box timer that clears the box a set time after combat ends.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"The minimap button's hide state and position now follow profile switches.",
+				"Cooldowns first seen in combat re-center once their real length is learned instead of keeping the approximate position.",
+				"Charge spells (Shimmer, Fire Blast) again show only when fully on cooldown, not while a charge is still available.",
+			} },
+			{ head = "Improvements", items = {
+				"Ready boxes fade out smoothly when they empty.",
+			} },
+		},
+	},
+	{
 		version = "0.9.0",
 		sections = {
 			{ head = "New Features", items = {

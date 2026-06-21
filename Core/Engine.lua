@@ -455,32 +455,34 @@ function Engine:ScanSpells()
 		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
 
 		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false
-		-- while any charge remains, and its spell-cooldown duration object comes back
-		-- blank while a charge regenerates. Detect the recharge from the readable
-		-- charge COUNT (maxCharges > 1, currentCharges < maxCharges; counts aren't
-		-- secret in combat the way the durations are) so we can both TRACK it while a
-		-- charge is regenerating and feed the widget the charge-duration object.
-		-- Single-cooldown and 1-charge pseudo-charge spells (Touch of the Magi) fail
-		-- the maxCharges > 1 test and keep the spell-cooldown path unchanged.
-		local recharging, curCharges = false, nil
+		-- while ANY charge remains, so it only counts as on-cooldown once fully
+		-- depleted (isActive true) -- a partial recharge is NOT a cooldown and must
+		-- not show in a lane or pop a ready frame. The readable charge COUNT (counts
+		-- aren't secret in combat the way durations are) is then used, on a depleted
+		-- multi-charge spell, to feed the widget the charge-duration object (the
+		-- spell-cooldown object is blank for charge spells). 1-charge pseudo-charge
+		-- spells (Touch of the Magi) fail the maxCharges > 1 test and use the
+		-- spell-cooldown path unchanged.
+		local depletedCharge, curCharges, maxCharges = false, nil, nil
 		if C_Spell.GetSpellCharges then
 			local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
 			if cok and type(ci) == "table" then
 				curCharges = ci.currentCharges
+				maxCharges = ci.maxCharges
 				if ci.maxCharges and curCharges and ci.maxCharges > 1
 					and curCharges < ci.maxCharges then
-					recharging = true
+					depletedCharge = true
 				end
 			end
 		end
 
 		---@diagnostic disable-next-line: undefined-field
 		local active = ok and info and info.isActive and not info.isOnGCD
-		if active or recharging then
+		if active then
 			seen[spellID] = true
 
 			local dObj
-			if recharging and C_Spell.GetSpellChargeDuration then
+			if depletedCharge and C_Spell.GetSpellChargeDuration then
 				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
 				if cok then dObj = cd end
 			end
@@ -515,24 +517,23 @@ function Engine:ScanSpells()
 					endTime   = now + duration,
 					laneIndex = self:ResolveLaneIndex(spellID, cat),
 					category  = cat,
-					dObj      = dObj,
-					_source   = "isactive",
-					_charges  = curCharges,
+					dObj        = dObj,
+					_source     = "isactive",
+					_charges    = curCharges,
+					_maxCharges = maxCharges,
 				}
 			else
 				-- Still running: keep the extrapolated position (don't reset
 				-- startTime), just refresh the handle.
 				existing.dObj = dObj or existing.dObj
-				-- Charge spells regenerate one charge at a time; when a charge lands
-				-- mid-recharge the next charge's window restarts, so restart the
-				-- extrapolated position (the countdown number stays exact via dObj).
-				if curCharges and existing._charges and curCharges ~= existing._charges then
-					existing.startTime = now
-					existing.duration  = self.knownDurations[spellID]
-						or self.baselineDurations[spellID]
-						or existing.duration or 30
-					existing.endTime   = now + existing.duration
-					existing._charges  = curCharges
+				-- A duration learned AFTER the entry was created (e.g. born in combat at
+				-- the 30s default, then learned out of combat) should replace the stale
+				-- guess so the icon stops extrapolating from the wrong length. Keep
+				-- startTime; only correct the span (the countdown number stays exact via dObj).
+				local learned = self.knownDurations[spellID]
+				if learned and existing.duration ~= learned then
+					existing.duration = learned
+					existing.endTime  = existing.startTime + learned
 				end
 			end
 		end

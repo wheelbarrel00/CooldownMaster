@@ -1,6 +1,33 @@
 local ADDON_NAME, ns = ...
 
 local ICON_SIZE = 40
+local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
+
+-- Built-in ready sounds via Blizzard SOUNDKIT (no bundled asset files). The Ready
+-- Sound dropdown lists these first, then any LibSharedMedia sounds the user has.
+local READY_BUILTIN_SOUNDS = {
+	{ name = "CDM: Ready Check",  kit = "READY_CHECK"            },
+	{ name = "CDM: Quest Ding",   kit = "IG_QUEST_LIST_COMPLETE" },
+	{ name = "CDM: Raid Warning", kit = "RAID_WARNING"           },
+}
+ns.READY_BUILTIN_SOUNDS = READY_BUILTIN_SOUNDS
+
+local function PlayReadySound(name)
+	if not name or name == "None" then return end
+	for _, s in ipairs(READY_BUILTIN_SOUNDS) do
+		if s.name == name then
+			local kit = _G.SOUNDKIT and _G.SOUNDKIT[s.kit]
+			if kit then pcall(PlaySound, kit, "SFX") end
+			return
+		end
+	end
+	-- Not a built-in: treat the name as a LibSharedMedia sound file.
+	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
+	if ok and LSM then
+		local path = LSM:Fetch("sound", name)
+		if path then pcall(PlaySoundFile, path, "SFX") end
+	end
+end
 
 local function AcquireReadyIcon(f, index)
 	local pool = f.iconPool
@@ -19,52 +46,144 @@ local function AcquireReadyIcon(f, index)
 	btn.charges:SetTextColor(1, 1, 1, 1)
 	btn.charges:Hide()
 
+	-- One-shot pop-in pulse: a visual Scale transform (origin CENTER) so the icon
+	-- bounces in place without disturbing its layout anchor. Guarded + API-detected
+	-- because the Classic flavors ship an older Scale-animation API.
+	local okPulse, pulse = pcall(function()
+		local ag = btn:CreateAnimationGroup()
+		local up = ag:CreateAnimation("Scale")
+		up:SetOrder(1)
+		up:SetDuration(0.12)
+		up:SetOrigin("CENTER", 0, 0)
+		local down = ag:CreateAnimation("Scale")
+		down:SetOrder(2)
+		down:SetDuration(0.18)
+		down:SetOrigin("CENTER", 0, 0)
+		if up.SetScaleFrom then
+			up:SetScaleFrom(0.5, 0.5);   up:SetScaleTo(1.3, 1.3)
+			down:SetScaleFrom(1.3, 1.3); down:SetScaleTo(1.0, 1.0)
+		elseif up.SetFromScale then
+			up:SetFromScale(0.5, 0.5);   up:SetToScale(1.3, 1.3)
+			down:SetFromScale(1.3, 1.3); down:SetToScale(1.0, 1.0)
+		end
+		return ag
+	end)
+	if okPulse then btn.pulse = pulse end
+
+	-- Highlight overlay for "important" spells (Border / Glow / Flash). An additive
+	-- glow border anchored a few px outside the icon so it auto-tracks icon size.
+	btn.hl = btn:CreateTexture(nil, "OVERLAY")
+	btn.hl:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+	btn.hl:SetBlendMode("ADD")
+	btn.hl:SetPoint("TOPLEFT", btn, "TOPLEFT", -6, 6)
+	btn.hl:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 6, -6)
+	btn.hl:Hide()
+	local okFlash, flash = pcall(function()
+		local ag = btn.hl:CreateAnimationGroup()
+		ag:SetLooping("BOUNCE")
+		local a = ag:CreateAnimation("Alpha")
+		a:SetDuration(0.5)
+		if a.SetFromAlpha then a:SetFromAlpha(1.0); a:SetToAlpha(0.2)
+		elseif a.SetChange then a:SetChange(-0.8) end
+		return ag
+	end)
+	if okFlash then btn.hlFlash = flash end
+
 	btn:Hide()
 	pool[index] = btn
 	return btn
 end
 
+
+local function ClearIconHighlight(btn)
+	if btn.hlFlash then btn.hlFlash:Stop() end
+	if btn.hl then btn.hl:Hide() end
+end
+
+
+local function ApplyIconHighlight(btn, cfg, important)
+	ClearIconHighlight(btn)
+	if not important or not btn.hl then return end
+
+	local hl    = cfg.highlight
+	local style = (hl and hl.style) or "BORDER"
+	if style == "NONE" then return end
+
+	local c = (hl and hl.color) or { r = 1, g = 0.82, b = 0, a = 0.6 }
+	btn.hl:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
+	btn.hl:SetAlpha(c.a or 0.6)
+	btn.hl:Show()
+	-- BORDER is static; GLOW / FLASH / BORDER_FLASH pulse (we deliberately avoid the
+	-- deprecated Blizzard ActionButton glow API, which is gone on some flavors).
+	if style ~= "BORDER" and btn.hlFlash then
+		btn.hlFlash:Play()
+	end
+end
+
 local function RelayoutReadyFrame(f)
 	local cfg      = f.cfg
 	local iconSize = cfg.iconSize or ICON_SIZE
-	local yPad     = cfg.yPadding or 0
+	local spacing  = cfg.yPadding or 0     -- stacking-axis gap (the Icons "Spacing" slider)
 	local xPad     = cfg.xPadding or 0
-	local xOff     = cfg.iconOffset or 0
-	local step     = iconSize + yPad
+	local xOff     = cfg.iconOffset or 0    -- cross-axis nudge
+	local step     = iconSize + spacing
+	local grow     = cfg.growDirection or "DOWN"
 
 	-- Border inset is added to the margin so icons aren't clipped by the border.
 	local borderOn  = cfg.borderEnabled == true or cfg.borderEnabled == nil
 	local borderIns = borderOn and ((cfg.borderSize or 0) + (cfg.borderPadding or 0)) or 0
 	local margin    = borderIns + xPad
 
-	local active   = {}
-
+	local active = {}
 	for i = 1, #f.iconPool do
 		local btn = f.iconPool[i]
 		if btn and btn:IsShown() then
 			active[#active + 1] = btn
 		end
 	end
+	local count = #active
+
+	local horizontal = grow == "LEFT" or grow == "RIGHT" or grow == "CENTER_H"
+	-- Block length along the stacking axis (at least one icon so an empty box is square).
+	local blockLen = (math.max(1, count) - 1) * step + iconSize
+	-- Centered grows place the first icon half a block off-center, then walk inward.
+	local half = (blockLen - iconSize) / 2
 
 	for k, btn in ipairs(active) do
 		btn:SetSize(iconSize, iconSize)
 		btn:ClearAllPoints()
-		if cfg.growDirection == "UP" then
-			btn:SetPoint("BOTTOM", f, "BOTTOM", xOff, margin + step * (k - 1))
-		else
-			btn:SetPoint("TOP", f, "TOP", xOff, -margin - step * (k - 1))
+		local off = step * (k - 1)
+		if grow == "UP" then
+			btn:SetPoint("BOTTOM", f, "BOTTOM", xOff, margin + off)
+		elseif grow == "RIGHT" then
+			btn:SetPoint("LEFT", f, "LEFT", margin + off, xOff)
+		elseif grow == "LEFT" then
+			btn:SetPoint("RIGHT", f, "RIGHT", -margin - off, xOff)
+		elseif grow == "CENTER_V" then
+			btn:SetPoint("CENTER", f, "CENTER", xOff, half - off)
+		elseif grow == "CENTER_H" then
+			btn:SetPoint("CENTER", f, "CENTER", -half + off, xOff)
+		else  -- DOWN (default)
+			btn:SetPoint("TOP", f, "TOP", xOff, -margin - off)
 		end
 	end
 
-	local count    = math.max(1, #active)
-	local innerH   = (count - 1) * step + iconSize
-	f:SetSize(iconSize + margin * 2, innerH + margin * 2)
+	if horizontal then
+		f:SetSize(blockLen + margin * 2, iconSize + margin * 2)
+	else
+		f:SetSize(iconSize + margin * 2, blockLen + margin * 2)
+	end
 
-	-- An empty box would otherwise show as a bare backdrop square; keep it hidden
-	-- unless it holds icons or frames are unlocked (so it can still be positioned).
+	-- While unlocked the box stays visible (so it can be positioned) and with icons
+	-- it shows at full alpha; when it goes empty + locked, hiding is deferred to the
+	-- box-fade pass in the OnUpdate so the backdrop fades out instead of snapping off.
 	local cdm = ns.CDM
 	local unlocked = cdm and cdm.db and cdm.db.profile.global.unlockFrames
-	if unlocked or #active > 0 then f:Show() else f:Hide() end
+	if unlocked or count > 0 then
+		f._boxFade = nil
+		f:SetAlpha(cfg.alpha or 1)
+		f:Show()
+	end
 end
 
 function ns.ReadyFrames_Build(addon)
@@ -168,24 +287,78 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 
 		local cfg = self.cfg
 		local cfgAlpha = (cfg and cfg.iconAlpha) or 1
+
+		-- Hold countdown per icon. A pinned icon freezes (cleared only by the user),
+		-- otherwise it fades over its last second and is hidden when the hold expires.
+		local visible = 0
 		local needRelayout = false
 		for i = 1, #self.iconPool do
 			local btn = self.iconPool[i]
 			if btn and btn:IsShown() then
-				btn._readyTime = (btn._readyTime or 0) - elapsed
-				if btn._readyTime <= 0 then
+				if not btn._pinned then
+					btn._readyTime = (btn._readyTime or 0) - elapsed
+				end
+				if not btn._pinned and btn._readyTime <= 0 then
+					ClearIconHighlight(btn)
 					btn:Hide()
 					btn:SetAlpha(1)
 					needRelayout = true
-				elseif btn._readyTime <= 1.0 then
-					btn:SetAlpha(cfgAlpha * btn._readyTime)
 				else
-					btn:SetAlpha(cfgAlpha)
+					visible = visible + 1
+					if not btn._pinned and btn._readyTime <= 1.0 then
+						btn:SetAlpha(cfgAlpha * btn._readyTime)
+					else
+						btn:SetAlpha(cfgAlpha)
+					end
 				end
 			end
 		end
+
+		-- Post-combat linger: out of combat, force a clear once pTime elapses since the
+		-- last pop. Reset to 0 while in combat so the clock starts when combat ends.
+		local pTime = (cfg and cfg.pTime) or 0
+		if visible > 0 and pTime > 0 then
+			if InCombatLockdown() then
+				self._combatTimer = 0
+			else
+				self._combatTimer = (self._combatTimer or 0) + elapsed
+				if self._combatTimer >= pTime then
+					for i = 1, #self.iconPool do
+						local btn = self.iconPool[i]
+						if btn and btn:IsShown() and not btn._pinned then
+							ClearIconHighlight(btn)
+							btn:Hide()
+							btn:SetAlpha(1)
+						end
+					end
+					needRelayout = true
+					visible = 0
+				end
+			end
+		end
+
 		if needRelayout then
 			RelayoutReadyFrame(self)
+		end
+
+		-- Box-level fade: empty + locked fades the backdrop out over BOX_FADE_DUR then
+		-- hides; OnUpdate only runs while shown, so this owns the empty-box hide.
+		local boxAlpha = (cfg and cfg.alpha) or 1
+		local unlocked = ns.CDM and ns.CDM.db and ns.CDM.db.profile.global.unlockFrames
+		if unlocked or visible > 0 then
+			if self._boxFade then
+				self._boxFade = nil
+				self:SetAlpha(boxAlpha)
+			end
+		else
+			self._boxFade = (self._boxFade or 0) + elapsed
+			if self._boxFade >= BOX_FADE_DUR then
+				self:SetAlpha(boxAlpha)
+				self._boxFade = nil
+				self:Hide()
+			else
+				self:SetAlpha(boxAlpha * (1 - self._boxFade / BOX_FADE_DUR))
+			end
 		end
 	end)
 
@@ -200,6 +373,27 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 end
 
 
+-- Resolve which ready box a spell pops into: per-spell override -> category default -> off.
+-- Box index 1/2/3; 0 (or an unmapped category) = off.
+local function ResolveReadyBox(addon, spellID, category)
+	local profile = addon.db and addon.db.profile
+	if not profile then return 0 end
+
+	local override = profile.spellOverrides and profile.spellOverrides[spellID]
+	if override and override.readyBox ~= nil then
+		return override.readyBox
+	end
+
+	local key = ns.Engine and ns.Engine.GetCategoryFilterKey and ns.Engine:GetCategoryFilterKey(category)
+	local fcfg = key and profile.filters and profile.filters[key]
+	if fcfg and fcfg.readyBox ~= nil then
+		return fcfg.readyBox
+	end
+
+	return 0
+end
+
+
 function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local addon = ns.CDM
 	if not addon then return end
@@ -210,18 +404,20 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 		return
 	end
 
-	local target
-	for i = 1, 3 do
-		local rf   = addon.readyFrames and addon.readyFrames[i]
-		local rcfg = addon.db.profile.readyFrames[i]
-		if rf and rcfg and rcfg.enabled then
-			target = rf
-			break
-		end
-	end
-	if not target then return end
+	local boxIndex = ResolveReadyBox(addon, spellID, entry.category)
+	if not boxIndex or boxIndex == 0 then return end
+
+	local target = addon.readyFrames and addon.readyFrames[boxIndex]
+	local rcfg   = addon.db.profile.readyFrames[boxIndex]
+	if not (target and rcfg and rcfg.enabled) then return end
+
+	target._combatTimer = 0   -- a fresh pop restarts the post-combat linger clock
 
 	local cfg = target.cfg
+
+	local override  = addon.db.profile.spellOverrides and addon.db.profile.spellOverrides[spellID]
+	local important = override and override.important == true
+	local pinned    = override and override.pinned == true
 
 	local slot = nil
 	for i = 1, #target.iconPool do
@@ -238,12 +434,15 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local btn = AcquireReadyIcon(target, slot)
 	btn.tex:SetTexture(entry.icon or "")
 	btn._spellID   = spellID
-	btn._readyTime = cfg.normalDuration or 5
+	btn._pinned    = pinned
+	btn._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
 	btn:SetAlpha(cfg.iconAlpha or 1)
 
+	-- Engine entries carry _charges/_maxCharges (multi-charge spells only); show the
+	-- count on the ready icon when the box's first text slot is enabled.
 	if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
-	   and entry.charges and entry.maxCharges then
-		btn.charges:SetText(string.format("%d/%d", entry.charges, entry.maxCharges))
+	   and entry._charges and entry._maxCharges and entry._maxCharges > 1 then
+		btn.charges:SetText(string.format("%d/%d", entry._charges, entry._maxCharges))
 		btn.charges:Show()
 	else
 		btn.charges:Hide()
@@ -251,18 +450,17 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 
 	btn:Show()
 
+	-- Replay the pop-in pulse on every ready transition (each time the spell comes up).
+	if btn.pulse then
+		btn.pulse:Stop()
+		btn.pulse:Play()
+	end
+
+	ApplyIconHighlight(btn, cfg, important)
+
 	RelayoutReadyFrame(target)
 
-	local soundName = cfg.normalSound
-	if soundName and soundName ~= "None" then
-		local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
-		if ok and LSM then
-			local soundPath = LSM:Fetch("sound", soundName)
-			if soundPath then
-				pcall(PlaySoundFile, soundPath, "SFX")
-			end
-		end
-	end
+	PlayReadySound(important and cfg.highlightSound or cfg.normalSound)
 end
 
 

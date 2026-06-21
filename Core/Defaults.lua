@@ -73,6 +73,12 @@ local function readyFrame(frameName, x, y, enabled)
 		growDirection  = "DOWN",
 		normalDuration = 5,
 		normalSound    = "None",
+		pTime          = 0,    -- post-combat linger seconds; 0 = off (icons clear on their own hold)
+
+		-- "Important" spells (per-spell override) use these instead of the normal hold/sound.
+		highlightDuration = 10,
+		highlightSound    = "None",
+		highlight = { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.6 } },
 
 		iconSize       = 40,
 		iconAlpha      = 1.0,
@@ -128,18 +134,19 @@ ns.DEFAULTS = {
 		[3] = readyFrame("Ready 3",    0,  120, false),
 	},
 
+	-- readyBox routes the category's ready-popup to a box (1/2/3); 0 = off. Defaults to box 1 so every category pops there until the user spreads them across boxes 2/3.
 	filters = {
-		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
-		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1 },
-		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1 },
+		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 	},
 
-	-- spellOverrides[spellID] = { visible = true|false|nil, lane = 1|2|3|nil }; nil fields fall back to category default
+	-- spellOverrides[spellID] = { visible, lane, readyBox, important, pinned }; nil fields fall back to category default. important = highlight on ready; pinned = keep the ready icon up until manually cleared.
 	spellOverrides = {},
 
 	dataBroker = {

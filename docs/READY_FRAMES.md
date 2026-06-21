@@ -1,20 +1,57 @@
 # Ready Frames — Design & Implementation Spec
 
-_Status: increment 1 implemented (uncommitted, pending in-game test). Author handoff from CooldownTimeline2 (CDTL2). Drafted 2026-06-21._
+_Status: increment 2 (full CDTL2 parity) shipped in v0.10.0. Increment 1 shipped in v0.9.0. Author handoff from CooldownTimeline2 (CDTL2). Drafted 2026-06-21._
 
 ## Implementation status
+
+**Increment 2 — full CDTL2 parity (shipped v0.10.0):**
+- **Routing resolver** — per-category `readyBox` (in each `filters.<cat>`, default 1) +
+  per-spell `spellOverrides[spellID].readyBox` (`nil`=default, `0`=off, `1/2/3`=box).
+  `ResolveReadyBox` ([UI/ReadyFrames.lua](../UI/ReadyFrames.lua)) replaces the old
+  first-enabled-box loop, so boxes 2 and 3 now receive icons. Filters tab gained a
+  per-category "Ready Box" dropdown and a per-spell Ready Box dropdown.
+- **Grow directions** — UP/DOWN/LEFT/RIGHT/CENTER_V/CENTER_H, box sized on the
+  correct axis (`RelayoutReadyFrame`).
+- **Pop-in pulse** — one-shot Scale AnimationGroup (origin CENTER, visual-only so the
+  layout anchor is untouched), API-detected (`SetScaleFrom`/`SetFromScale`) + pcall-guarded
+  for Classic; replayed every pop.
+- **Box-level fade-when-empty** (`BOX_FADE_DUR` 0.3s) + **post-combat linger** (`pTime`,
+  default 0 = off; resets on each pop / while in combat). Owned by the box OnUpdate.
+- **Highlight** — `highlight.style` Border/Glow/Flash/Border+Flash, per-box
+  `highlight.color`, `highlightDuration`, `highlightSound`; a per-spell **important**
+  flag selects the highlight hold + sound. GLOW renders as a pulsing additive border
+  (we deliberately do **not** use the deprecated `ActionButton_*OverlayGlow` API).
+  New **Highlight** sub-tab on the Ready tab.
+- **Pinned** — per-spell flag freezes the hold timer; important + pinned are packed into
+  one per-spell "Ready Flags" dropdown (bit0 = important, bit1 = pinned). _Limitation:_
+  a pinned ready icon clears only on box rebuild (profile switch / box toggle / `/reload`);
+  there is no per-icon manual clear yet.
+- **Charge-count text** — engine entries now carry `_maxCharges` (`Core/Engine.lua`
+  `ScanSpells`); ready icons read `entry._charges`/`entry._maxCharges` (the stub read
+  non-existent `entry.charges`/`.maxCharges`, so charge text never showed before).
+- **Built-in ready sounds** — `READY_BUILTIN_SOUNDS` exposes a few Blizzard `SOUNDKIT`
+  entries (Ready Check / Quest Ding / Raid Warning) at the top of the Ready Sound
+  dropdown, so audible defaults need no bundled `.ogg` files. LSM sounds still listed below.
+
+**Still deferred (project-wide media/skinning pass, to keep Lanes consistent):**
+- Per-box LSM **textures** (`bgTexture`/`borderTexture` are still dropdown strings;
+  boxes use plain `WHITE8x8` like Lanes).
+- **Masque** skinning hook for ready icons (Lanes does not skin either).
+- Bundling custom CDM `.ogg`/texture asset files.
 
 **Increment 1.1 (2026-06-21, uncommitted):**
 - Ready icons no longer show a countdown number (decided: the box is a "it's back" flash, not a timer);
   the internal hold timer still controls how long the icon stays.
 - The Ready tab now mirrors the Lanes tab: Box 1/2/3 sub-tabs + a General/Appearance/Icons rail
   (name/enabled/grow/duration/sound; position + bg color + box alpha + border; icon size/alpha/offset/spacing).
-- Engine charge-spell fix: a true multi-charge spell mid-recharge (e.g. Shimmer) now feeds the
-  native widget its charge-duration object (chosen via the readable charge count, `maxCharges > 1`
-  and `currentCharges < maxCharges`), so the swipe/number render. Single-cooldown and 1-charge
-  pseudo-charge spells (Touch of the Magi) are unaffected. Reviewed; pending in-game confirm.
-- Still deferred: showing charge spells while a charge is still available (audit §3 Part A — the
-  entry only exists once the spell is fully depleted).
+- Engine charge-spell fix: a depleted multi-charge spell (e.g. Shimmer) feeds the native widget its
+  charge-duration object (chosen via the readable charge count, `maxCharges > 1` and
+  `currentCharges < maxCharges`), so the swipe/number render once fully depleted. Single-cooldown
+  and 1-charge pseudo-charge spells (Touch of the Magi) are unaffected.
+- **Reverted (2026-06-21, user in-game test):** the earlier change that *tracked* charge spells
+  while a charge was still regenerating. A partial recharge is not a cooldown, so it must not show
+  in a lane or pop a ready frame. Charge spells now track only when **fully depleted** (`isActive`),
+  matching the original 0.6.0 behavior. See `audit.md` §3 (resolved by decision).
 
 **Increment 1 — LIVE (the core loop + a config tab):**
 - `UI/ReadyFrames.lua` is loaded (added to all 3 TOCs after `UI/Lanes.lua`), seeded via a
@@ -28,15 +65,16 @@ _Status: increment 1 implemented (uncommitted, pending in-game test). Author han
 - Empty boxes hide unless frames are unlocked; build/profile/lock paths refresh ready frames.
 - Adversarially reviewed (load-safety, tab UI, runtime behavior); two findings fixed.
 
-**Deferred to increment 2 (full CDTL2 parity):**
-- Per-category + per-spell routing (the `readyBox` field + Filters dropdowns). Today every ready
-  spell goes to the **first enabled box**.
-- Grow directions beyond UP/DOWN (LEFT/RIGHT/CENTER_V/CENTER_H); per-box backdrop/border textures.
-- One-shot pop-in pulse (the "flash"), highlight styles, `highlightDuration`/`highlightSound`,
-  post-combat linger (`pTime`), the `pinned` flag.
-- Sound media: CDM registers no custom LSM sounds yet (the dropdown lists whatever LSM has, plus
-  "None"); bundle ready `.ogg`s or use `SOUNDKIT` in the media pass.
-- Charge-count text on ready icons (pairs with the charge-spell fix in `audit.md` §3).
+**Increment 2 delivered all of the below** — see the increment-2 block at the top of
+this file. The original deferred list (now done except the media/skinning items):
+- ~~Per-category + per-spell routing~~ — done (`readyBox` + Filters dropdowns).
+- Grow directions ~~beyond UP/DOWN~~ done; **per-box backdrop/border textures still deferred**
+  (media pass — Lanes uses plain `WHITE8x8` too).
+- ~~Pop-in pulse, highlight styles, `highlightDuration`/`highlightSound`, post-combat linger
+  (`pTime`), `pinned`~~ — all done.
+- Sound media — built-in `SOUNDKIT` ready sounds added; **bundling custom `.ogg` files still deferred**.
+- ~~Charge-count text on ready icons~~ — done (engine carries `_maxCharges`).
+- **Masque** skinning hook — still deferred (Lanes does not skin either).
 
 ## What we are building
 

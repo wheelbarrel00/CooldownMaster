@@ -887,6 +887,29 @@ local FILTER_LANE_FOR_DEFAULTS = {
 	{ value = 3, text = "Lane 3" },
 }
 
+local FILTER_READYBOX_FOR_DEFAULTS = {
+	{ value = 0, text = "Off"   },
+	{ value = 1, text = "Box 1" },
+	{ value = 2, text = "Box 2" },
+	{ value = 3, text = "Box 3" },
+}
+
+local FILTER_READYBOX_OPTIONS = {
+	{ value = -1, text = "Default" },  -- -1 = nil sentinel; stored as nil
+	{ value = 0,  text = "Off"     },
+	{ value = 1,  text = "Box 1"   },
+	{ value = 2,  text = "Box 2"   },
+	{ value = 3,  text = "Box 3"   },
+}
+
+-- Per-spell ready treatment, packed as bits: bit0 = important (highlight), bit1 = pinned.
+local FILTER_READYFLAG_OPTIONS = {
+	{ value = 0, text = "Normal"    },
+	{ value = 1, text = "Important" },
+	{ value = 2, text = "Pinned"    },
+	{ value = 3, text = "Imp + Pin" },
+}
+
 local function BuildDefaultsCategoryDropdownOptions()
 	local opts = {}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
@@ -983,6 +1006,14 @@ local function BuildFiltersDefaultsForm(parent)
 		onChange = function(v) cfg.defaultLane = v end,
 	}))
 
+	place(W.CreateDropdown(parent, {
+		label = "Ready Box",
+		value = cfg.readyBox or 0,
+		options = FILTER_READYBOX_FOR_DEFAULTS,
+		width = 200,
+		onChange = function(v) cfg.readyBox = v end,
+	}))
+
 	parent:SetHeight(math.abs(y) + pad)
 end
 
@@ -1062,6 +1093,36 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
 
+	local rbVal = override.readyBox
+	if rbVal == nil then rbVal = -1 end  -- -1 sentinel for "Default"
+	local rdd = W.CreateDropdown(row, {
+		label = "",
+		value = rbVal,
+		options = FILTER_READYBOX_OPTIONS,
+		width = 90,
+		onChange = function(v)
+			if v == -1 then
+				override.readyBox = nil
+			else
+				override.readyBox = v
+			end
+		end,
+	})
+	rdd:SetPoint("LEFT", dd, "RIGHT", 12, 0)
+
+	local flagVal = (override.important and 1 or 0) + (override.pinned and 2 or 0)
+	local fdd = W.CreateDropdown(row, {
+		label = "",
+		value = flagVal,
+		options = FILTER_READYFLAG_OPTIONS,
+		width = 80,
+		onChange = function(v)
+			override.important = (v % 2) == 1 or nil
+			override.pinned    = v >= 2 or nil
+		end,
+	})
+	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
+
 	-- Register item rows (keyed by itemID == spellID by convention) so async GET_ITEM_INFO_RECEIVED can update name/icon in place. Spells are always cached by build time.
 	if info.kind == "item" then
 		filtersState.itemRows = filtersState.itemRows or {}
@@ -1119,7 +1180,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
-	header:SetText(string.format("%d spells tracked. Toggle visibility and override lane routing per spell.", #matches))
+	header:SetText(string.format("%d spells tracked. Per spell: Show, then dropdowns for Lane, Ready Box, and Ready Flags (Important/Pinned).", #matches))
 	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
 	local y = -pad - 22
@@ -1698,11 +1759,24 @@ local READY_SECTION_LIST = {
 	{ id = "general",    label = "General"    },
 	{ id = "appearance", label = "Appearance" },
 	{ id = "icons",      label = "Icons"      },
+	{ id = "highlight",  label = "Highlight"  },
 }
 
 local READY_GROW_OPTIONS = {
-	{ value = "DOWN", text = "Down" },
-	{ value = "UP",   text = "Up"   },
+	{ value = "DOWN",     text = "Down"                },
+	{ value = "UP",       text = "Up"                  },
+	{ value = "RIGHT",    text = "Right"               },
+	{ value = "LEFT",     text = "Left"                },
+	{ value = "CENTER_V", text = "Center (vertical)"   },
+	{ value = "CENTER_H", text = "Center (horizontal)" },
+}
+
+local READY_HL_STYLE_OPTIONS = {
+	{ value = "NONE",         text = "None"           },
+	{ value = "BORDER",       text = "Border"         },
+	{ value = "GLOW",         text = "Glow"           },
+	{ value = "FLASH",        text = "Flash"          },
+	{ value = "BORDER_FLASH", text = "Border + Flash" },
 }
 
 local readyState = {
@@ -1721,6 +1795,9 @@ end
 
 local function ReadySoundOptions()
 	local opts = { { value = "None", text = "None" } }
+	for _, s in ipairs(ns.READY_BUILTIN_SOUNDS or {}) do
+		opts[#opts + 1] = { value = s.name, text = s.name }
+	end
 	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
 	if ok and LSM and LSM.List then
 		for _, name in ipairs(LSM:List("sound") or {}) do
@@ -1762,6 +1839,10 @@ local function BuildReadyGeneralForm(parent, i)
 	place(W.CreateSlider(parent, {
 		label = "Display Duration (sec)", min = 1, max = 20, step = 1, value = cfg.normalDuration, width = 240,
 		onChange = function(v) cfg.normalDuration = v end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Post-Combat Hide (sec, 0 = off)", min = 0, max = 30, step = 1, value = cfg.pTime or 0, width = 240,
+		onChange = function(v) cfg.pTime = v end,
 	}))
 	place(W.CreateDropdown(parent, {
 		label = "Ready Sound", value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
@@ -1876,6 +1957,49 @@ local function BuildReadyIconsForm(parent, i)
 end
 
 
+local function BuildReadyHighlightForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetReadyCfg(i)
+	cfg.highlight = cfg.highlight or {}
+	cfg.highlight.color = cfg.highlight.color or { r = 1, g = 0.82, b = 0, a = 0.6 }
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	local intro = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	intro:SetText("Applies to spells flagged Important in the Filters tab. Important spells use the hold and sound below instead of the normal ones.")
+	intro:SetTextColor(0.7, 0.7, 0.7)
+	intro:SetWidth(parent:GetWidth() - pad * 2 - 20)
+	intro:SetJustifyH("LEFT")
+	place(intro, 32)
+
+	place(W.CreateDropdown(parent, {
+		label = "Highlight Style", value = cfg.highlight.style or "BORDER", options = READY_HL_STYLE_OPTIONS, width = 200,
+		onChange = function(v) cfg.highlight.style = v end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.highlight.color.r, cfg.highlight.color.g, cfg.highlight.color.b, cfg.highlight.color.a = r, g, b, a
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Highlight Duration (sec)", min = 1, max = 30, step = 1, value = cfg.highlightDuration or 10, width = 240,
+		onChange = function(v) cfg.highlightDuration = v end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Highlight Sound", value = cfg.highlightSound or "None", options = ReadySoundOptions(), width = 240,
+		onChange = function(v) cfg.highlightSound = v end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
 local function BuildReadyFormSurface(panelArea, i, sectionID)
 	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", panelArea, "TOPLEFT", 0, 0)
@@ -1891,6 +2015,8 @@ local function BuildReadyFormSurface(panelArea, i, sectionID)
 		BuildReadyAppearanceForm(child, i)
 	elseif sectionID == "icons" then
 		BuildReadyIconsForm(child, i)
+	elseif sectionID == "highlight" then
+		BuildReadyHighlightForm(child, i)
 	end
 
 	scroll:Hide()

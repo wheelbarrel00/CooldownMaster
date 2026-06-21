@@ -137,6 +137,7 @@ function CDM:ApplyProfile()
 	end
 	if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
 	if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
+	if ns.DataBroker_ApplyProfile then ns.DataBroker_ApplyProfile(self) end
 	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 	if ns.Options_Rebuild then ns.Options_Rebuild() end
 end

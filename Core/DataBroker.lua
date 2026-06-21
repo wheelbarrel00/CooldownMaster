@@ -50,6 +50,14 @@ function ns.DataBroker_Init(addon)
 end
 
 
+function ns.DataBroker_ApplyProfile(addon)
+	if not LDBIcon then return end
+	-- A profile switch swaps db.profile to a new table; Register captured the old
+	-- profile's minimap table, so re-bind to the new one or hide-state/angle won't follow.
+	LDBIcon:Refresh(ns.CONST.ADDON_NAME, addon.db.profile.dataBroker.minimap)
+end
+
+
 function ns.DataBroker_ToggleMinimap(addon)
 	if not LDBIcon then return end
 	local hidden = addon.db.profile.dataBroker.minimap.hide
