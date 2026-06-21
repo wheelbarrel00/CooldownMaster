@@ -2,7 +2,7 @@
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker. Designed to complement Blizzard's built-in Cooldown Manager.
 ## Author: Wheelbarrel00
-## Version: 0.8.1
+## Version: 0.9.0
 ## SavedVariables: CooldownMasterDB
 ## IconTexture: Interface\Icons\Spell_Holy_BorrowedTime
 ## OptionalDeps: Masque, Titan, Bazooka, ChocolateBar
@@ -13,6 +13,7 @@
 embeds.xml
 
 Core\Constants.lua
+Core\Changelog.lua
 Core\Compat.lua
 Core\Defaults.lua
 Core\Init.lua
@@ -24,3 +25,4 @@ UI\Theme.lua
 UI\Widgets.lua
 UI\Options.lua
 UI\Lanes.lua
+UI\ReadyFrames.lua

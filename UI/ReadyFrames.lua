@@ -14,10 +14,6 @@ local function AcquireReadyIcon(f, index)
 	btn.tex:SetAllPoints(btn)
 	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-	btn.time = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-	btn.time:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
-	btn.time:SetTextColor(1, 1, 1, 1)
-
 	btn.charges = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	btn.charges:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
 	btn.charges:SetTextColor(1, 1, 1, 1)
@@ -63,6 +59,12 @@ local function RelayoutReadyFrame(f)
 	local count    = math.max(1, #active)
 	local innerH   = (count - 1) * step + iconSize
 	f:SetSize(iconSize + margin * 2, innerH + margin * 2)
+
+	-- An empty box would otherwise show as a bare backdrop square; keep it hidden
+	-- unless it holds icons or frames are unlocked (so it can still be positioned).
+	local cdm = ns.CDM
+	local unlocked = cdm and cdm.db and cdm.db.profile.global.unlockFrames
+	if unlocked or #active > 0 then f:Show() else f:Hide() end
 end
 
 function ns.ReadyFrames_Build(addon)
@@ -166,7 +168,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 
 		local cfg = self.cfg
 		local cfgAlpha = (cfg and cfg.iconAlpha) or 1
-		local timeEnabled = cfg and cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
 		local needRelayout = false
 		for i = 1, #self.iconPool do
 			local btn = self.iconPool[i]
@@ -180,19 +181,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 					btn:SetAlpha(cfgAlpha * btn._readyTime)
 				else
 					btn:SetAlpha(cfgAlpha)
-				end
-
-				if btn._readyTime > 0 then
-					if timeEnabled then
-						if btn._readyTime <= 10 then
-							btn.time:SetText(string.format("%.1f", btn._readyTime))
-						else
-							btn.time:SetText(string.format("%d", math.floor(btn._readyTime + 0.5)))
-						end
-						btn.time:Show()
-					else
-						btn.time:Hide()
-					end
 				end
 			end
 		end
@@ -215,6 +203,12 @@ end
 function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local addon = ns.CDM
 	if not addon then return end
+
+	-- Honor the same Filters visibility as the lanes; don't leak hidden spells back on screen.
+	local eng = ns.Engine
+	if eng and eng.IsSpellVisible and not eng:IsSpellVisible(spellID, entry.category) then
+		return
+	end
 
 	local target
 	for i = 1, 3 do
@@ -243,9 +237,8 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 
 	local btn = AcquireReadyIcon(target, slot)
 	btn.tex:SetTexture(entry.icon or "")
-	btn._spellID        = spellID
-	btn._readyTime      = cfg.normalDuration or 5
-	btn._totalReadyTime = cfg.normalDuration or 5
+	btn._spellID   = spellID
+	btn._readyTime = cfg.normalDuration or 5
 	btn:SetAlpha(cfg.iconAlpha or 1)
 
 	if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
@@ -254,18 +247,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 		btn.charges:Show()
 	else
 		btn.charges:Hide()
-	end
-
-	if cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled then
-		local t = btn._readyTime
-		if t <= 10 then
-			btn.time:SetText(string.format("%.1f", t))
-		else
-			btn.time:SetText(string.format("%d", math.floor(t + 0.5)))
-		end
-		btn.time:Show()
-	else
-		btn.time:Hide()
 	end
 
 	btn:Show()
@@ -278,7 +259,7 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 		if ok and LSM then
 			local soundPath = LSM:Fetch("sound", soundName)
 			if soundPath then
-				pcall(PlaySoundFile, soundPath, "Master")
+				pcall(PlaySoundFile, soundPath, "SFX")
 			end
 		end
 	end
@@ -288,9 +269,12 @@ end
 function ns.ReadyFrames_RefreshUnlockState(addon)
 	for i = 1, 3 do
 		local f = addon.readyFrames and addon.readyFrames[i]
-		if f and f.label then
-			local unlocked = addon.db.profile.global.unlockFrames
-			f.label:SetAlpha(unlocked and 0.6 or 0)
+		if f then
+			if f.label then
+				local unlocked = addon.db.profile.global.unlockFrames
+				f.label:SetAlpha(unlocked and 0.6 or 0)
+			end
+			RelayoutReadyFrame(f)
 		end
 	end
 end

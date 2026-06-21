@@ -1,5 +1,21 @@
 # Cooldown Master Changelog
 
+## 0.9.0 — Ready Frames
+
+The timeline-style **Ready Frames** display is back, the lane visibility and auto-hide settings now work, lanes gain a Timeline mode, and charge-based spells display correctly.
+
+### New Features
+- **Ready Frames.** When a tracked spell or item comes off cooldown, its icon pops into a dedicated on-screen box, holds for a configurable time, then fades. Three independent, movable boxes, each configured on a new **Ready** tab with General / Appearance / Icons sections (size, position, grow direction, hold duration, sound, background, border, alpha). Built on the same combat-safe engine that drives the lanes.
+- **Lane visibility** — Always / In Group / In Instance now control when each lane shows, re-evaluated on combat, group, and zone changes.
+- **Auto-hide out of combat**, with a per-lane Override Autohide toggle.
+- **Lane Timeline mode** — a new per-lane mode that positions every icon by real seconds-until-ready on a shared Max Time axis, so abilities can be compared directly. The default per-spell mode is unchanged.
+
+### Bug Fixes
+- Multi-charge spells such as Shimmer and Fire Blast now show their recharge swipe and countdown instead of a blank icon, and appear while a charge is regenerating rather than only once fully depleted.
+
+### Maintenance
+- Removed dead code: the unused Bar Frames file, undefined frame-discovery calls and their slash subcommands, and stale diagnostic counters.
+
 ## 0.8.1 — Some code clean up
 
 Some code clean up.

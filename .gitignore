@@ -22,6 +22,9 @@ desktop.ini
 docs/verify_comments_only.py
 __pycache__/
 
+# Local working notes (not shipped)
+audit.md
+
 # Local saved variables (if you symlink your WTF for testing)
 WTF/
 SavedVariables/

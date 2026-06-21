@@ -94,9 +94,6 @@ local FALLBACK_DURATIONS = {
 
 Engine._tickCount        = 0
 Engine._curvesBuilt      = false
-Engine._curveEvalSuccess = 0
-Engine._curveEvalFail    = 0
-Engine._fallbackUsed     = 0
 
 
 local function GetSpellNameIcon(spellID)
@@ -456,16 +453,38 @@ function Engine:ScanSpells()
 
 	for spellID, tracked in pairs(self.trackedSpells) do
 		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+
+		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false
+		-- while any charge remains, and its spell-cooldown duration object comes back
+		-- blank while a charge regenerates. Detect the recharge from the readable
+		-- charge COUNT (maxCharges > 1, currentCharges < maxCharges; counts aren't
+		-- secret in combat the way the durations are) so we can both TRACK it while a
+		-- charge is regenerating and feed the widget the charge-duration object.
+		-- Single-cooldown and 1-charge pseudo-charge spells (Touch of the Magi) fail
+		-- the maxCharges > 1 test and keep the spell-cooldown path unchanged.
+		local recharging, curCharges = false, nil
+		if C_Spell.GetSpellCharges then
+			local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
+			if cok and type(ci) == "table" then
+				curCharges = ci.currentCharges
+				if ci.maxCharges and curCharges and ci.maxCharges > 1
+					and curCharges < ci.maxCharges then
+					recharging = true
+				end
+			end
+		end
+
 		---@diagnostic disable-next-line: undefined-field
-		if ok and info and info.isActive and not info.isOnGCD then
+		local active = ok and info and info.isActive and not info.isOnGCD
+		if active or recharging then
 			seen[spellID] = true
 
-			-- Prefer GetSpellCooldownDuration over the charge-duration object:
-			-- some hasCharges spells (e.g. Touch of the Magi) hand back a charge
-			-- object resolving to "no cooldown", rendering a blank icon. The
-			-- charge object is only a fallback.
 			local dObj
-			if C_Spell.GetSpellCooldownDuration then
+			if recharging and C_Spell.GetSpellChargeDuration then
+				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
+				if cok then dObj = cd end
+			end
+			if not dObj and C_Spell.GetSpellCooldownDuration then
 				local dok, d = pcall(C_Spell.GetSpellCooldownDuration, spellID, true)
 				if dok then dObj = d end
 			end
@@ -498,11 +517,23 @@ function Engine:ScanSpells()
 					category  = cat,
 					dObj      = dObj,
 					_source   = "isactive",
+					_charges  = curCharges,
 				}
 			else
 				-- Still running: keep the extrapolated position (don't reset
 				-- startTime), just refresh the handle.
 				existing.dObj = dObj or existing.dObj
+				-- Charge spells regenerate one charge at a time; when a charge lands
+				-- mid-recharge the next charge's window restarts, so restart the
+				-- extrapolated position (the countdown number stays exact via dObj).
+				if curCharges and existing._charges and curCharges ~= existing._charges then
+					existing.startTime = now
+					existing.duration  = self.knownDurations[spellID]
+						or self.baselineDurations[spellID]
+						or existing.duration or 30
+					existing.endTime   = now + existing.duration
+					existing._charges  = curCharges
+				end
 			end
 		end
 	end
@@ -511,6 +542,12 @@ function Engine:ScanSpells()
 	-- pruned by PollAllItems and test entries by Tick, so skip both here.
 	for spellID, entry in pairs(self.entries) do
 		if entry._source ~= "test" and entry.kind ~= "item" and not seen[spellID] then
+			-- Active->inactive edge = the spell is ready; fire the popup before discarding.
+			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell
+			-- discards it silently instead of firing a false ready popup.
+			if self.trackedSpells and self.trackedSpells[spellID] and ns.ReadyFrames_OnReadyTransition then
+				ns.ReadyFrames_OnReadyTransition(spellID, entry)
+			end
 			self.entries[spellID] = nil
 		end
 	end
@@ -572,6 +609,9 @@ function Engine:PollAllItems()
 
 	for itemID, entry in pairs(self.entries) do
 		if entry.kind == "item" and not seen[itemID] then
+			if ns.ReadyFrames_OnReadyTransition then
+				ns.ReadyFrames_OnReadyTransition(itemID, entry)
+			end
 			self.entries[itemID] = nil
 		end
 	end
@@ -774,16 +814,6 @@ function Engine:RunAPIDiagnostic()
 	cdm:Print("Active entries: " .. self:CountEntries())
 	cdm:Print("Test mode: " .. (self.testActive and "ON" or "off"))
 	cdm:Print("Tick count: " .. self._tickCount)
-	cdm:Print("Curve eval ok: " .. self._curveEvalSuccess)
-	cdm:Print("Curve eval fail: " .. self._curveEvalFail)
-	cdm:Print("Fallback (Strategy B) used: " .. self._fallbackUsed)
-	cdm:Print("Strategy C (fresh-cast) used: " .. tostring(self._strategyCUsed or 0))
-	cdm:Print("Cast events captured: " .. tostring(self._castEventCount or 0))
-	if self._freshCastFlags then
-		local n = 0
-		for _ in pairs(self._freshCastFlags) do n = n + 1 end
-		cdm:Print("Pending fresh-cast flags: " .. n)
-	end
 
 	if C_Spell and C_Spell.GetSpellCooldownDuration then
 		local probeOk, probe = pcall(C_Spell.GetSpellCooldownDuration, 6603)

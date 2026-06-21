@@ -44,7 +44,18 @@
         "EventUtil",
         "BuffIconCooldownViewer",
         "BuffBarCooldownViewer",
-        "ActionButtonSpellAlertManager"
+        "ActionButtonSpellAlertManager",
+        "StaticPopupDialogs",
+        "YES",
+        "NO",
+        "StaticPopup_Show",
+        "SettingsPanel",
+        "QuestUtils_GetQuestName",
+        "QuestUtils_IsQuestWorldQuest",
+        "STANDARD_TEXT_FONT",
+        "ReloadUI",
+        "GameTooltip_SetDefaultAnchor",
+        "GetUnitName"
     ],
     "claudeCode.allowDangerouslySkipPermissions": true
 }

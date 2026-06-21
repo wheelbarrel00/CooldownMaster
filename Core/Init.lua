@@ -9,11 +9,65 @@ _G[ns.CONST.ADDON_NAME] = CDM   -- expose globally so `/dump CooldownMaster` wor
 
 CDM.version = ns.CONST.VERSION
 CDM.lanes = {}
+CDM.readyFrames = {}
 CDM.cooldowns = {}
 
 
+ns.DISCORD_URL = "https://discord.gg/vm8K2WfQUE"
+
+local urlPopup
+function ns.ShowURL(url)
+	if not url then return end
+	if not urlPopup then
+		local f = CreateFrame("Frame", "CooldownMasterURLPopup", UIParent,
+			BackdropTemplateMixin and "BackdropTemplate" or nil)
+		f:SetSize(440, 120)
+		f:SetPoint("CENTER")
+		f:SetFrameStrata("FULLSCREEN_DIALOG")
+		f:EnableMouse(true)
+		f:SetMovable(true)
+		f:RegisterForDrag("LeftButton")
+		f:SetScript("OnDragStart", f.StartMoving)
+		f:SetScript("OnDragStop", f.StopMovingOrSizing)
+		ns.Theme.ApplyBackdrop(f)
+
+		local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		title:SetPoint("TOP", f, "TOP", 0, -12)
+		title:SetText(ns.CONST.ADDON_DISPLAY)
+		title:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+
+		local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		hint:SetPoint("TOP", title, "BOTTOM", 0, -6)
+		hint:SetText("Press Ctrl+C to copy, then Escape to close.")
+
+		local eb = CreateFrame("EditBox", nil, f,
+			BackdropTemplateMixin and "BackdropTemplate" or nil)
+		eb:SetSize(400, 22)
+		eb:SetPoint("TOP", hint, "BOTTOM", 0, -10)
+		eb:SetAutoFocus(false)
+		eb:SetFontObject("GameFontHighlight")
+		eb:SetTextInsets(6, 6, 2, 2)
+		ns.Theme.ApplyBackdrop(eb, { r = 0.05, g = 0.05, b = 0.05, a = 1 }, ns.CONST.RGB.PANEL_BORDER)
+		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
+		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+		f.editBox = eb
+
+		local close = ns.Theme.CreateButton(f, "Close", 90, 24)
+		close:SetPoint("BOTTOM", f, "BOTTOM", 0, 12)
+		close:SetScript("OnClick", function() f:Hide() end)
+
+		urlPopup = f
+	end
+	urlPopup.editBox:SetText(url)
+	urlPopup.editBox:SetCursorPosition(0)
+	urlPopup.editBox:HighlightText()
+	urlPopup.editBox:SetFocus()
+	urlPopup:Show()
+end
+
+
 function CDM:OnInitialize()
-	-- Account-wide: one fixed "Default" profile, so AceDB copy/reset/export still work without exposing per-character profiles.
+	-- All characters start on a shared "Default" profile; the Profiles tab can switch/create/copy per-character profiles via AceDB.
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
 
 	self:MigrateV030()
@@ -28,6 +82,11 @@ function CDM:OnInitialize()
 		self:RegisterChatCommand(cmd, "OnSlash")
 	end
 
+	-- A profile switch/copy/reset swaps db.profile to a different table, so rebuild from the new one.
+	self.db.RegisterCallback(self, "OnProfileChanged", "ApplyProfile")
+	self.db.RegisterCallback(self, "OnProfileCopied",  "ApplyProfile")
+	self.db.RegisterCallback(self, "OnProfileReset",   "ApplyProfile")
+
 	if ns.DataBroker_Init then ns.DataBroker_Init(self) end
 end
 
@@ -38,7 +97,6 @@ function CDM:MigrateV030()
 	if not p then return end
 
 	if p.barFrames   ~= nil then p.barFrames   = nil end
-	if p.readyFrames ~= nil then p.readyFrames = nil end
 
 	if type(p.filters) == "table" then
 		for _, f in pairs(p.filters) do
@@ -66,6 +124,24 @@ function CDM:MigrateV030()
 end
 
 
+function CDM:ApplyProfile()
+	if next(self.db.profile.classColors) == nil then
+		for class, rgb in pairs(ns.CONST.CLASS_COLORS) do
+			self.db.profile.classColors[class] = { r = rgb.r, g = rgb.g, b = rgb.b }
+		end
+	end
+	self:MigrateV030()
+	for i = 1, 3 do
+		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
+		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
+	end
+	if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
+	if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
+	if ns.Options_Rebuild then ns.Options_Rebuild() end
+end
+
+
 function CDM:OnEnable()
 	self:RegisterEvent("PLAYER_LOGIN",          "OnPlayerLogin")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
@@ -83,7 +159,14 @@ end
 
 
 function CDM:OnEnteringWorld()
+	-- A /reload mid-combat misses PLAYER_REGEN_DISABLED, so seed combat from the
+	-- live API before the first visibility pass (the autohide gate reads self.combat).
+	self.combat = InCombatLockdown()
 	if ns.Lanes_Build then ns.Lanes_Build(self) end
+	if ns.ReadyFrames_Build then ns.ReadyFrames_Build(self) end
+	-- Build is idempotent and won't re-evaluate existing lanes, so refresh the
+	-- In Instance / In Group gate explicitly on every world enter.
+	if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 
 	if ns.Events and ns.Events.Register and not self._eventsWired then
 		ns.Events.Register(self)
@@ -93,11 +176,6 @@ function CDM:OnEnteringWorld()
 	-- Idempotent across world enters: Engine:Start reuses the same tick frame.
 	if ns.Engine and ns.Engine.Start then
 		ns.Engine:Start(self)
-	end
-
-	-- 2s delay lets Blizzard build its UI frames after login before we probe for them.
-	if ns.Engine and ns.Engine.ScheduleFrameDiscovery then
-		ns.Engine:ScheduleFrameDiscovery()
 	end
 end
 
@@ -112,18 +190,20 @@ function CDM:OnSlash(input)
 		self.db.profile.global.unlockFrames = false
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "locked|r.")
 		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
+		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
 
 	elseif input == "unlock" then
 		self.db.profile.global.unlockFrames = true
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "unlocked|r.")
 		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
+		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
 
 	elseif input == "test" then
 		self:ToggleTestMode()
 
 	elseif input == "reset" then
 		self.db:ResetProfile()
-		self:Print("Settings reset. /reload to rebuild frames.")
+		self:Print("Settings reset to defaults.")
 
 	elseif input == "version" then
 		self:Print("Version " .. self.version .. " on " .. ns.Compat.FlavorLabel())
@@ -154,20 +234,6 @@ function CDM:OnSlash(input)
 
 	elseif input == "haste" then
 		self:OnSlashHaste()
-
-	elseif input == "frames" then
-		if ns.Engine and ns.Engine.DiscoverBlizzardFrames then
-			ns.Engine:DiscoverBlizzardFrames()
-		else
-			self:Print("Engine not loaded.")
-		end
-
-	elseif input == "slot" then
-		if ns.Engine and ns.Engine.DiscoverActiveSlot then
-			ns.Engine:DiscoverActiveSlot()
-		else
-			self:Print("Engine not loaded.")
-		end
 
 	elseif input == "debug" then
 		local engine = ns.Engine
@@ -219,7 +285,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste | frames | slot")
+		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste")
 	end
 end
 
@@ -235,6 +301,7 @@ function CDM:ToggleTestMode()
 	else
 		engine:StartTestMode()
 	end
+	if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	self:Print("Test mode: " .. (engine.testActive and "|cff00ff00on|r" or "|cffff5555off|r"))
 end
 

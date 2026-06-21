@@ -5,11 +5,11 @@ local Theme = ns.Theme
 local TABS = {
 	{ id = "global",       label = "Global",        builder = nil },
 	{ id = "lanes",        label = "Lanes",         builder = nil },
+	{ id = "ready",        label = "Ready",         builder = nil },
 	{ id = "filters",      label = "Filters",       builder = nil },
 	{ id = "colors",       label = "Colors",        builder = nil },
 	{ id = "profiles",     label = "Profiles",      builder = nil },
-	{ id = "importexport", label = "Import/Export", builder = nil },
-	{ id = "changelog",    label = "Changelog",     builder = nil },
+	{ id = "about",        label = "About",         builder = nil },
 }
 
 local panel
@@ -140,8 +140,12 @@ local function BuildGlobalTab(content)
 		cb:SetScript("OnClick", function(self)
 			CDM.db.profile.global[key] = self:GetChecked() and true or false
 			-- Per-tick config apply is gone, so push the drag-label repaint explicitly.
-			if key == "unlockFrames" and ns.Lanes_RefreshUnlockState then
-				ns.Lanes_RefreshUnlockState(CDM)
+			if key == "unlockFrames" then
+				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end  -- also re-applies visibility
+				if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(CDM) end
+			elseif (key == "enabledAlways" or key == "autohide")
+				and ns.Lanes_RefreshVisibility then
+				ns.Lanes_RefreshVisibility()
 			end
 		end)
 		return cb
@@ -156,6 +160,7 @@ local function BuildGlobalTab(content)
 	cbGroup:SetChecked(CDM.db.profile.global.enabledGroup)
 	cbGroup:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledGroup = self:GetChecked() and true or false
+		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
 
 	local cbInst = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
@@ -166,6 +171,7 @@ local function BuildGlobalTab(content)
 	cbInst:SetChecked(CDM.db.profile.global.enabledInstance)
 	cbInst:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
+		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
 
 	local prev = cbAlways
@@ -214,8 +220,8 @@ local ANCHOR_OPTIONS = {
 }
 
 local MODE_OPTIONS = {
-	{ value = "LINEAR", text = "Linear"      },
-	{ value = "LOG",    text = "Linear (%)"  },
+	{ value = "LINEAR",   text = "Linear"             },
+	{ value = "TIMELINE", text = "Timeline (seconds)" },
 }
 
 local TRACKING_OPTIONS = {
@@ -318,7 +324,11 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 
 	place(W.CreateCheckbox(parent, {
 		label = "Override Autohide", checked = cfg.overrideAutohide,
-		onChange = function(v) cfg.overrideAutohide = v; RefreshLane(laneIndex) end,
+		onChange = function(v)
+			cfg.overrideAutohide = v
+			RefreshLane(laneIndex)
+			if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
+		end,
 	}))
 
 	-- On Midnight retail, Blizzard's Cooldown Manager owns secondary tracking, so hide these controls.
@@ -1323,4 +1333,670 @@ end
 
 for _, def in ipairs(TABS) do
 	if def.id == "colors" then def.builder = BuildColorsTab end
+end
+
+
+StaticPopupDialogs["COOLDOWNMASTER_RESET_PROFILE"] = {
+	text = "Reset profile \"%s\" to default settings?",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function()
+		local db = ns.CDM and ns.CDM.db
+		if db then db:ResetProfile() end
+	end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+StaticPopupDialogs["COOLDOWNMASTER_DELETE_PROFILE"] = {
+	text = "Delete profile \"%s\"? This cannot be undone.",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function(self, data)
+		data = data or (self and self.data)
+		local db = ns.CDM and ns.CDM.db
+		local name = data and data.name
+		if db and name then
+			db:DeleteProfile(name)
+			if ns.Options_Rebuild then ns.Options_Rebuild() end
+		end
+	end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+
+local function BuildProfilesTab(content)
+	local db = ns.CDM and ns.CDM.db
+	if not db then return end
+	local W   = ns.Widgets
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local header = Theme.CreateHeader(content, "Profiles", "GameFontNormalLarge")
+	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+
+	local current = db:GetCurrentProfile()
+
+	local curLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	curLabel:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -(pad + 26))
+	curLabel:SetText("Current profile: |cffEBB706" .. current .. "|r")
+	curLabel:SetTextColor(1, 1, 1)
+
+	local allOpts, otherOpts = {}, {}
+	local names = db:GetProfiles()
+	table.sort(names)
+	for _, name in ipairs(names) do
+		allOpts[#allOpts + 1] = { value = name, text = name }
+		if name ~= current then
+			otherOpts[#otherOpts + 1] = { value = name, text = name }
+		end
+	end
+
+	local ddW  = 220
+	local btnX = pad + ddW + 16
+	local step = 58
+	local y    = -(pad + 58)
+
+	local switchDD = W.CreateDropdown(content, {
+		label = "Active profile", value = current, width = ddW, options = allOpts,
+		onChange = function(v)
+			if v and v ~= db:GetCurrentProfile() then db:SetProfile(v) end
+		end,
+	})
+	switchDD:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
+	y = y - step
+
+	local newName = ""
+	local newBox = W.CreateEditBox(content, {
+		label = "New profile name", width = ddW, maxLetters = 32,
+		onChange = function(t) newName = t end,
+	})
+	newBox:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
+	local createBtn = Theme.CreateButton(content, "Create", 90, 24)
+	createBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
+	createBtn:SetScript("OnClick", function()
+		local name = (newName or ""):trim()
+		if name ~= "" then db:SetProfile(name) end
+	end)
+	y = y - step
+
+	if #otherOpts > 0 then
+		local copyTarget = otherOpts[1].value
+		local copyDD = W.CreateDropdown(content, {
+			label = "Copy settings from", value = copyTarget, width = ddW, options = otherOpts,
+			onChange = function(v) copyTarget = v end,
+		})
+		copyDD:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
+		local copyBtn = Theme.CreateButton(content, "Copy", 90, 24)
+		copyBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
+		copyBtn:SetScript("OnClick", function()
+			if copyTarget and copyTarget ~= db:GetCurrentProfile() then
+				db:CopyProfile(copyTarget)
+			end
+		end)
+		y = y - step
+
+		local delTarget = otherOpts[1].value
+		local delDD = W.CreateDropdown(content, {
+			label = "Delete profile", value = delTarget, width = ddW, options = otherOpts,
+			onChange = function(v) delTarget = v end,
+		})
+		delDD:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
+		local delBtn = Theme.CreateButton(content, "Delete", 90, 24)
+		delBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
+		delBtn:SetScript("OnClick", function()
+			if delTarget and delTarget ~= db:GetCurrentProfile() then
+				StaticPopup_Show("COOLDOWNMASTER_DELETE_PROFILE", delTarget, nil, { name = delTarget })
+			end
+		end)
+		y = y - step
+	else
+		local hint = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		hint:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y - 4)
+		hint:SetText("Create another profile to enable Copy and Delete.")
+		y = y - step
+	end
+
+	local resetBtn = Theme.CreateButton(content, "Reset current profile to defaults", 280, 28)
+	resetBtn:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y - 8)
+	resetBtn:SetScript("OnClick", function()
+		StaticPopup_Show("COOLDOWNMASTER_RESET_PROFILE", db:GetCurrentProfile())
+	end)
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "profiles" then def.builder = BuildProfilesTab end
+end
+
+
+function ns.Options_Rebuild()
+	if not panel then return end
+	for _, frame in pairs(tabContents) do
+		frame:Hide()
+		frame:SetParent(nil)
+	end
+	wipe(tabContents)
+	wipe(lanesState.formFrames)
+	wipe(filtersState.formFrames)
+	filtersState.itemRows = nil
+	ns.Options_SelectTab(currentTabID or "global")
+end
+
+
+local ABOUT_GOLD  = "|cffEBB706"
+local ABOUT_MUTED = "|cffb3b3b3"
+local ABOUT_WHITE = "|cffe6e6e6"
+local ABOUT_CLOSE = "|r"
+
+local ABOUT_GITHUB_URL   = "https://github.com/wheelbarrel00/CooldownMaster"
+local ABOUT_BUG_URL      = "https://github.com/wheelbarrel00/CooldownMaster/issues"
+local ABOUT_RELEASES_URL = "https://github.com/wheelbarrel00/CooldownMaster/releases"
+
+local ABOUT_COMMANDS = {
+	{ cmd = "/cdmaster",         desc = "Open or close the options window" },
+	{ cmd = "/cdmaster lock",    desc = "Lock the lane frames" },
+	{ cmd = "/cdmaster unlock",  desc = "Unlock the lane frames for moving" },
+	{ cmd = "/cdmaster test",    desc = "Toggle sample cooldowns in Lane 1" },
+	{ cmd = "/cdmaster reset",   desc = "Reset the current profile to defaults" },
+	{ cmd = "/cdmaster version", desc = "Print the version and game flavor" },
+}
+
+local ABOUT_OTHER_ADDONS = {
+	{ name = "Everything Quests",
+	  cf   = "https://www.curseforge.com/wow/addons/everything-quests",
+	  gh   = "https://github.com/wheelbarrel00/EverythingQuests" },
+	{ name = "Everything Delves",
+	  cf   = "https://www.curseforge.com/wow/addons/everything-delves",
+	  gh   = "https://github.com/wheelbarrel00/EverythingDelves" },
+	{ name = "Loot Pro",
+	  cf   = "https://www.curseforge.com/wow/addons/loot-pro",
+	  gh   = "https://github.com/wheelbarrel00/LootPro" },
+}
+
+local function BuildAboutTab(content)
+	local scroll = CreateFrame("ScrollFrame", nil, content, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", 0, -4)
+	scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		local maxScroll = self:GetVerticalScrollRange() or 0
+		local new = math.min(maxScroll, math.max(0, (self:GetVerticalScroll() or 0) - delta * 36))
+		self:SetVerticalScroll(new)
+	end)
+
+	-- Scroll-child width isn't resolved at build time, so size it (and text wrap) to a constant that fits the content area.
+	local SC_W, WRAP, LEFT = 1000, 960, 4
+	local sc = CreateFrame("Frame", nil, scroll)
+	sc:SetSize(SC_W, 1)
+	scroll:SetScrollChild(sc)
+
+	local Y = -6
+	local RED = ns.CONST.RGB.RED
+
+	local function header(text)
+		local fs = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		fs:SetTextColor(RED.r, RED.g, RED.b)
+		fs:SetText(text)
+		fs:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+		local line = sc:CreateTexture(nil, "ARTWORK")
+		line:SetHeight(1)
+		line:SetColorTexture(0.30, 0.30, 0.30, 0.8)
+		line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -3)
+		line:SetWidth(WRAP - LEFT)
+		Y = Y - 28
+	end
+
+	local function body(text, indent, size)
+		size = size or 12
+		local fs = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		fs:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT + (indent or 0), Y)
+		fs:SetFont(fs:GetFont(), size)
+		fs:SetWidth(WRAP - (indent or 0))
+		fs:SetJustifyH("LEFT")
+		fs:SetWordWrap(true)
+		fs:SetText(text)
+		local h = fs:GetStringHeight() or size
+		if h < size then h = size end
+		Y = Y - h - 4
+	end
+
+	local function gap(px) Y = Y - (px or 8) end
+
+	local function makeLink(label, onClick)
+		local b = CreateFrame("Button", nil, sc)
+		b:SetHeight(16)
+		local t = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		t:SetPoint("LEFT", b, "LEFT", 0, 0)
+		t:SetText(label)
+		t:SetTextColor(0.92, 0.72, 0.02)
+		b.text = t
+		b:SetWidth((t:GetStringWidth() or 40) + 2)
+		b:SetScript("OnClick", onClick)
+		b:SetScript("OnEnter", function(s) s.text:SetTextColor(1, 1, 1) end)
+		b:SetScript("OnLeave", function(s) s.text:SetTextColor(0.92, 0.72, 0.02) end)
+		return b
+	end
+
+	local function linkRow(links)
+		local prev
+		for i, lk in ipairs(links) do
+			local b = makeLink(lk.label, lk.onClick)
+			if i == 1 then
+				b:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+			else
+				local sep = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+				sep:SetText(ABOUT_MUTED .. "  |  " .. ABOUT_CLOSE)
+				sep:SetPoint("LEFT", prev, "RIGHT", 2, 0)
+				b:SetPoint("LEFT", sep, "RIGHT", 2, 0)
+			end
+			prev = b
+		end
+		Y = Y - 24
+	end
+
+	local ver = (C_AddOns and C_AddOns.GetAddOnMetadata
+		and C_AddOns.GetAddOnMetadata(ns.CONST.ADDON_NAME, "Version"))
+		or ns.CONST.VERSION or "?"
+
+	local title = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+	title:SetFont(title:GetFont(), 22, "OUTLINE")
+	title:SetText(ns.CONST.ADDON_DISPLAY)
+	title:SetTextColor(RED.r, RED.g, RED.b)
+	Y = Y - 28
+
+	local sub = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	sub:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+	sub:SetText(ABOUT_GOLD .. "v" .. ver .. ABOUT_CLOSE
+		.. ABOUT_MUTED .. "    by Wheelbarrel00"
+		.. "    -    for WoW Midnight (12.0.x)" .. ABOUT_CLOSE)
+	Y = Y - 22
+
+	body(ABOUT_WHITE .. "A timeline-style lane cooldown tracker that complements Blizzard's built-in Cooldown Manager." .. ABOUT_CLOSE)
+	gap(10)
+
+	linkRow({
+		{ label = "Join our Discord", onClick = function() ns.ShowURL(ns.DISCORD_URL) end },
+		{ label = "GitHub",           onClick = function() ns.ShowURL(ABOUT_GITHUB_URL) end },
+		{ label = "Report a Bug",     onClick = function() ns.ShowURL(ABOUT_BUG_URL) end },
+	})
+	gap(8)
+
+	header("Commands")
+	for _, c in ipairs(ABOUT_COMMANDS) do
+		local cmd = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		cmd:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+		cmd:SetText(ABOUT_GOLD .. c.cmd .. ABOUT_CLOSE)
+		local d = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		d:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT + 150, Y)
+		d:SetText(ABOUT_WHITE .. c.desc .. ABOUT_CLOSE)
+		Y = Y - 18
+	end
+	gap(2)
+	body(ABOUT_MUTED .. "Tip: left-click the minimap button to open Options, right-click to lock or unlock frames." .. ABOUT_CLOSE, 0, 11)
+	gap(10)
+
+	header("Tutorials")
+	body(ABOUT_MUTED .. "Video tutorials are coming soon." .. ABOUT_CLOSE)
+	gap(10)
+
+	header("More Add-ons by Wheelbarrel00")
+	for _, a in ipairs(ABOUT_OTHER_ADDONS) do
+		local n = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		n:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+		n:SetText(ABOUT_WHITE .. a.name .. ABOUT_CLOSE)
+		local cfLink = makeLink("CurseForge", function() ns.ShowURL(a.cf) end)
+		cfLink:SetPoint("LEFT", n, "LEFT", 200, 0)
+		local sep = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		sep:SetText(ABOUT_MUTED .. "  |  " .. ABOUT_CLOSE)
+		sep:SetPoint("LEFT", cfLink, "RIGHT", 2, 0)
+		local ghLink = makeLink("GitHub", function() ns.ShowURL(a.gh) end)
+		ghLink:SetPoint("LEFT", sep, "RIGHT", 2, 0)
+		Y = Y - 20
+	end
+	gap(10)
+
+	header("Thanks")
+	body(ABOUT_WHITE .. "Built with feedback, reports, and ideas from the community. Thank you!" .. ABOUT_CLOSE)
+	gap(10)
+
+	header("Changelog")
+	for _, entry in ipairs(ns.Changelog or {}) do
+		local vh = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		vh:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+		vh:SetFont(vh:GetFont(), 13, "OUTLINE")
+		vh:SetText(ABOUT_GOLD .. "v" .. entry.version .. ABOUT_CLOSE
+			.. ABOUT_MUTED .. "    " .. (entry.date or "") .. ABOUT_CLOSE)
+		Y = Y - 18
+		for _, sec in ipairs(entry.sections or {}) do
+			local sh = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			sh:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT + 10, Y)
+			sh:SetFont(sh:GetFont(), 11, "OUTLINE")
+			sh:SetTextColor(RED.r, RED.g, RED.b)
+			sh:SetText(sec.head)
+			Y = Y - 16
+			for _, item in ipairs(sec.items or {}) do
+				body(ABOUT_WHITE .. "- " .. item .. ABOUT_CLOSE, 18, 11)
+			end
+			gap(2)
+		end
+		gap(8)
+	end
+
+	local older = makeLink("Older versions are on GitHub", function() ns.ShowURL(ABOUT_RELEASES_URL) end)
+	older:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
+	Y = Y - 28
+
+	sc:SetHeight(math.max(1, -Y + 10))
+	if scroll.UpdateScrollChildRect then scroll:UpdateScrollChildRect() end
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "about" then def.builder = BuildAboutTab end
+end
+
+
+local READY_SECTION_LIST = {
+	{ id = "general",    label = "General"    },
+	{ id = "appearance", label = "Appearance" },
+	{ id = "icons",      label = "Icons"      },
+}
+
+local READY_GROW_OPTIONS = {
+	{ value = "DOWN", text = "Down" },
+	{ value = "UP",   text = "Up"   },
+}
+
+local readyState = {
+	boxIndex   = 1,
+	sectionID  = "general",
+	subTabBtns = {},
+	railRows   = {},
+	formFrames = {},
+}
+
+local function GetReadyCfg(i) return ns.CDM.db.profile.readyFrames[i] end
+
+local function ReadyApply(i)
+	if ns.ReadyFrames_ApplyConfig then ns.ReadyFrames_ApplyConfig(i) end
+end
+
+local function ReadySoundOptions()
+	local opts = { { value = "None", text = "None" } }
+	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
+	if ok and LSM and LSM.List then
+		for _, name in ipairs(LSM:List("sound") or {}) do
+			if name ~= "None" then
+				opts[#opts + 1] = { value = name, text = name }
+			end
+		end
+	end
+	return opts
+end
+
+
+local function BuildReadyGeneralForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetReadyCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateEditBox(parent, {
+		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		onChange = function(t) cfg.frameName = t; ReadyApply(i) end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Enabled", checked = cfg.enabled,
+		onChange = function(v)
+			cfg.enabled = v
+			if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
+		end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Grow Direction", value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
+		onChange = function(v) cfg.growDirection = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Display Duration (sec)", min = 1, max = 20, step = 1, value = cfg.normalDuration, width = 240,
+		onChange = function(v) cfg.normalDuration = v end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Ready Sound", value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
+		onChange = function(v) cfg.normalSound = v end,
+	}))
+
+	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	hint:SetText("Tip: enable Unlock Frames on the Global tab, then drag this box into position.")
+	place(hint, 16)
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildReadyAppearanceForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetReadyCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "X Offset", min = -500, max = 500, step = 1, value = cfg.x, width = 240,
+		onChange = function(v) cfg.x = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Y Offset", min = -500, max = 500, step = 1, value = cfg.y, width = 240,
+		onChange = function(v) cfg.y = v; ReadyApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		onChange = function(v) cfg.anchor = v; ReadyApply(i) end,
+	}))
+
+	local secBG = W.CreateSectionHeader(parent, "Background")
+	secBG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBG, 18)
+
+	place(W.CreateColorPicker(parent, {
+		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
+			ReadyApply(i)
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Box Alpha", min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
+		onChange = function(v) cfg.alpha = v; ReadyApply(i) end,
+	}))
+
+	local secBorder = W.CreateSectionHeader(parent, "Border")
+	secBorder:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBorder, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		onChange = function(v) cfg.borderEnabled = v; ReadyApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
+			ReadyApply(i)
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Padding", min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
+		onChange = function(v) cfg.borderPadding = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Size", min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
+		onChange = function(v) cfg.borderSize = v; ReadyApply(i) end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildReadyIconsForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetReadyCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "Size", min = 1, max = 128, step = 1, value = cfg.iconSize, width = 240,
+		onChange = function(v) cfg.iconSize = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Transparency", min = 0, max = 1, step = 0.05, value = cfg.iconAlpha, width = 240,
+		onChange = function(v) cfg.iconAlpha = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Offset", min = -30, max = 30, step = 1, value = cfg.iconOffset, width = 240,
+		onChange = function(v) cfg.iconOffset = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Spacing", min = 0, max = 40, step = 1, value = cfg.yPadding, width = 240,
+		onChange = function(v) cfg.yPadding = v; ReadyApply(i) end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildReadyFormSurface(panelArea, i, sectionID)
+	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", panelArea, "TOPLEFT", 0, 0)
+	scroll:SetPoint("BOTTOMRIGHT", panelArea, "BOTTOMRIGHT", -22, 0)
+
+	local child = CreateFrame("Frame", nil, scroll)
+	child:SetSize(panelArea:GetWidth() - 26, 1)
+	scroll:SetScrollChild(child)
+
+	if sectionID == "general" then
+		BuildReadyGeneralForm(child, i)
+	elseif sectionID == "appearance" then
+		BuildReadyAppearanceForm(child, i)
+	elseif sectionID == "icons" then
+		BuildReadyIconsForm(child, i)
+	end
+
+	scroll:Hide()
+	return scroll
+end
+
+
+local function ShowReadySection(panelArea, i, sectionID)
+	readyState.formFrames[i] = readyState.formFrames[i] or {}
+	for _, surf in pairs(readyState.formFrames[i]) do surf:Hide() end
+	for bi, sections in pairs(readyState.formFrames) do
+		if bi ~= i then for _, surf in pairs(sections) do surf:Hide() end end
+	end
+
+	local surf = readyState.formFrames[i][sectionID]
+	if not surf then
+		surf = BuildReadyFormSurface(panelArea, i, sectionID)
+		readyState.formFrames[i][sectionID] = surf
+	end
+	surf:Show()
+
+	readyState.boxIndex  = i
+	readyState.sectionID = sectionID
+
+	for _, row in ipairs(readyState.railRows) do
+		local active = row._sectionID == sectionID
+		row.text:SetTextColor(active and YELLOW.r or 1, active and YELLOW.g or 1, active and YELLOW.b or 1, 1)
+	end
+	for bi, btn in ipairs(readyState.subTabBtns) do
+		btn:SetSelected(bi == i)
+	end
+end
+
+
+local function BuildReadyTab(content)
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local subBar = CreateFrame("Frame", nil, content)
+	subBar:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+	subBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -pad, -pad)
+	subBar:SetHeight(Theme.PANEL.TAB_H)
+
+	-- A profile-switch rebuild recreates this tab's frames; drop cached form
+	-- surfaces parented to the old (now orphaned) frame so they rebuild fresh.
+	wipe(readyState.subTabBtns)
+	wipe(readyState.railRows)
+	wipe(readyState.formFrames)
+	local x = 0
+	for i = 1, 3 do
+		local b = Theme.CreateTab(subBar, "Box " .. i, 90)
+		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
+		readyState.subTabBtns[i] = b
+		x = x + 90 + Theme.PANEL.TAB_GAP
+	end
+
+	local body = CreateFrame("Frame", nil, content)
+	body:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
+	body:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
+
+	local rail = CreateFrame("Frame", nil, body,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	rail:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+	rail:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 0, 0)
+	rail:SetWidth(LANES_INNER_RAIL_W)
+	Theme.ApplyBackdrop(rail,
+		{ r = 0, g = 0, b = 0, a = 0.4 }, ns.CONST.RGB.PANEL_BORDER)
+
+	local formArea = CreateFrame("Frame", nil, body)
+	formArea:SetPoint("TOPLEFT", rail, "TOPRIGHT", 8, 0)
+	formArea:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
+
+	for i, b in ipairs(readyState.subTabBtns) do
+		b:SetScript("OnClick", function()
+			ShowReadySection(formArea, i, readyState.sectionID)
+		end)
+	end
+
+	local ry = -8
+	for _, sec in ipairs(READY_SECTION_LIST) do
+		local row = CreateFrame("Button", nil, rail)
+		row:SetPoint("TOPLEFT",  rail, "TOPLEFT",  6, ry)
+		row:SetPoint("TOPRIGHT", rail, "TOPRIGHT", -6, ry)
+		row:SetHeight(22)
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		fs:SetPoint("LEFT", row, "LEFT", 4, 0)
+		fs:SetText(sec.label)
+		fs:SetTextColor(1, 1, 1)
+		row.text = fs
+		row._sectionID = sec.id
+		row:EnableMouse(true)
+		row:SetScript("OnClick", function()
+			ShowReadySection(formArea, readyState.boxIndex, sec.id)
+		end)
+		row:SetScript("OnEnter", function()
+			if sec.id ~= readyState.sectionID then fs:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b) end
+		end)
+		row:SetScript("OnLeave", function()
+			if sec.id ~= readyState.sectionID then fs:SetTextColor(1, 1, 1) end
+		end)
+		readyState.railRows[#readyState.railRows + 1] = row
+		ry = ry - 26
+	end
+
+	ShowReadySection(formArea, readyState.boxIndex, readyState.sectionID)
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "ready" then def.builder = BuildReadyTab end
 end

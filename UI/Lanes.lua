@@ -46,6 +46,36 @@ local function FormatTime(remaining)
 end
 
 
+local function VisibilityGatePasses(g)
+	if g.enabledAlways then return true end
+	local pass = false
+	if g.enabledGroup    and IsInGroup()    then pass = true end
+	if g.enabledInstance and IsInInstance() then pass = true end
+	return pass
+end
+
+
+local function LaneShouldShow(addon, cfg)
+	local g = addon.db.profile.global
+	-- Unlocked or test mode = positioning; force lanes on so they can be seen/dragged.
+	if g.unlockFrames or (ns.Engine and ns.Engine.testActive) then return true end
+	if not VisibilityGatePasses(g) then return false end
+	if g.autohide and not addon.combat and not cfg.overrideAutohide then return false end
+	return true
+end
+
+
+local function ApplyVisibility(addon)
+	if not (addon and addon.db and addon.lanes) then return end
+	for i = 1, 3 do
+		local f = addon.lanes[i]
+		if f and f.cfg then
+			if LaneShouldShow(addon, f.cfg) then f:Show() else f:Hide() end
+		end
+	end
+end
+
+
 function ns.Lanes_Build(addon)
 	for i = 1, 3 do
 		local cfg = addon.db.profile.lanes[i]
@@ -150,6 +180,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	-- refresh no longer applies config, so lanes built at login would otherwise
 	-- render with unpositioned markers.
 	ns.Lanes_ApplyConfig(index)
+	ApplyVisibility(addon)
 end
 
 
@@ -208,10 +239,6 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		if fmt then btn.cd:SetCountdownFormatter(fmt) end
 	end
 
-	btn.time = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-	btn.time:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
-	btn.time:SetTextColor(1, 1, 1, 1)
-
 	btn.charges = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 	btn.charges:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
 	btn.charges:SetTextColor(1, 1, 1, 1)
@@ -237,7 +264,10 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		self:SetAlpha((cfg.iconAlpha) or 1)
 		local off      = cfg.iconOffset or 0
 		local iconSize = self._iconSize or 40
-		local progress = math.min(1, math.max(0, remaining / (self._duration or 120)))
+		-- TIMELINE = shared seconds axis (position is real time-left scaled to maxTime);
+		-- default = each icon spans the lane over its own cooldown.
+		local denom = (cfg.mode == "TIMELINE") and (cfg.maxTime or 120) or (self._duration or 120)
+		local progress = math.min(1, math.max(0, remaining / denom))
 		self:ClearAllPoints()
 		if cfg.vertical then
 			local laneH   = cfg.height or 400
@@ -411,6 +441,23 @@ local function RefreshBody(laneIndex)
 	local cfg = laneFrame.cfg
 	if not cfg then return end
 
+	-- Hidden by autohide / the visibility gate: clear the pool once so a re-show
+	-- starts clean, then skip the per-tick render work (incl. lazy icon creation).
+	if not laneFrame:IsShown() then
+		for j = 1, laneFrame.activeIcons do
+			local btn = laneFrame.iconPool[j]
+			if btn then
+				btn._endTime   = nil
+				btn._cdSpellID = nil
+				btn._cdStart   = nil
+				if btn.cd then btn.cd:Clear() end
+				btn:Hide()
+			end
+		end
+		laneFrame.activeIcons = 0
+		return
+	end
+
 	-- Deliberately does NOT call ApplyConfig: it used to run every refresh,
 	-- repositioning markers each tick for config that rarely changes. Config is
 	-- now applied only at creation and from the option-change paths.
@@ -419,10 +466,8 @@ local function RefreshBody(laneIndex)
 	local entries = engine and engine:GetActiveEntries() or nil
 
 	local iconSize = cfg.iconSize or 40
-	local laneW    = cfg.width    or 400
 	local maxTime  = cfg.maxTime  or 120
 	local now      = GetTime()
-	local usable   = math.max(1, laneW - iconSize)
 
 	local i = 0
 	if entries then
@@ -472,7 +517,6 @@ local function RefreshBody(laneIndex)
 						-- controls whether its number is drawn.
 						local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
 						btn.cd:SetHideCountdownNumbers(not showTime)
-						btn.time:Hide()
 
 						if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
 							and e.charges and e.maxCharges then
@@ -530,14 +574,16 @@ function ns.Lanes_RefreshUnlockState(addon)
 			f.label:SetAlpha(unlocked and 0.6 or 0)
 		end
 	end
+	-- Unlocking force-shows lanes, so lock-state changes can flip visibility.
+	ApplyVisibility(addon)
 end
 
 
 function ns.Lanes_OnCombatChange(inCombat)
-	-- Stub: combat-exit autohide not implemented yet; Events.lua already calls this.
+	ApplyVisibility(ns.CDM)
 end
 
 
 function ns.Lanes_RefreshVisibility()
-	-- Stub: Always / In Group / In Instance visibility not implemented yet.
+	ApplyVisibility(ns.CDM)
 end

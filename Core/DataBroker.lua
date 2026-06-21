@@ -24,6 +24,9 @@ function ns.DataBroker_Init(addon)
 				if ns.Lanes_RefreshUnlockState then
 					ns.Lanes_RefreshUnlockState(addon)
 				end
+				if ns.ReadyFrames_RefreshUnlockState then
+					ns.ReadyFrames_RefreshUnlockState(addon)
+				end
 			elseif button == "MiddleButton" then
 				addon:ToggleTestMode()
 			end

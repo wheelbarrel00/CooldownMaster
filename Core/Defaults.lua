@@ -62,6 +62,40 @@ local function lane(frameName)
 	}
 end
 
+local function readyFrame(frameName, x, y, enabled)
+	return {
+		enabled        = enabled,
+		frameName      = frameName,
+		anchor         = "CENTER",
+		x              = x,
+		y              = y,
+		alpha          = 1.0,
+		growDirection  = "DOWN",
+		normalDuration = 5,
+		normalSound    = "None",
+
+		iconSize       = 40,
+		iconAlpha      = 1.0,
+		iconOffset     = 0,
+		xPadding       = 0,
+		yPadding       = 4,
+
+		bgTexture      = "CDM Smooth",
+		bgColor        = { r = 0.1, g = 0.1, b = 0.1, a = 0.85 },
+		borderTexture  = "CDM Shadow",
+		borderEnabled  = true,
+		borderColor    = { r = 0, g = 0, b = 0, a = 1 },
+		borderSize     = 5,
+		borderPadding  = 5,
+
+		iconText       = {
+			{ enabled = true,  text = "[cd.stacks]" },
+			{ enabled = true,  text = "[cd.time]"   },
+			{ enabled = false, text = ""            },
+		},
+	}
+end
+
 ns.DEFAULTS = {
 	global = {
 		firstRun         = true,
@@ -86,6 +120,12 @@ ns.DEFAULTS = {
 		[1] = lane("Lane 1"),
 		[2] = lane("Lane 2"),
 		[3] = lane("Lane 3"),
+	},
+
+	readyFrames = {
+		[1] = readyFrame("Ready 1", -200, -120, true),
+		[2] = readyFrame("Ready 2",  200, -120, false),
+		[3] = readyFrame("Ready 3",    0,  120, false),
 	},
 
 	filters = {
