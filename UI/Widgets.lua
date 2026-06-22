@@ -238,6 +238,12 @@ function Widgets.CreateDropdown(parent, cfg)
 	applyBackdrop(list, RED, PANEL_BORDER)
 	list:Hide()
 
+	-- Rows live in a content child so a long option list (e.g. many fonts) can scroll
+	-- in a capped, clipped viewport instead of running off the screen.
+	local content = CreateFrame("Frame", nil, list)
+	content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
+	content:SetWidth(width)
+
 	root._currentValue = cfg.value
 	root._optionRows   = {}
 	root._onChange     = cfg.onChange
@@ -260,10 +266,10 @@ function Widgets.CreateDropdown(parent, cfg)
 
 	local rowH = 20
 	for i, opt in ipairs(options) do
-		local row = CreateFrame("Button", nil, list,
+		local row = CreateFrame("Button", nil, content,
 			BackdropTemplateMixin and "BackdropTemplate" or nil)
 		row:SetSize(width, rowH)
-		row:SetPoint("TOPLEFT", list, "TOPLEFT", 0, -((i - 1) * rowH))
+		row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((i - 1) * rowH))
 		applyBackdrop(row, RED_DIM, PANEL_BORDER)
 
 		local rt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -283,10 +289,37 @@ function Widgets.CreateDropdown(parent, cfg)
 
 		root._optionRows[i] = row
 	end
-	list:SetHeight(math.max(rowH, rowH * math.max(1, #options)))
+
+	local fullH = rowH * math.max(1, #options)
+	content:SetHeight(fullH)
+	-- Cap the viewport and scroll the content frame only when the list is taller than
+	-- the cap; short lists (every other dropdown) keep the exact prior layout.
+	local MAX_LIST_H = 280
+	local scroll = 0
+	if fullH > MAX_LIST_H then
+		list:SetHeight(MAX_LIST_H)
+		list:SetClipsChildren(true)
+		local maxScroll = fullH - MAX_LIST_H
+		list:EnableMouseWheel(true)
+		list:SetScript("OnMouseWheel", function(_, delta)
+			scroll = math.min(maxScroll, math.max(0, scroll - delta * rowH * 3))
+			content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, scroll)
+		end)
+	else
+		list:SetHeight(fullH)
+	end
 
 	btn:SetScript("OnClick", function()
-		if list:IsShown() then list:Hide() else list:Show() end
+		if list:IsShown() then
+			list:Hide()
+		else
+			-- Reopen at the top, not wherever it was last scrolled to.
+			if scroll ~= 0 then
+				scroll = 0
+				content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
+			end
+			list:Show()
+		end
 	end)
 
 	function root:SetEnabled(enabled)

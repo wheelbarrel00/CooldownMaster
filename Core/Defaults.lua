@@ -46,6 +46,10 @@ local function lane(frameName)
 			{ enabled = true,  text = "[cd.time]"   },
 			{ enabled = false, text = ""            },
 		},
+		iconFont       = "Friz Quadrata TT",
+		iconFontSize   = 0,   -- 0 = auto (scales with iconSize, matching the native count)
+		iconFontFlags  = "OUTLINE",
+		iconFontColor  = { r = 1, g = 1, b = 1, a = 1 },
 
 		laneText = {
 			{ enabled = true, text = "Ready", pos = 0    },

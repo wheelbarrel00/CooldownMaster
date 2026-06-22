@@ -239,6 +239,26 @@ local MODE_OPTIONS = {
 	{ value = "LOG",      text = "Logarithmic (seconds)" },
 }
 
+local FONT_FLAG_OPTIONS = {
+	{ value = "NONE",         text = "None"          },
+	{ value = "OUTLINE",      text = "Outline"       },
+	{ value = "THICKOUTLINE", text = "Thick Outline" },
+}
+
+local function BuildFontOptions()
+	local opts = {}
+	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if LSM then
+		for _, key in ipairs(LSM:List("font")) do
+			opts[#opts + 1] = { value = key, text = key }
+		end
+	end
+	if #opts == 0 then
+		opts[1] = { value = "Friz Quadrata TT", text = "Friz Quadrata TT" }
+	end
+	return opts
+end
+
 local TRACKING_OPTIONS = {
 	{ value = "NONE",  text = "None"  },
 	{ value = "GCD",   text = "GCD"   },
@@ -666,6 +686,35 @@ local function BuildLaneIconsForm(parent, laneIndex)
 			end,
 		}))
 	end
+
+	local secFont = W.CreateSectionHeader(parent, "Timer Font")
+	secFont:SetWidth(parent:GetWidth() - pad * 2)
+	place(secFont, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.iconFont, options = BuildFontOptions(), width = 240,
+		onChange = function(v) cfg.iconFont = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Font Size (0 = auto)", min = 0, max = 64, step = 1,
+		value = cfg.iconFontSize, width = 240,
+		onChange = function(v) cfg.iconFontSize = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.iconFontFlags, options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.iconFontFlags = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.iconFontColor,
+		onChange = function(r, g, b, a)
+			local c = cfg.iconFontColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
 
 	parent:SetHeight(math.abs(y) + pad)
 end

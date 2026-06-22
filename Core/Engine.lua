@@ -7,6 +7,9 @@ Engine.trackedSpells   = {}
 Engine.trackedItems    = {}
 Engine.cdIDToSpellID   = {}
 Engine.knownDurations  = {}   -- learned out of combat / persisted; talent-adjusted, overrides baseline
+Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime; below known, above baseline
+Engine._seenReady      = {}   -- spellIDs seen off their own cooldown this session; gates trusting an observed span
+Engine._activeSince    = {}   -- when each spell's cooldown began (first isActive, during GCD) = its real start
 Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed; used only when nothing learned
 Engine.cdTimingCache   = {}
 Engine.entries         = {}
@@ -197,6 +200,14 @@ function Engine:LoadPersistedDurations()
 		if type(spellID) == "number" and type(duration) == "number"
 			and duration > 1.5 then
 			self.knownDurations[spellID] = duration
+		end
+	end
+
+	addon.db.profile.observedDurations = addon.db.profile.observedDurations or {}
+	for spellID, duration in pairs(addon.db.profile.observedDurations) do
+		if type(spellID) == "number" and type(duration) == "number"
+			and duration > 1.5 then
+			self.observedDurations[spellID] = duration
 		end
 	end
 
@@ -495,6 +506,40 @@ function Engine:LearnDuration(spellID, dObj)
 end
 
 
+-- Combat-safe duration learning from observation: when a tracked cooldown finishes, the
+-- wall-clock span since it went active IS its real length -- no secret value is read. This
+-- corrects spells whose extrapolated position undershot (charge spells get no base-cooldown
+-- seed, and a spell never seen on cooldown out of combat is never learned), which otherwise
+-- race to the ready edge and pin there until the real cooldown ends. Stored in its own
+-- layer BELOW knownDurations so a precise out-of-combat read still wins and is never blocked
+-- by this. Converge UP only: a proc/haste reset can shorten an observed span but never
+-- lengthen it, so the longest span seen is the true cooldown.
+function Engine:ObserveDuration(spellID, observed)
+	if type(observed) ~= "number" or observed <= 1.5 then return end
+	local current = self.observedDurations[spellID]
+	if current and observed <= current + 0.5 then return end
+	self.observedDurations[spellID] = observed
+	local addon = ns.CDM
+	if addon and addon.db then
+		addon.db.profile.observedDurations = addon.db.profile.observedDurations or {}
+		addon.db.profile.observedDurations[spellID] = observed
+	end
+end
+
+
+-- Best real measurement for icon position: the LONGER of the out-of-combat read and the
+-- in-combat observation, or whichever exists (nil if neither). Prefer the longer so a
+-- stale/short learned value can't undershoot and pin the icon at the ready edge; the worst
+-- case is a slightly slow icon (overshoot), never a false "ready". Baseline/default are the
+-- caller's fallback below this.
+function Engine:BestDuration(spellID)
+	local k = self.knownDurations[spellID]
+	local o = self.observedDurations[spellID]
+	if k and o then return (k > o) and k or o end
+	return k or o
+end
+
+
 -- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so the
 -- entry set is driven off the readable C_Spell.GetSpellCooldown().isActive/
 -- .isOnGCD booleans. The opaque DurationObject is handed to a native Cooldown
@@ -532,7 +577,21 @@ function Engine:ScanSpells()
 		end
 
 		---@diagnostic disable-next-line: undefined-field
-		local active = ok and info and info.isActive and not info.isOnGCD
+		local rawActive = ok and info and info.isActive
+		if rawActive then
+			-- Record when the cooldown began -- the spell is isActive during the post-cast
+			-- GCD, before the entry is created below, so this start is ~1 GCD earlier than
+			-- "now" at entry time and keeps the learned span from being short by a GCD.
+			if not self._activeSince[spellID] then self._activeSince[spellID] = now end
+		elseif ok and info then
+			-- Off its own cooldown (charges may remain): forget the start, and remember we
+			-- saw it ready so a later depletion's observed span is trusted as a full cooldown.
+			self._activeSince[spellID] = nil
+			self._seenReady[spellID] = true
+		end
+
+		---@diagnostic disable-next-line: undefined-field
+		local active = rawActive and not info.isOnGCD
 		if active then
 			seen[spellID] = true
 
@@ -559,20 +618,23 @@ function Engine:ScanSpells()
 			local existing = self.entries[spellID]
 			if not existing then
 				local cat = tracked.category or 0
-				-- Position-extrapolation ladder: learned > baseline > 30s default.
-				local duration = self.knownDurations[spellID]
+				-- Position-extrapolation ladder: longer of learned/observed > baseline > 30s.
+				local duration = self:BestDuration(spellID)
 					or self.baselineDurations[spellID]
 					or 30
+				local startTime = self._activeSince[spellID] or now
 				self.entries[spellID] = {
 					spellID   = spellID,
 					name      = tracked.name,
 					icon      = tracked.icon,
-					startTime = now,
+					startTime = startTime,
 					duration  = duration,
-					endTime   = now + duration,
+					endTime   = startTime + duration,
 					laneIndex = self:ResolveLaneIndex(spellID, cat),
 					category  = cat,
 					dObj      = dObj,
+					-- Trust the span for learning only if we saw this spell ready first.
+					_fresh    = self._seenReady[spellID] or false,
 					_source   = "isactive",
 				}
 			else
@@ -583,7 +645,7 @@ function Engine:ScanSpells()
 				-- the 30s default, then learned out of combat) should replace the stale
 				-- guess so the icon stops extrapolating from the wrong length. Keep
 				-- startTime; only correct the span (the countdown number stays exact via dObj).
-				local learned = self.knownDurations[spellID]
+				local learned = self:BestDuration(spellID)
 				if learned and existing.duration ~= learned then
 					existing.duration = learned
 					existing.endTime  = existing.startTime + learned
@@ -611,10 +673,18 @@ function Engine:ScanSpells()
 	for _, spellID in ipairs(edges) do
 		if not blackout then
 			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell
-			-- discards it silently rather than popping a false ready.
-			if not massVanish and self.trackedSpells and self.trackedSpells[spellID]
-				and ns.ReadyFrames_OnReadyTransition then
-				ns.ReadyFrames_OnReadyTransition(spellID, self.entries[spellID])
+			-- discards it silently rather than popping a false ready (or learning a
+			-- partial span from a cooldown that ended only because we stopped tracking it).
+			if not massVanish and self.trackedSpells and self.trackedSpells[spellID] then
+				local e = self.entries[spellID]
+				-- _fresh: only learn from a cooldown whose start we actually saw, so the
+				-- wall-clock span is the real length (see ObserveDuration / _seenReady).
+				if e and e._fresh and e._source == "isactive" and e.startTime then
+					self:ObserveDuration(spellID, now - e.startTime)
+				end
+				if ns.ReadyFrames_OnReadyTransition then
+					ns.ReadyFrames_OnReadyTransition(spellID, e)
+				end
 			end
 			self.entries[spellID] = nil
 		end
@@ -822,6 +892,11 @@ function Engine:Start(addon)
 			if event == "PLAYER_SPECIALIZATION_CHANGED" then
 				wipe(self.knownDurations)
 				wipe(self.cdTimingCache)
+				-- In-memory only (not persisted): a new spec must re-observe a spell going
+				-- ready before its span is trusted, so a shared spell mid-cooldown across the
+				-- swap isn't learned short.
+				wipe(self._seenReady)
+				wipe(self._activeSince)
 				-- Re-layer persisted + fallback durations after the wipe, else the
 				-- runtime table stays empty until /reload and everything
 				-- extrapolates from the 30s default.

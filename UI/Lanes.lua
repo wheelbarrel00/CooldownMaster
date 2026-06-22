@@ -2,6 +2,9 @@ local ADDON_NAME, ns = ...
 
 local _dragFailWarnTime = 0  -- luacheck: ignore
 
+local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+local STANDARD_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+
 
 -- Prebuilt countdown-text tables avoid ~450 string.format allocs/sec from the
 -- 60 Hz OnUpdate and 10 Hz x 3-lane refresh. INTEGER_STRINGS 0..600 (10 min);
@@ -345,6 +348,26 @@ local function ClearLaneIcon(btn)
 end
 
 
+-- Per-lane Font object for the icon countdown. The native Cooldown widget draws the
+-- timer (its value is secret in combat, so we can't), but SetCountdownFont restyles it
+-- via this live font object — reconfiguring it updates the shown text immediately.
+local function ConfigureLaneCountFont(laneFrame, cfg)
+	local name = "CDMLaneCountFont" .. (laneFrame.index or 1)
+	local fontObj = _G[name] or CreateFont(name)
+	local path = (LSM and LSM:Fetch("font", cfg.iconFont, true)) or STANDARD_FONT
+	local flags = cfg.iconFontFlags or "OUTLINE"
+	if flags == "NONE" then flags = "" end
+	-- 0/unset = auto: scale with icon size so the count matches the native sizing.
+	local size = cfg.iconFontSize
+	if not size or size <= 0 then size = math.max(6, math.floor((cfg.iconSize or 40) * 0.4)) end
+	fontObj:SetFont(path, size, flags)
+	local c = cfg.iconFontColor
+	fontObj:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1, c and c.a or 1)
+	laneFrame._countFontName = name
+	return name
+end
+
+
 -- Body extracted to a module-level function so the pcall wrapper can reference it
 -- by name rather than allocating a fresh closure at 30 Hz across 3 lanes.
 local function ApplyConfigBody(laneIndex)
@@ -446,6 +469,8 @@ local function ApplyConfigBody(laneIndex)
 			end
 		end
 	end
+
+	ConfigureLaneCountFont(laneFrame, cfg)
 end
 
 
@@ -604,6 +629,12 @@ local function RefreshBody(laneIndex)
 			end
 			btn._cdFedPath = fed and "dObj" or "numbers"
 			e._cdFedPath   = btn._cdFedPath   -- surfaced by /cdmaster debug
+
+			-- SetCountdownFont is Retail-only (Midnight); feeding the cooldown can also reset
+			-- the count font, so re-bind our live font object on each feed.
+			if btn.cd.SetCountdownFont and laneFrame._countFontName then
+				btn.cd:SetCountdownFont(laneFrame._countFontName)
+			end
 		end
 
 		-- The native widget owns the countdown text; this toggle only controls

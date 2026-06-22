@@ -1,5 +1,15 @@
 # Cooldown Master Changelog
 
+## 0.13.1 (2026-06-22) — Countdown font options and a cooldown-position fix
+
+Customizable countdown text on lane icons, plus a fix for some cooldowns showing at the wrong spot on the lane.
+
+### New Features
+- **Countdown font** (Lanes > Icons > Timer Font): set the font face, size, outline, and color of the timer text on each lane's icons. Size 0 = auto, scaling with the icon size.
+
+### Bug Fixes
+- Fixed certain cooldowns (such as Supernova and Arcane Orb) sliding to the "ready" end of the lane and staying there while still on cooldown. The addon now learns each cooldown's true length from how long it actually runs, so the icon tracks the right position. The countdown number and swipe were always correct.
+
 ## 0.13.0 (2026-06-21) — Logarithmic lane mode and icon stacking
 
 Two new lane display options: a logarithmic timeline mode and grouped icon stacking.

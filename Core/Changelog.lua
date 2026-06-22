@@ -2,6 +2,18 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.13.1",
+		date = "2026-06-22",
+		sections = {
+			{ head = "New Features", items = {
+				"Countdown font options (Lanes > Icons > Timer Font): set the font face, size, outline, and color of the timer text on each lane's icons. Size 0 = auto (scales with the icon size).",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed certain cooldowns (such as Supernova and Arcane Orb) sliding to the ready end of the lane and staying there while still on cooldown. The addon now learns each cooldown's true length from how long it actually runs, so the icon tracks the right position. The countdown number and swipe were always correct.",
+			} },
+		},
+	},
+	{
 		version = "0.13.0",
 		date = "2026-06-21",
 		sections = {

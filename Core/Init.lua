@@ -331,6 +331,15 @@ function CDM:OnSlash(input)
 				tracked and tostring(tracked.hasCharges) or "?",
 				tostring(e._source),
 				tostring(e._cdFedPath)))
+			-- Position-duration ladder: dur is what the icon extrapolates from. If dur is
+			-- much shorter than the live %.1fs above, the icon races to the ready edge.
+			self:Print(string.format("       dur=%.1f known=%s obs=%s base=%s fresh=%s seenReady=%s",
+				e.duration or 0,
+				tostring(engine.knownDurations[e.spellID]),
+				tostring(engine.observedDurations[e.spellID]),
+				tostring(engine.baselineDurations[e.spellID]),
+				tostring(e._fresh),
+				tostring(engine._seenReady and engine._seenReady[e.spellID])))
 		end
 
 	else
