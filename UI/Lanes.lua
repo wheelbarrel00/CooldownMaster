@@ -216,6 +216,25 @@ local function GetCountdownFormatter()
 end
 
 
+-- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis
+-- (maxTime); LOG = same axis logarithmic, so the last seconds spread across most of the
+-- lane and long cooldowns compress near the far end; default = each icon spans its own
+-- cooldown. Shared by the per-icon OnUpdate and the stacking pass so they never drift.
+local function ModeProgress(cfg, remaining, duration)
+	local p
+	local m = cfg.mode
+	if m == "TIMELINE" then
+		p = remaining / (cfg.maxTime or 120)
+	elseif m == "LOG" then
+		p = math.log(1 + remaining) / math.log(1 + (cfg.maxTime or 120))
+	else
+		p = remaining / (duration or 120)
+	end
+	if p < 0 then return 0 elseif p > 1 then return 1 end
+	return p
+end
+
+
 local function AcquireIcon(laneFrame, i, iconSize)
 	local pool = laneFrame.iconPool
 	local btn  = pool[i]
@@ -242,7 +261,9 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	end
 
 	btn:SetScript("OnEnter", function(self)
-		if self:GetParent() then
+		-- Raise above stack-mates so an occluded stacked icon can be hovered; only
+		-- meaningful when stacking overlaps icons, so gate it on the toggle.
+		if self._cfg and self._cfg.stackRaiseHover and self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 50)
 		end
 		local cdm = ns.CDM
@@ -256,7 +277,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		GameTooltip:Show()
 	end)
 	btn:SetScript("OnLeave", function(self)
-		if self:GetParent() then
+		if self._cfg and self._cfg.stackRaiseHover and self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 1)
 		end
 		GameTooltip:Hide()
@@ -277,12 +298,9 @@ local function AcquireIcon(laneFrame, i, iconSize)
 			self:SetAlpha(alpha)
 		end
 
-		local off      = cfg.iconOffset or 0
+		local off      = (cfg.iconOffset or 0) + (self._stackOff or 0)
 		local iconSize = self._iconSize or 40
-		-- TIMELINE = shared seconds axis (position is real time-left scaled to maxTime);
-		-- default = each icon spans the lane over its own cooldown.
-		local denom = (cfg.mode == "TIMELINE") and (cfg.maxTime or 120) or (self._duration or 120)
-		local progress = math.min(1, math.max(0, remaining / denom))
+		local progress = ModeProgress(cfg, remaining, self._duration)
 
 		local point, coord
 		if cfg.vertical then
@@ -321,6 +339,7 @@ local function ClearLaneIcon(btn)
 	btn._endTime   = nil
 	btn._cdSpellID = nil
 	btn._cdStart   = nil
+	btn._stackOff  = nil
 	if btn.cd then btn.cd:Clear() end
 	btn:Hide()
 end
@@ -486,6 +505,18 @@ local function ByStartTime(a, b)
 end
 
 
+-- Reused scratch for the GROUPED stacking pass (kept module-level so the per-refresh
+-- pack allocates nothing). Sorted by lane position; spellID breaks ties for stability.
+local stackOrder  = {}
+local stackRowEnd = {}
+local function ByStackCoord(a, b)
+	if a._stackCoord ~= b._stackCoord then
+		return a._stackCoord < b._stackCoord
+	end
+	return (a._cdSpellID or 0) < (b._cdSpellID or 0)
+end
+
+
 -- Body extracted to a module-level function so the pcall wrapper can reference it
 -- by name rather than allocating a fresh closure at 30 Hz across 3 lanes.
 local function RefreshBody(laneIndex)
@@ -594,6 +625,57 @@ local function RefreshBody(laneIndex)
 		btn._duration = e.duration
 		btn._cfg      = cfg
 		btn._iconSize = iconSize
+	end
+
+	-- GROUPED stacking: pack overlapping icons into perpendicular rows so clustered
+	-- cooldowns stay readable. Recomputed at refresh cadence (~10 Hz); membership shifts
+	-- slowly since icons crawl <4 px between refreshes. The per-icon OnUpdate folds the
+	-- cached _stackOff into its cross-axis offset.
+	if cfg.stackEnabled and cfg.stackStyle == "GROUPED" and count > 1 then
+		local laneDim = cfg.vertical and (cfg.height or 400) or (cfg.width or 400)
+		local usable  = math.max(1, laneDim - iconSize)
+		local rowStep = iconSize
+		local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
+		local dirSign
+		if cfg.vertical then
+			dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
+		else
+			dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
+		end
+
+		wipe(stackOrder)
+		for idx = 1, count do
+			local btn = laneFrame.iconPool[idx]
+			local remaining = (btn._endTime or now) - now
+			if remaining < 0 then remaining = 0 end
+			btn._stackCoord = ModeProgress(cfg, remaining, btn._duration) * usable
+			stackOrder[idx] = btn
+		end
+		table.sort(stackOrder, ByStackCoord)
+
+		wipe(stackRowEnd)
+		for i = 1, count do
+			local btn  = stackOrder[i]
+			local left = btn._stackCoord
+			local row
+			for r = 1, maxRows do
+				if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
+			end
+			if not row then
+				-- All rows full within the height budget: drop into the one that frees
+				-- soonest (smallest right edge) and accept the partial overlap.
+				row = 1
+				for r = 2, maxRows do
+					if stackRowEnd[r] < stackRowEnd[row] then row = r end
+				end
+			end
+			stackRowEnd[row] = left + iconSize
+			btn._stackOff = (row - 1) * rowStep * dirSign
+		end
+	else
+		for idx = 1, count do
+			laneFrame.iconPool[idx]._stackOff = 0
+		end
 	end
 
 	-- Clear the instance keys on unused pool slots so a reused slot re-feeds

@@ -1,5 +1,13 @@
 # Cooldown Master Changelog
 
+## 0.13.0 (2026-06-21) — Logarithmic lane mode and icon stacking
+
+Two new lane display options: a logarithmic timeline mode and grouped icon stacking.
+
+### New Features
+- **Logarithmic lane mode.** A new per-lane Mode (Lanes > General) that lays cooldowns out on a logarithmic seconds axis: the last several seconds of any cooldown spread across most of the lane while long cooldowns compress toward the far end, so abilities about to come up are easy to read. Shares the lane's Max Time setting.
+- **Grouped icon stacking.** Turn on Stacking (Lanes > Stacking) and lane icons that would overlap are packed into rows instead of sitting on top of each other, within the Height you set and laid out in your chosen Grow Direction. The Raise On Mouseover option brings a stacked icon to the front when you hover it.
+
 ## 0.12.0 (2026-06-21) — Profiles, consumables, and visibility fixes
 
 New profile tools, potion and trinket tracking, a cooldown-tint control, and two visibility fixes.

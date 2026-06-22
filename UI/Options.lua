@@ -234,8 +234,9 @@ local ANCHOR_OPTIONS = {
 }
 
 local MODE_OPTIONS = {
-	{ value = "LINEAR",   text = "Linear"             },
-	{ value = "TIMELINE", text = "Timeline (seconds)" },
+	{ value = "LINEAR",   text = "Linear"                },
+	{ value = "TIMELINE", text = "Timeline (seconds)"    },
+	{ value = "LOG",      text = "Logarithmic (seconds)" },
 }
 
 local TRACKING_OPTIONS = {

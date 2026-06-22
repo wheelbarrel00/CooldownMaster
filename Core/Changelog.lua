@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.13.0",
+		date = "2026-06-21",
+		sections = {
+			{ head = "New Features", items = {
+				"Logarithmic lane mode (Lanes > General): a new Mode that lays cooldowns out on a logarithmic seconds axis, so the last several seconds spread across most of the lane and long cooldowns compress toward the far end. Shares the lane's Max Time setting.",
+				"Grouped icon stacking (Lanes > Stacking): lane icons that would overlap are packed into rows instead of sitting on top of each other, within the Height you set and in your chosen Grow Direction. Raise On Mouseover brings a stacked icon to the front when you hover it.",
+			} },
+		},
+	},
+	{
 		version = "0.12.0",
 		date = "2026-06-21",
 		sections = {
