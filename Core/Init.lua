@@ -74,6 +74,10 @@ function CDM:OnInitialize()
 	-- All characters start on a shared "Default" profile; the Profiles tab can switch/create/copy per-character profiles via AceDB.
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
 
+	-- Per-character spec->profile map for auto-switch; db.char so it survives profile
+	-- switches. Empty = no auto-switch.
+	self.db.char.specProfiles = self.db.char.specProfiles or {}
+
 	self:MigrateV030()
 
 	if next(self.db.profile.classColors) == nil then
@@ -157,6 +161,11 @@ end
 function CDM:OnEnable()
 	self:RegisterEvent("PLAYER_LOGIN",          "OnPlayerLogin")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
+	-- Retail-only event; gate registration so Classic flavors don't register an
+	-- unknown event.
+	if GetNumSpecializations then
+		self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", "OnSpecChanged")
+	end
 end
 
 
@@ -167,6 +176,34 @@ function CDM:OnPlayerLogin()
 		self.db.profile.global.firstRun = false
 	end
 	self.db.profile.global.previousVersion = self.version
+	-- Match the profile to the current spec on login (only if a mapping is set).
+	self:ApplySpecProfile()
+end
+
+
+-- Switch to the profile mapped to the active spec (Profiles tab > Auto-switch by
+-- Specialization). No-op when unmapped, already active, the spec API is absent
+-- (Classic), or the mapped profile was deleted.
+function CDM:ApplySpecProfile()
+	if not (GetSpecialization and self.db.char.specProfiles) then return end
+	local idx = GetSpecialization()
+	if not idx then return end
+	local specID = GetSpecializationInfo(idx)
+	if not specID then return end
+	local target = self.db.char.specProfiles[specID]
+	if not target or target == self.db:GetCurrentProfile() then return end
+	for _, name in ipairs(self.db:GetProfiles()) do
+		if name == target then
+			self.db:SetProfile(target)
+			return
+		end
+	end
+end
+
+
+function CDM:OnSpecChanged(_, unit)
+	if unit and unit ~= "player" then return end
+	self:ApplySpecProfile()
 end
 
 

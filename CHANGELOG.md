@@ -1,5 +1,19 @@
 # Cooldown Master Changelog
 
+## 0.12.0 (2026-06-21) — Profiles, consumables, and visibility fixes
+
+New profile tools, potion and trinket tracking, a cooldown-tint control, and two visibility fixes.
+
+### New Features
+- **Per-spec profile auto-switch.** On the Profiles tab, map each specialization to a profile and the addon switches to it when you change spec (and on login).
+- **Profile import/export.** Export the current profile to a copy-paste string and import one back, from the Profiles tab.
+- **Potion auto-discovery and trinket tracking.** Potions and flasks in your bags are found automatically, and equipped on-use trinkets (slots 13 and 14) are tracked under a new Trinkets filter category.
+- **Cooldown Tint slider** (Lanes > Appearance > Icons) to lighten the cooldown darkening so you can see the spell art, or set it to 0 to turn it off.
+
+### Bug Fixes
+- Locking the frames no longer hides lanes; it now only disables dragging. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.
+- Using a single potion no longer pops several ready frames at once. Combat potions share one cooldown, so they now show and notify as a single icon.
+
 ## 0.11.0 (2026-06-21) — Minimap toggle and icon tooltips
 
 Two new options: a checkbox to show or hide the minimap button, and tooltips when you hover a lane icon.

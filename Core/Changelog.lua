@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.12.0",
+		date = "2026-06-21",
+		sections = {
+			{ head = "New Features", items = {
+				"Per-spec profile auto-switch: map each specialization to a profile on the Profiles tab and the addon switches when you change spec (and on login).",
+				"Profile import/export: copy the current profile to a string and paste one back, from the Profiles tab.",
+				"Potions and flasks in your bags are auto-discovered, and equipped on-use trinkets (slots 13/14) are tracked under a new Trinkets filter category.",
+				"Cooldown Tint slider (Lanes > Appearance > Icons) lightens the cooldown darkening so you can see the spell art, or turns it off at 0.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Locking the frames no longer hides lanes; it only disables dragging now. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.",
+				"Using a single potion no longer pops several ready frames at once: combat potions share one cooldown, so they show and notify as a single icon.",
+			} },
+		},
+	},
+	{
 		version = "0.11.0",
 		date = "2026-06-21",
 		sections = {

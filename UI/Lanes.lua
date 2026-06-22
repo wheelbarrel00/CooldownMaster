@@ -57,8 +57,9 @@ end
 
 local function LaneShouldShow(addon, cfg)
 	local g = addon.db.profile.global
-	-- Unlocked or test mode = positioning; force lanes on so they can be seen/dragged.
-	if g.unlockFrames or (ns.Engine and ns.Engine.testActive) then return true end
+	-- Test mode force-shows for positioning. Lock state deliberately does NOT affect
+	-- visibility (locking only disables dragging); the gate/autohide below own it.
+	if ns.Engine and ns.Engine.testActive then return true end
 	if not VisibilityGatePasses(g) then return false end
 	if g.autohide and not addon.combat and not cfg.overrideAutohide then return false end
 	return true
@@ -579,6 +580,10 @@ local function RefreshBody(laneIndex)
 		local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
 		btn.cd:SetHideCountdownNumbers(not showTime)
 
+		-- Cooldown-swipe darkness (0 = no tint). Re-applied each refresh since feeding
+		-- the cooldown can reset the swipe color.
+		btn.cd:SetSwipeColor(0, 0, 0, cfg.swipeAlpha or 0.8)
+
 		if btn._mouseOn ~= mouseOn then
 			btn._mouseOn = mouseOn
 			btn:EnableMouse(mouseOn)
@@ -621,8 +626,8 @@ function ns.Lanes_RefreshUnlockState(addon)
 			f.label:SetAlpha(unlocked and 0.6 or 0)
 		end
 	end
-	-- Unlocking force-shows lanes, so lock-state changes can flip visibility.
-	ApplyVisibility(addon)
+	-- No ApplyVisibility here: lock/unlock only toggles dragging + the drag label, so it
+	-- must never hide a lane. Visibility is owned by the gate/autohide on their own events.
 end
 
 

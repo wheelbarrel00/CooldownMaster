@@ -40,6 +40,7 @@ local function lane(frameName)
 		iconSize       = 40,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
+		swipeAlpha     = 0.8,   -- cooldown-swipe darkness; 0 = no tint (spell art fully visible)
 		iconText       = {
 			{ enabled = true,  text = "[cd.stacks]" },
 			{ enabled = true,  text = "[cd.time]"   },
@@ -141,6 +142,7 @@ ns.DEFAULTS = {
 		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
+		trinkets   = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },
 		custom     = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, readyBox = 1 },

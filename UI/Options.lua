@@ -641,6 +641,12 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		onChange = function(v) cfg.iconOffset = v; RefreshLane(laneIndex) end,
 	}))
 
+	place(W.CreateSlider(parent, {
+		label = "Cooldown Tint (0 = off)", min = 0, max = 1, step = 0.05,
+		value = cfg.swipeAlpha, width = 240,
+		onChange = function(v) cfg.swipeAlpha = v; RefreshLane(laneIndex) end,
+	}))
+
 	local secTxt = W.CreateSectionHeader(parent, "Icon Text")
 	secTxt:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTxt, 18)
@@ -1152,7 +1158,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 	local rowGap = 4
 
 	-- Items live in a parallel table (Engine:BuildTrackedItems); rows key on .spellID, which is itemID for items. Reset itemRows so stale FontString refs can't SetText a no-longer-shown row.
-	if categoryKey == "potions" and filtersState.itemRows then
+	if (categoryKey == "potions" or categoryKey == "trinkets") and filtersState.itemRows then
 		wipe(filtersState.itemRows)
 	end
 
@@ -1220,7 +1226,7 @@ local function BuildFiltersFormSurface(panelArea, subTabKey)
 		BuildFiltersDefaultsForm(child)
 	elseif subTabKey == "spells"  or subTabKey == "items"
 	    or subTabKey == "buffs"   or subTabKey == "debuffs"
-	    or subTabKey == "potions" then
+	    or subTabKey == "potions" or subTabKey == "trinkets" then
 		BuildFiltersSpellListForm(child, subTabKey)
 	else
 		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1411,6 +1417,50 @@ for _, def in ipairs(TABS) do
 end
 
 
+-- Profile import/export via the embedded AceSerializer + LibDeflate. Serializing
+-- db.profile captures only its non-default keys (AceDB defaults live on a metatable),
+-- so an import merges over the recipient's defaults and reproduces the sender's
+-- effective settings.
+local function ProfileExportString()
+	local ser = LibStub("AceSerializer-3.0", true)
+	local def = LibStub("LibDeflate", true)
+	if not (ser and def and ns.CDM) then return nil end
+	local payload = ser:Serialize({
+		addon   = ns.CONST.ADDON_NAME,
+		version = ns.CONST.VERSION,
+		profile = ns.CDM.db.profile,
+	})
+	return def:EncodeForPrint(def:CompressDeflate(payload, { level = 9 }))
+end
+
+local function ProfileDecode(str)
+	local ser = LibStub("AceSerializer-3.0", true)
+	local def = LibStub("LibDeflate", true)
+	if not (ser and def) then return nil, "serialization libraries unavailable" end
+	str = (str or ""):gsub("%s", "")
+	if str == "" then return nil, "empty string" end
+	local compressed = def:DecodeForPrint(str)
+	if not compressed then return nil, "not a valid import string" end
+	local payload = def:DecompressDeflate(compressed)
+	if not payload then return nil, "could not decompress" end
+	local ok, data = ser:Deserialize(payload)
+	if not ok or type(data) ~= "table" then return nil, "could not read profile data" end
+	if data.addon ~= ns.CONST.ADDON_NAME or type(data.profile) ~= "table" then
+		return nil, "not a Cooldown Master profile string"
+	end
+	return data.profile
+end
+
+-- Replace (not merge) the current profile's stored keys, then rebuild from it. Wiping
+-- keeps the same table reference AceDB tracks; cleared keys fall back to defaults.
+local function ApplyImportedProfile(prof)
+	local p = ns.CDM.db.profile
+	wipe(p)
+	for k, v in pairs(prof) do p[k] = v end
+	ns.CDM:ApplyProfile()
+end
+
+
 StaticPopupDialogs["COOLDOWNMASTER_RESET_PROFILE"] = {
 	text = "Reset profile \"%s\" to default settings?",
 	button1 = YES,
@@ -1435,6 +1485,31 @@ StaticPopupDialogs["COOLDOWNMASTER_DELETE_PROFILE"] = {
 			if ns.Options_Rebuild then ns.Options_Rebuild() end
 		end
 	end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
+	text = "Paste an exported string to overwrite the current profile \"%s\".",
+	button1 = "Import",
+	button2 = CANCEL,
+	hasEditBox = true,
+	editBoxWidth = 350,
+	OnShow = function(self)
+		self.editBox:SetText("")
+		self.editBox:SetMaxLetters(0)   -- import strings are long; never truncate
+		self.editBox:SetFocus()
+	end,
+	OnAccept = function(self)
+		local prof, err = ProfileDecode(self.editBox:GetText())
+		if not prof then
+			ns.CDM:Print("Import failed: " .. (err or "invalid string"))
+			return
+		end
+		ApplyImportedProfile(prof)
+		ns.CDM:Print("Imported into profile \"" .. ns.CDM.db:GetCurrentProfile() .. "\".")
+	end,
+	EditBoxOnEnterPressed = function(self) self:ClearFocus() end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
 	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
 }
 
@@ -1552,6 +1627,53 @@ local function BuildProfilesTab(content)
 	resetBtn:SetScript("OnClick", function()
 		StaticPopup_Show("COOLDOWNMASTER_RESET_PROFILE", db:GetCurrentProfile())
 	end)
+
+	local exportBtn = Theme.CreateButton(content, "Export", 130, 24)
+	exportBtn:SetPoint("TOPLEFT", resetBtn, "BOTTOMLEFT", 0, -12)
+	exportBtn:SetScript("OnClick", function()
+		local s = ProfileExportString()
+		if s and ns.ShowURL then ns.ShowURL(s) else ns.CDM:Print("Export failed.") end
+	end)
+	local importBtn = Theme.CreateButton(content, "Import", 130, 24)
+	importBtn:SetPoint("TOPLEFT", exportBtn, "TOPRIGHT", 16, 0)
+	importBtn:SetScript("OnClick", function()
+		StaticPopup_Show("COOLDOWNMASTER_IMPORT_PROFILE", db:GetCurrentProfile())
+	end)
+
+	-- Second column (the panel is wide): per-spec auto-switch. Retail spec API only;
+	-- the map lives in db.char (per character), so the dropdowns read CDM.db.char.
+	local numSpecs = GetNumSpecializations and GetNumSpecializations()
+	if numSpecs and numSpecs > 0 then
+		local rx = 470
+		local specHeader = Theme.CreateHeader(content, "Auto-switch by Specialization", "GameFontNormalLarge")
+		specHeader:SetPoint("TOPLEFT", content, "TOPLEFT", rx, -pad)
+
+		local specHint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		specHint:SetPoint("TOPLEFT", content, "TOPLEFT", rx, -(pad + 24))
+		specHint:SetText("Switch profile automatically when you change spec.")
+		specHint:SetTextColor(0.7, 0.7, 0.7)
+
+		local specOpts = { { value = "", text = "(no auto-switch)" } }
+		for _, name in ipairs(names) do
+			specOpts[#specOpts + 1] = { value = name, text = name }
+		end
+
+		local map = ns.CDM.db.char.specProfiles
+		local ry  = -(pad + 58)
+		for i = 1, numSpecs do
+			local specID, specName = GetSpecializationInfo(i)
+			if specID then
+				local dd = W.CreateDropdown(content, {
+					label = specName, value = map[specID] or "", width = ddW, options = specOpts,
+					onChange = function(v)
+						ns.CDM.db.char.specProfiles[specID] = (v ~= "" and v) or nil
+					end,
+				})
+				dd:SetPoint("TOPLEFT", content, "TOPLEFT", rx, ry)
+				ry = ry - step
+			end
+		end
+	end
 end
 
 for _, def in ipairs(TABS) do

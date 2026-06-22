@@ -17,11 +17,15 @@ Engine.testSpellIDs    = { 184575, 853, 633, 642 }
 Engine._loadingScreen      = false
 Engine._readyBlackoutUntil = 0
 
--- C_CooldownViewer enumerates spells only, so potion itemIDs are listed here
--- and read directly via C_Container.GetItemCooldown.
+-- C_CooldownViewer enumerates spells only, so potion itemIDs are listed here as a
+-- baseline and read via C_Container.GetItemCooldown; BuildTrackedItems also bag-scans.
 local POTION_ITEMS = {
 	241308, 241304, 241309, 241323, 258318,
 }
+
+-- Blizzard ItemConsumableSubclass IDs (verify in-game): 1 = Potion, 3 = Flask/Phial.
+local TRACKED_CONSUMABLE_SUBCLASS = { [1] = true, [3] = true }
+local TRINKET_SLOTS = { 13, 14 }
 
 Engine.readyCurve      = nil
 Engine.progressCurve   = nil
@@ -139,6 +143,21 @@ local function ScheduleDeferredScan()
 	if Engine._spellUpdatePending then return end
 	Engine._spellUpdatePending = true
 	C_Timer.After(SCAN_DEBOUNCE, DeferredCooldownPoll)
+end
+
+
+-- Bags/equipment change far more often than the tracked-item set actually does, so
+-- collapse a burst (looting, swapping) into one rescan + filter-list refresh.
+local function ScheduleItemRebuild()
+	if Engine._itemRebuildPending then return end
+	Engine._itemRebuildPending = true
+	C_Timer.After(0.5, function()
+		Engine._itemRebuildPending = nil
+		if Engine.testActive then return end
+		Engine:BuildTrackedItems()
+		Engine:PollAllItems()
+		if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
+	end)
 end
 
 
@@ -330,7 +349,8 @@ function Engine:BuildTrackedItems()
 		return
 	end
 
-	for _, itemID in ipairs(POTION_ITEMS) do
+	local function addItem(itemID, category, slot)
+		if not itemID or self.trackedItems[itemID] then return end
 		if C_Item and C_Item.RequestLoadItemDataByID then
 			C_Item.RequestLoadItemDataByID(itemID)
 		end
@@ -338,9 +358,42 @@ function Engine:BuildTrackedItems()
 		self.trackedItems[itemID] = {
 			name     = name or ("Item " .. itemID),
 			icon     = icon or 134400,
-			category = ns.CONST.POTION_CATEGORY,
+			category = category,
 			kind     = "item",
+			slot     = slot,   -- set for equipped trinkets (polled via the inventory slot)
 		}
+	end
+
+	-- Baseline potions: always tracked even if not currently carried.
+	for _, itemID in ipairs(POTION_ITEMS) do
+		addItem(itemID, ns.CONST.POTION_CATEGORY)
+	end
+
+	-- Auto-discover carried potions/flasks from the bags (reagent bag excluded).
+	local consumableClass = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0
+	if C_Item and C_Item.GetItemInfoInstant then
+		for bag = 0, (NUM_BAG_SLOTS or 4) do
+			local numSlots = C_Container.GetContainerNumSlots(bag) or 0
+			for slot = 1, numSlots do
+				local itemID = C_Container.GetContainerItemID(bag, slot)
+				if itemID then
+					local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+					if classID == consumableClass and TRACKED_CONSUMABLE_SUBCLASS[subclassID] then
+						addItem(itemID, ns.CONST.POTION_CATEGORY)
+					end
+				end
+			end
+		end
+	end
+
+	-- Equipped on-use trinkets (slots 13/14). GetItemSpell is nil for passive trinkets.
+	if C_Item and C_Item.GetItemSpell and GetInventoryItemID then
+		for _, eslot in ipairs(TRINKET_SLOTS) do
+			local itemID = GetInventoryItemID("player", eslot)
+			if itemID and C_Item.GetItemSpell(itemID) then
+				addItem(itemID, ns.CONST.TRINKET_CATEGORY, eslot)
+			end
+		end
 	end
 end
 
@@ -569,15 +622,18 @@ function Engine:ScanSpells()
 end
 
 
--- C_Container.GetItemCooldown returns plain numbers (no secret-value taint, no
--- DurationObject), so items can be read and compared directly.
-
-function Engine:PollOneItem(itemID)
-	if not (C_Container and C_Container.GetItemCooldown) then
+-- Bag items poll by itemID via C_Container; equipped trinkets poll by inventory slot.
+function Engine:PollOneItem(itemID, tracked)
+	local startTime, duration
+	if tracked and tracked.slot then
+		if not GetInventoryItemCooldown then return false end
+		startTime, duration = GetInventoryItemCooldown("player", tracked.slot)
+	elseif C_Container and C_Container.GetItemCooldown then
+		startTime, duration = C_Container.GetItemCooldown(itemID)
+	else
 		return false
 	end
 
-	local startTime, duration = C_Container.GetItemCooldown(itemID)
 	if not startTime or not duration then return false end
 	if duration <= 1.5 then return false end   -- skip GCD-length cooldowns
 	if startTime <= 0 then return false end
@@ -594,9 +650,25 @@ function Engine:PollAllItems()
 	local seen = self._seenItems
 	wipe(seen)
 
-	for itemID, tracked in pairs(self.trackedItems) do
-		local active, startTime, duration, endTime = self:PollOneItem(itemID)
-		if active then
+	self._itemOrder = self._itemOrder or {}
+	local order = self._itemOrder
+	wipe(order)
+	for itemID in pairs(self.trackedItems) do
+		order[#order + 1] = itemID
+	end
+	table.sort(order)
+
+	-- Combat potions share one cooldown, so dedupe by startTime (lowest itemID wins):
+	-- one use = one icon and one ready pop, not one per carried potion.
+	self._cdSeen = self._cdSeen or {}
+	local cdSeen = self._cdSeen
+	wipe(cdSeen)
+
+	for _, itemID in ipairs(order) do
+		local tracked = self.trackedItems[itemID]
+		local active, startTime, duration, endTime = self:PollOneItem(itemID, tracked)
+		if tracked and active and not cdSeen[startTime] then
+			cdSeen[startTime] = true
 			seen[itemID] = true
 			local existing = self.entries[itemID]
 			if existing then
@@ -606,7 +678,7 @@ function Engine:PollAllItems()
 			else
 				local cat = tracked.category or ns.CONST.POTION_CATEGORY
 				self.entries[itemID] = {
-					spellID    = itemID,   -- lane code reads .spellID; reuse field
+					spellID    = itemID,
 					itemID     = itemID,
 					name       = tracked.name,
 					icon       = tracked.icon,
@@ -622,11 +694,11 @@ function Engine:PollAllItems()
 		end
 	end
 
-	-- Same loading-screen blackout guard as ScanSpells (keep the entry, fire nothing).
 	local blackout = self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0)
 	for itemID, entry in pairs(self.entries) do
 		if entry.kind == "item" and not seen[itemID] and not blackout then
-			if ns.ReadyFrames_OnReadyTransition then
+			-- untracked (used up / unequipped) = silent removal, not a ready edge
+			if self.trackedItems[itemID] and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(itemID, entry)
 			end
 			self.entries[itemID] = nil
@@ -799,6 +871,19 @@ function Engine:Start(addon)
 			Engine:PollAllItems()
 		end)
 		self.bagCooldownFrame = f
+	end
+
+	-- Rediscover tracked items when the bags change (new/used potions) or a trinket is
+	-- swapped (slots 13/14). BAG_UPDATE_DELAYED already collapses a batch of BAG_UPDATEs.
+	if not self.itemRebuildFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("BAG_UPDATE_DELAYED")
+		f:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+		f:SetScript("OnEvent", function(_, event, slot)
+			if event == "PLAYER_EQUIPMENT_CHANGED" and slot ~= 13 and slot ~= 14 then return end
+			ScheduleItemRebuild()
+		end)
+		self.itemRebuildFrame = f
 	end
 
 	-- PLAYER_ENTERING_WORLD also clears the flag in case LOADING_SCREEN_DISABLED is

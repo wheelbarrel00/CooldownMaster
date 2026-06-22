@@ -55,7 +55,8 @@
         "STANDARD_TEXT_FONT",
         "ReloadUI",
         "GameTooltip_SetDefaultAnchor",
-        "GetUnitName"
+        "GetUnitName",
+        "NUM_BAG_SLOTS"
     ],
     "claudeCode.allowDangerouslySkipPermissions": true
 }

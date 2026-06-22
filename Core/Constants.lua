@@ -4,7 +4,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.11.0",
+	VERSION          = "0.12.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster" },
 
@@ -45,16 +45,19 @@ ns.CONST = {
 	},
 
 	-- Keys are Blizzard's Enum.CooldownViewerCategory (0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff);
-	-- 100+ are our own synthetic categories (100 = potions, polled via C_Container.GetItemCooldown).
+	-- 100+ are our own synthetic item categories (100 = bag potions/flasks via C_Container.GetItemCooldown;
+	-- 101 = equipped on-use trinkets via GetInventoryItemCooldown).
 	CATEGORY_TO_FILTER_KEY = {
 		[0]   = "spells",
 		[1]   = "items",
 		[2]   = "buffs",
 		[3]   = "debuffs",
 		[100] = "potions",
+		[101] = "trinkets",
 	},
 
-	POTION_CATEGORY = 100,
+	POTION_CATEGORY  = 100,
+	TRINKET_CATEGORY = 101,
 
 	-- Order matters: drives the Filters sub-tab strip order.
 	FILTER_CATEGORIES = {
@@ -64,6 +67,7 @@ ns.CONST = {
 		{ key = "buffs",      label = "Buffs",      active = true  },
 		{ key = "debuffs",    label = "Debuffs",    active = true  },
 		{ key = "potions",    label = "Potions",    active = true  },
+		{ key = "trinkets",   label = "Trinkets",   active = true  },
 		{ key = "offensives", label = "Offensives", active = false },
 		{ key = "petspells",  label = "Pet Spells", active = false },
 		{ key = "custom",     label = "Custom",     active = false },
