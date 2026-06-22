@@ -139,7 +139,14 @@ function CDM:ApplyProfile()
 	if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
 	if ns.DataBroker_ApplyProfile then ns.DataBroker_ApplyProfile(self) end
 	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
-	if ns.Options_Rebuild then ns.Options_Rebuild() end
+	-- Defer to next frame: ApplyProfile can run from the Active-profile dropdown's
+	-- onChange, and Options_Rebuild SetParent(nil)s that very dropdown mid-callback.
+	-- Letting the callback unwind first avoids tearing down a frame still on the stack.
+	if ns.Options_Rebuild then
+		C_Timer.After(0, function()
+			if ns.Options_Rebuild then ns.Options_Rebuild() end
+		end)
+	end
 end
 
 

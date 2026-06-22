@@ -2,6 +2,19 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.10.1",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Fixed a repeating Lua error in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count; multi-charge spells are detected from their maximum charges, so the recharge still shows once fully on cooldown.",
+				"Creating a profile now warns on an empty, duplicate, or current name, and clears the box with a confirmation on success.",
+				"Hardened active-profile switching so the dropdown can't tear itself down mid-click.",
+			} },
+			{ head = "Maintenance", items = {
+				"Removed charge-count text code paths that can't work under Midnight's in-combat value protection.",
+			} },
+		},
+	},
+	{
 		version = "0.10.0",
 		sections = {
 			{ head = "New Features", items = {

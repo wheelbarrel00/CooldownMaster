@@ -454,25 +454,21 @@ function Engine:ScanSpells()
 	for spellID, tracked in pairs(self.trackedSpells) do
 		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
 
-		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false
-		-- while ANY charge remains, so it only counts as on-cooldown once fully
-		-- depleted (isActive true) -- a partial recharge is NOT a cooldown and must
-		-- not show in a lane or pop a ready frame. The readable charge COUNT (counts
-		-- aren't secret in combat the way durations are) is then used, on a depleted
-		-- multi-charge spell, to feed the widget the charge-duration object (the
-		-- spell-cooldown object is blank for charge spells). 1-charge pseudo-charge
-		-- spells (Touch of the Magi) fail the maxCharges > 1 test and use the
-		-- spell-cooldown path unchanged.
-		local depletedCharge, curCharges, maxCharges = false, nil, nil
+		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false while
+		-- ANY charge remains, so it only counts as on-cooldown once fully depleted
+		-- (isActive true) -- a partial recharge is NOT a cooldown and must not show in a
+		-- lane or pop a ready frame. currentCharges is a SECRET value in combat (like
+		-- every cooldown number) -- reading or comparing it taints and throws -- but
+		-- maxCharges IS readable, and combined with the isActive gate below it's enough:
+		-- "active and multiCharge" means fully depleted, so we feed the widget the
+		-- charge-duration object (the spell-cooldown object is blank for charge spells).
+		-- 1-charge pseudo-charge spells (Touch of the Magi) fail maxCharges > 1 and use
+		-- the spell-cooldown path unchanged.
+		local multiCharge = false
 		if C_Spell.GetSpellCharges then
 			local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
-			if cok and type(ci) == "table" then
-				curCharges = ci.currentCharges
-				maxCharges = ci.maxCharges
-				if ci.maxCharges and curCharges and ci.maxCharges > 1
-					and curCharges < ci.maxCharges then
-					depletedCharge = true
-				end
+			if cok and type(ci) == "table" and ci.maxCharges and ci.maxCharges > 1 then
+				multiCharge = true
 			end
 		end
 
@@ -482,7 +478,7 @@ function Engine:ScanSpells()
 			seen[spellID] = true
 
 			local dObj
-			if depletedCharge and C_Spell.GetSpellChargeDuration then
+			if multiCharge and C_Spell.GetSpellChargeDuration then
 				local cok, cd = pcall(C_Spell.GetSpellChargeDuration, spellID, true)
 				if cok then dObj = cd end
 			end
@@ -517,10 +513,8 @@ function Engine:ScanSpells()
 					endTime   = now + duration,
 					laneIndex = self:ResolveLaneIndex(spellID, cat),
 					category  = cat,
-					dObj        = dObj,
-					_source     = "isactive",
-					_charges    = curCharges,
-					_maxCharges = maxCharges,
+					dObj      = dObj,
+					_source   = "isactive",
 				}
 			else
 				-- Still running: keep the extrapolated position (don't reset

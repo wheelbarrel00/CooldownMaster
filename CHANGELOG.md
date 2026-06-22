@@ -1,5 +1,17 @@
 # Cooldown Master Changelog
 
+## 0.10.1 — Combat crash fix
+
+Fixes a Lua error that could spam in combat for multi-charge spells, and adds feedback to the profile creation flow.
+
+### Bug Fixes
+- Fixed a repeating "secret number value" Lua error that fired in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count; multi-charge spells are detected from their maximum charges instead, so their recharge still shows once the spell is fully on cooldown.
+- Creating a profile now gives feedback: it warns on an empty, duplicate, or current name, and clears the box with a confirmation on success.
+- Hardened active-profile switching so the dropdown can't tear itself down mid-click.
+
+### Maintenance
+- Removed charge-count text code paths that can't work under Midnight's in-combat value protection.
+
 ## 0.10.0 — Ready Frames parity
 
 Ready Frames gains the full feature set it was known for: spells route to any of the three boxes, important cooldowns can be highlighted, and boxes lay out and animate the way you'd expect.

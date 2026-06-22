@@ -41,11 +41,6 @@ local function AcquireReadyIcon(f, index)
 	btn.tex:SetAllPoints(btn)
 	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-	btn.charges = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-	btn.charges:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
-	btn.charges:SetTextColor(1, 1, 1, 1)
-	btn.charges:Hide()
-
 	-- One-shot pop-in pulse: a visual Scale transform (origin CENTER) so the icon
 	-- bounces in place without disturbing its layout anchor. Guarded + API-detected
 	-- because the Classic flavors ship an older Scale-animation API.
@@ -437,16 +432,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	btn._pinned    = pinned
 	btn._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
 	btn:SetAlpha(cfg.iconAlpha or 1)
-
-	-- Engine entries carry _charges/_maxCharges (multi-charge spells only); show the
-	-- count on the ready icon when the box's first text slot is enabled.
-	if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
-	   and entry._charges and entry._maxCharges and entry._maxCharges > 1 then
-		btn.charges:SetText(string.format("%d/%d", entry._charges, entry._maxCharges))
-		btn.charges:Show()
-	else
-		btn.charges:Hide()
-	end
 
 	btn:Show()
 

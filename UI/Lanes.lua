@@ -239,11 +239,6 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		if fmt then btn.cd:SetCountdownFormatter(fmt) end
 	end
 
-	btn.charges = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-	btn.charges:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
-	btn.charges:SetTextColor(1, 1, 1, 1)
-	btn.charges:Hide()
-
 	btn:SetScript("OnEnter", function(self)
 		if self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 50)
@@ -517,14 +512,6 @@ local function RefreshBody(laneIndex)
 						-- controls whether its number is drawn.
 						local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
 						btn.cd:SetHideCountdownNumbers(not showTime)
-
-						if cfg.iconText and cfg.iconText[1] and cfg.iconText[1].enabled
-							and e.charges and e.maxCharges then
-							btn.charges:SetText(string.format("%d/%d", e.charges, e.maxCharges))
-							btn.charges:Show()
-						else
-							btn.charges:Hide()
-						end
 
 						btn:Show()
 					btn._endTime    = e.endTime

@@ -26,9 +26,10 @@ _Status: increment 2 (full CDTL2 parity) shipped in v0.10.0. Increment 1 shipped
   one per-spell "Ready Flags" dropdown (bit0 = important, bit1 = pinned). _Limitation:_
   a pinned ready icon clears only on box rebuild (profile switch / box toggle / `/reload`);
   there is no per-icon manual clear yet.
-- **Charge-count text** — engine entries now carry `_maxCharges` (`Core/Engine.lua`
-  `ScanSpells`); ready icons read `entry._charges`/`entry._maxCharges` (the stub read
-  non-existent `entry.charges`/`.maxCharges`, so charge text never showed before).
+- **Charge-count text** — attempted, then **removed in v0.10.1**: `C_Spell.GetSpellCharges`
+  `currentCharges` is a SECRET value in combat (only `maxCharges` is readable), so a live
+  charge count can't be shown there without tainting. The `_charges`/`_maxCharges` entry
+  fields and the ready-icon charge text were dropped.
 - **Built-in ready sounds** — `READY_BUILTIN_SOUNDS` exposes a few Blizzard `SOUNDKIT`
   entries (Ready Check / Quest Ding / Raid Warning) at the top of the Ready Sound
   dropdown, so audible defaults need no bundled `.ogg` files. LSM sounds still listed below.
@@ -45,9 +46,10 @@ _Status: increment 2 (full CDTL2 parity) shipped in v0.10.0. Increment 1 shipped
 - The Ready tab now mirrors the Lanes tab: Box 1/2/3 sub-tabs + a General/Appearance/Icons rail
   (name/enabled/grow/duration/sound; position + bg color + box alpha + border; icon size/alpha/offset/spacing).
 - Engine charge-spell fix: a depleted multi-charge spell (e.g. Shimmer) feeds the native widget its
-  charge-duration object (chosen via the readable charge count, `maxCharges > 1` and
-  `currentCharges < maxCharges`), so the swipe/number render once fully depleted. Single-cooldown
-  and 1-charge pseudo-charge spells (Touch of the Magi) are unaffected.
+  charge-duration object, so the swipe/number render once fully depleted. It is detected by the
+  readable `maxCharges > 1` alone (NOT `currentCharges`, which is a secret value in combat — see
+  v0.10.1) combined with the `isActive` gate (isActive only at 0 charges). Single-cooldown and
+  1-charge pseudo-charge spells (Touch of the Magi) are unaffected.
 - **Reverted (2026-06-21, user in-game test):** the earlier change that *tracked* charge spells
   while a charge was still regenerating. A partial recharge is not a cooldown, so it must not show
   in a lane or pop a ready frame. Charge spells now track only when **fully depleted** (`isActive`),
@@ -73,7 +75,7 @@ this file. The original deferred list (now done except the media/skinning items)
 - ~~Pop-in pulse, highlight styles, `highlightDuration`/`highlightSound`, post-combat linger
   (`pTime`), `pinned`~~ — all done.
 - Sound media — built-in `SOUNDKIT` ready sounds added; **bundling custom `.ogg` files still deferred**.
-- ~~Charge-count text on ready icons~~ — done (engine carries `_maxCharges`).
+- Charge-count text on ready icons — **removed in v0.10.1** (currentCharges is secret in combat; can't be shown without tainting).
 - **Masque** skinning hook — still deferred (Lanes does not skin either).
 
 ## What we are building
@@ -355,9 +357,10 @@ It **needs** (to reach parity + the decided design):
 - Post-combat linger (`pTime`) and the box-level fade-when-empty.
 - Sound channel `"SFX"` not `"Master"`
   ([UI/ReadyFrames.lua:283](../UI/ReadyFrames.lua#L283)).
-- Charge fields: the stub reads `entry.charges`/`entry.maxCharges`, which engine
-  entries don't populate yet (fails safe to no text). Pairs with the charge-spell
-  fix in [audit.md](../audit.md) §3.
+- Charge fields: charge-count text was **removed in v0.10.1** — `currentCharges` is a
+  secret value in combat (only `maxCharges` is readable), so a live count can't be shown
+  without tainting. The `_charges`/`_maxCharges` entry fields and the `btn.charges`
+  fontstring (here and in Lanes) were deleted.
 - Masque skinning hook (OptionalDep) for icons, to match how Lanes ought to skin.
 
 ## Known CDTL2 quirks to NOT copy (fix instead)

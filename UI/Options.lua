@@ -1475,7 +1475,24 @@ local function BuildProfilesTab(content)
 	createBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
 	createBtn:SetScript("OnClick", function()
 		local name = (newName or ""):trim()
-		if name ~= "" then db:SetProfile(name) end
+		if name == "" then
+			ns.CDM:Print("Enter a profile name first.")
+			return
+		end
+		if name == db:GetCurrentProfile() then
+			ns.CDM:Print("Already on profile: " .. name)
+			return
+		end
+		for _, existing in ipairs(db:GetProfiles()) do
+			if existing == name then
+				ns.CDM:Print("Profile already exists: " .. name .. " (switch with Active profile, or pick a new name).")
+				return
+			end
+		end
+		db:SetProfile(name)   -- creates the new profile and switches to it
+		newName = ""
+		newBox:SetValue("")
+		ns.CDM:Print("Created and switched to profile: " .. name)
 	end)
 	y = y - step
 
