@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.11.0",
+		date = "2026-06-21",
+		sections = {
+			{ head = "New Features", items = {
+				"Added a Show Minimap Button checkbox to the Global tab to hide or show the minimap icon.",
+				"Hovering a lane icon now shows the spell or item tooltip. Turn it on with the Enable tooltips option on the Global tab (off by default); while frames are unlocked the icons stay click-through, so you can still drag lanes freely.",
+			} },
+		},
+	},
+	{
 		version = "0.10.2",
 		date = "2026-06-21",
 		sections = {

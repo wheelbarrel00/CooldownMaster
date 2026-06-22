@@ -1,5 +1,13 @@
 # Cooldown Master Changelog
 
+## 0.11.0 (2026-06-21) — Minimap toggle and icon tooltips
+
+Two new options: a checkbox to show or hide the minimap button, and tooltips when you hover a lane icon.
+
+### New Features
+- **Show Minimap Button** checkbox on the Global tab to hide or show the minimap icon.
+- **Icon tooltips.** Hovering a lane icon now shows the spell or item tooltip. Turn it on with the "Enable tooltips" option on the Global tab (off by default). While frames are unlocked the icons stay click-through, so you can still drag lanes freely.
+
 ## 0.10.2 (2026-06-21) — Stability and performance
 
 A maintenance release: fixes a ready-frame bug on loading screens, cuts memory use when switching profiles, smooths the lane display, and shows release dates in the in-game changelog.

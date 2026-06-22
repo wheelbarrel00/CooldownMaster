@@ -244,11 +244,21 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		if self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 50)
 		end
+		local cdm = ns.CDM
+		if not (cdm and cdm.db.profile.global.enableTooltip and self._cdSpellID) then return end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if self._cdItemID then
+			GameTooltip:SetItemByID(self._cdItemID)
+		else
+			GameTooltip:SetSpellByID(self._cdSpellID)
+		end
+		GameTooltip:Show()
 	end)
 	btn:SetScript("OnLeave", function(self)
 		if self:GetParent() then
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 1)
 		end
+		GameTooltip:Hide()
 	end)
 
 	btn:SetScript("OnUpdate", function(self)
@@ -506,6 +516,11 @@ local function RefreshBody(laneIndex)
 	local maxTime  = cfg.maxTime  or 120
 	local now      = GetTime()
 
+	-- Icons take mouse only when tooltips are on AND frames are locked, so an unlocked
+	-- lane still drags freely and tooltip-off play has no mouse capture at all.
+	local g       = addon.db.profile.global
+	local mouseOn = g.enableTooltip and not g.unlockFrames
+
 	local visible = refreshScratch
 	wipe(visible)
 	if entries then
@@ -543,6 +558,7 @@ local function RefreshBody(laneIndex)
 		-- reused pool slot re-feeds when it switches spells.
 		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
 			btn._cdSpellID = e.spellID
+			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
 			btn._cdStart   = e.startTime
 			-- Prefer the opaque DurationObject, but the privileged setter can throw on
 			-- a stale/secret handle and leave the widget with no cooldown, so fall back
@@ -562,6 +578,11 @@ local function RefreshBody(laneIndex)
 		-- whether its number is drawn.
 		local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
 		btn.cd:SetHideCountdownNumbers(not showTime)
+
+		if btn._mouseOn ~= mouseOn then
+			btn._mouseOn = mouseOn
+			btn:EnableMouse(mouseOn)
+		end
 
 		btn:Show()
 		btn._endTime  = e.endTime

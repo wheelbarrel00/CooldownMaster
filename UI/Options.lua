@@ -186,6 +186,20 @@ local function BuildGlobalTab(content)
 		prev = MakeCheck(t[1], t[2], prev, 0)
 	end
 
+	-- State is dataBroker.minimap.hide, not global[key], so it can't use MakeCheck;
+	-- flip through the existing DataBroker_ToggleMinimap (Show/Hide owns the LDBIcon).
+	local cbMinimap = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+	cbMinimap:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -4)
+	cbMinimap:SetSize(24, 24)
+	local fsm = cbMinimap:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	fsm:SetPoint("LEFT", cbMinimap, "RIGHT", 4, 0)
+	fsm:SetText("Show Minimap Button")
+	cbMinimap:SetChecked(not CDM.db.profile.dataBroker.minimap.hide)
+	cbMinimap:SetScript("OnClick", function()
+		if ns.DataBroker_ToggleMinimap then ns.DataBroker_ToggleMinimap(CDM) end
+	end)
+	prev = cbMinimap
+
 	local testBtn = Theme.CreateButton(content, "Toggle Test Mode", 180, 30)
 	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
 	testBtn:SetScript("OnClick", function()
