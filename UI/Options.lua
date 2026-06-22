@@ -9,7 +9,7 @@ local TABS = {
 	{ id = "filters",      label = "Filters",       builder = nil },
 	{ id = "colors",       label = "Colors",        builder = nil },
 	{ id = "profiles",     label = "Profiles",      builder = nil },
-	{ id = "about",        label = "About",         builder = nil },
+	{ id = "about",        label = "About",         builder = nil, static = true },
 }
 
 local panel
@@ -1547,11 +1547,18 @@ end
 
 function ns.Options_Rebuild()
 	if not panel then return end
-	for _, frame in pairs(tabContents) do
-		frame:Hide()
-		frame:SetParent(nil)
+	-- Keep profile-independent tabs (About) cached; recreating them only leaks frames
+	-- (never GC'd) since their content doesn't depend on db.profile.
+	for _, def in ipairs(TABS) do
+		if not def.static then
+			local frame = tabContents[def.id]
+			if frame then
+				frame:Hide()
+				frame:SetParent(nil)
+				tabContents[def.id] = nil
+			end
+		end
 	end
-	wipe(tabContents)
 	wipe(lanesState.formFrames)
 	wipe(filtersState.formFrames)
 	filtersState.itemRows = nil

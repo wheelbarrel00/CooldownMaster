@@ -2,7 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.10.2",
+		date = "2026-06-21",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Fixed every tracked spell popping into the ready frames at once after a loading screen or zone change. The cooldown state the game reports during a loading screen is briefly unreliable, so the addon now waits for it to settle instead of treating every cooldown as ready.",
+			} },
+			{ head = "Improvements", items = {
+				"Switching, copying, or resetting profiles no longer leaks frames: lane and ready boxes are reused instead of destroyed and recreated, and the About tab is no longer rebuilt each time.",
+				"Lane icons reposition only when they actually move (not on every frame) and keep a stable order, so they no longer reshuffle as cooldowns come and go.",
+				"The in-game changelog now shows the release date for each version.",
+			} },
+		},
+	},
+	{
 		version = "0.10.1",
+		date = "2026-06-21",
 		sections = {
 			{ head = "Bug Fixes", items = {
 				"Fixed a repeating Lua error in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count; multi-charge spells are detected from their maximum charges, so the recharge still shows once fully on cooldown.",
@@ -16,6 +31,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.10.0",
+		date = "2026-06-21",
 		sections = {
 			{ head = "New Features", items = {
 				"Ready Frames routing: each Filters category has a Ready Box setting, and any spell can override it, so ready popups can be split across the three boxes (or turned off per spell) instead of all landing in one box.",
@@ -37,6 +53,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.9.0",
+		date = "2026-06-21",
 		sections = {
 			{ head = "New Features", items = {
 				"Ready Frames: when a tracked spell or item comes off cooldown its icon pops into a dedicated on-screen box, holds for a set time, then fades. Three movable boxes, configured on the new Ready tab (General / Appearance / Icons).",
@@ -54,6 +71,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.8.1",
+		date = "2026-06-21",
 		sections = {
 			{ head = "Other", items = {
 				"Some code cleanup.",
@@ -62,6 +80,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.8.0",
+		date = "2026-06-18",
 		sections = {
 			{ head = "Improvements", items = {
 				"Retail interface compatibility updated to WoW 12.0.7, so the addon loads without the out-of-date warning on the current Midnight patch.",
@@ -73,6 +92,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.7.0",
+		date = "2026-06-10",
 		sections = {
 			{ head = "New Features", items = {
 				"Baseline cooldown coverage for all classes and specs, seeded from the game's own base-cooldown data, so icons start in the right place on any class.",
@@ -94,6 +114,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.6.0",
+		date = "2026-05-30",
 		sections = {
 			{ head = "New Features", items = {
 				"Combat-accurate cooldown display: each lane icon renders Blizzard's native swipe and countdown, fed the cooldown object directly, so timers stay exact in combat.",
@@ -112,6 +133,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.5.0",
+		date = "2026-05-23",
 		sections = {
 			{ head = "New Features", items = {
 				"Potions: item cooldowns polled via C_Container.GetItemCooldown, with a new Filters > Potions sub-tab.",
@@ -130,6 +152,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.4.0",
+		date = "2026-05-03",
 		sections = {
 			{ head = "New Features", items = {
 				"Filters > Defaults: per-category Enabled, Show by Default, Ignore Threshold, and Default Lane.",
@@ -146,6 +169,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.3.0",
+		date = "Undated",
 		sections = {
 			{ head = "Removed", items = {
 				"Bar Frames and Ready Frames features and their tabs (Blizzard's Cooldown Manager already covers those).",
@@ -157,6 +181,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.2.0",
+		date = "2026-05-03",
 		sections = {
 			{ head = "New Features", items = {
 				"Curve-evaluation cooldown engine that routes numeric math through Blizzard's privileged DurationObject, avoiding Midnight secret-value taint.",
@@ -166,6 +191,7 @@ ns.Changelog = {
 	},
 	{
 		version = "0.1.0",
+		date = "Undated",
 		sections = {
 			{ head = "Implemented", items = {
 				"First playable build: Ace3 addon, themed options panel, LibDataBroker launcher and minimap button, and slash commands. Loads on Midnight, Classic Era, and TBC Classic.",

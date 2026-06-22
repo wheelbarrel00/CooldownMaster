@@ -13,6 +13,9 @@ Engine.entries         = {}
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
 Engine.testSpellIDs    = { 184575, 853, 633, 642 }
+-- Gate ready-popup suppression during the loading-screen cooldown blackout (ScanSpells).
+Engine._loadingScreen      = false
+Engine._readyBlackoutUntil = 0
 
 -- C_CooldownViewer enumerates spells only, so potion itemIDs are listed here
 -- and read directly via C_Container.GetItemCooldown.
@@ -23,6 +26,9 @@ local POTION_ITEMS = {
 Engine.readyCurve      = nil
 Engine.progressCurve   = nil
 local MAX_DURATION = 600
+
+local READY_BLACKOUT_GRACE = 3      -- grace (s) after a loading screen; cooldowns re-sync late
+local READY_MAX_POPS_PER_SCAN = 3   -- more ready edges than this in one scan = a blackout, not real
 
 -- Baseline (no haste/talent) cooldowns; a learned read overrides these because
 -- it accounts for talent modifications. Covers Paladin (Ret) and Mage (all specs).
@@ -533,15 +539,29 @@ function Engine:ScanSpells()
 		end
 	end
 
-	-- isActive is authoritative for removal (covers proc resets). Items are
-	-- pruned by PollAllItems and test entries by Tick, so skip both here.
+	-- A loading screen briefly reports every cooldown as not-active while it's still
+	-- running, so a scan landing there would pop the whole tracked set ready at once.
+	-- Suppress popups in the blackout window (keep entries) and, as a backstop, stay
+	-- silent if an implausibly large batch goes ready in one scan.
+	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
+
+	self._readyEdges = self._readyEdges or {}
+	local edges = self._readyEdges
+	wipe(edges)
 	for spellID, entry in pairs(self.entries) do
 		if entry._source ~= "test" and entry.kind ~= "item" and not seen[spellID] then
-			-- Active->inactive edge = the spell is ready; fire the popup before discarding.
+			edges[#edges + 1] = spellID
+		end
+	end
+	local massVanish = #edges > READY_MAX_POPS_PER_SCAN
+
+	for _, spellID in ipairs(edges) do
+		if not blackout then
 			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell
-			-- discards it silently instead of firing a false ready popup.
-			if self.trackedSpells and self.trackedSpells[spellID] and ns.ReadyFrames_OnReadyTransition then
-				ns.ReadyFrames_OnReadyTransition(spellID, entry)
+			-- discards it silently rather than popping a false ready.
+			if not massVanish and self.trackedSpells and self.trackedSpells[spellID]
+				and ns.ReadyFrames_OnReadyTransition then
+				ns.ReadyFrames_OnReadyTransition(spellID, self.entries[spellID])
 			end
 			self.entries[spellID] = nil
 		end
@@ -602,8 +622,10 @@ function Engine:PollAllItems()
 		end
 	end
 
+	-- Same loading-screen blackout guard as ScanSpells (keep the entry, fire nothing).
+	local blackout = self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0)
 	for itemID, entry in pairs(self.entries) do
-		if entry.kind == "item" and not seen[itemID] then
+		if entry.kind == "item" and not seen[itemID] and not blackout then
 			if ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(itemID, entry)
 			end
@@ -777,6 +799,24 @@ function Engine:Start(addon)
 			Engine:PollAllItems()
 		end)
 		self.bagCooldownFrame = f
+	end
+
+	-- PLAYER_ENTERING_WORLD also clears the flag in case LOADING_SCREEN_DISABLED is
+	-- missed, which would otherwise leave it stuck on and suppress every popup.
+	if not self.loadingScreenFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("LOADING_SCREEN_ENABLED")
+		f:RegisterEvent("LOADING_SCREEN_DISABLED")
+		f:RegisterEvent("PLAYER_ENTERING_WORLD")
+		f:SetScript("OnEvent", function(_, event)
+			if event == "LOADING_SCREEN_ENABLED" then
+				Engine._loadingScreen = true
+			else
+				Engine._loadingScreen = false
+				Engine._readyBlackoutUntil = GetTime() + READY_BLACKOUT_GRACE
+			end
+		end)
+		self.loadingScreenFrame = f
 	end
 
 	if not self.tickFrame then

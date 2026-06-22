@@ -181,6 +181,25 @@ local function RelayoutReadyFrame(f)
 	end
 end
 
+
+-- Reset a pooled box's popped icons so reuse (profile switch) starts empty; the
+-- box-fade pass in OnUpdate then hides the now-empty box if it's locked.
+local function ClearReadyIcons(f)
+	for i = 1, #f.iconPool do
+		local btn = f.iconPool[i]
+		if btn then
+			ClearIconHighlight(btn)
+			btn._pinned   = nil
+			btn._readyTime = nil
+			btn:SetAlpha(1)
+			btn:Hide()
+		end
+	end
+	f._boxFade     = nil
+	f._combatTimer = nil
+end
+
+
 function ns.ReadyFrames_Build(addon)
 	-- Repair saved cfg fields corrupted by an older bug (e.g. color tables written as scalars).
 	for i = 1, 3 do
@@ -365,6 +384,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	f.label = label
 
 	addon.readyFrames[index] = f
+	addon.readyFramePool[index] = f   -- free-list entry; reused across profile/enable changes
 end
 
 
@@ -526,15 +546,22 @@ function ns.ReadyFrames_RebuildOne(index)
 	local cfg = addon.db.profile.readyFrames[index]
 	if not cfg then return end
 
-	local existing = addon.readyFrames and addon.readyFrames[index]
-	if existing then
-		existing:Hide()
-		existing:SetParent(nil)
-		addon.readyFrames[index] = nil
-	end
+	-- Same free-list reuse as the lanes: the old destroy-and-recreate orphaned the
+	-- box + icon pool on every profile op / enable-toggle (WoW frames never GC).
+	local pooled = addon.readyFramePool[index]
 
 	if cfg.enabled then
-		ns.ReadyFrames_CreateFrame(addon, index, cfg)
-		ns.ReadyFrames_ApplyConfig(index)
+		if pooled then
+			ClearReadyIcons(pooled)
+			pooled.cfg = cfg   -- a profile switch swaps in a different box cfg table
+			addon.readyFrames[index] = pooled
+			ns.ReadyFrames_ApplyConfig(index)
+		else
+			ns.ReadyFrames_CreateFrame(addon, index, cfg)
+			ns.ReadyFrames_ApplyConfig(index)
+		end
+	else
+		if pooled then pooled:Hide() end
+		addon.readyFrames[index] = nil
 	end
 end

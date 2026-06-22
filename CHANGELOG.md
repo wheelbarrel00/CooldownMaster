@@ -1,6 +1,18 @@
 # Cooldown Master Changelog
 
-## 0.10.1 — Combat crash fix
+## 0.10.2 (2026-06-21) — Stability and performance
+
+A maintenance release: fixes a ready-frame bug on loading screens, cuts memory use when switching profiles, smooths the lane display, and shows release dates in the in-game changelog.
+
+### Bug Fixes
+- Fixed every tracked spell flooding the ready frames at once after a loading screen or zone change. The cooldown state the game reports during a loading screen is briefly unreliable; the addon now waits for it to settle instead of treating every cooldown as ready.
+
+### Improvements
+- Switching, copying, or resetting profiles no longer leaks frames. Lane and ready boxes are now reused instead of destroyed and recreated, and the About tab is no longer rebuilt each time.
+- Lane icons reposition only when they actually move, instead of on every frame, and now keep a stable order so they no longer reshuffle as cooldowns come and go.
+- The in-game changelog (About tab) now shows the release date for each version.
+
+## 0.10.1 (2026-06-21) — Combat crash fix
 
 Fixes a Lua error that could spam in combat for multi-charge spells, and adds feedback to the profile creation flow.
 
@@ -12,7 +24,7 @@ Fixes a Lua error that could spam in combat for multi-charge spells, and adds fe
 ### Maintenance
 - Removed charge-count text code paths that can't work under Midnight's in-combat value protection.
 
-## 0.10.0 — Ready Frames parity
+## 0.10.0 (2026-06-21) — Ready Frames parity
 
 Ready Frames gains the full feature set it was known for: spells route to any of the three boxes, important cooldowns can be highlighted, and boxes lay out and animate the way you'd expect.
 
@@ -33,7 +45,7 @@ Ready Frames gains the full feature set it was known for: spells route to any of
 ### Improvements
 - Ready boxes fade out smoothly when they empty instead of snapping off.
 
-## 0.9.0 — Ready Frames
+## 0.9.0 (2026-06-21) — Ready Frames
 
 The timeline-style **Ready Frames** display is back, the lane visibility and auto-hide settings now work, lanes gain a Timeline mode, and charge-based spells display correctly.
 
@@ -49,11 +61,11 @@ The timeline-style **Ready Frames** display is back, the lane visibility and aut
 ### Maintenance
 - Removed dead code: the unused Bar Frames file, undefined frame-discovery calls and their slash subcommands, and stale diagnostic counters.
 
-## 0.8.1 — Some code clean up
+## 0.8.1 (2026-06-21) — Some code clean up
 
 Some code clean up.
 
-## 0.8.0 — Midnight 12.0.7 compatibility
+## 0.8.0 (2026-06-18) — Midnight 12.0.7 compatibility
 
 A maintenance release that brings the retail build current with the latest Midnight patch and tidies packaging metadata on the Classic builds. No gameplay or tracking behavior changes.
 
@@ -63,7 +75,7 @@ A maintenance release that brings the retail build current with the latest Midni
 ### Maintenance
 - Corrected the Author field on the Burning Crusade Classic and Vanilla Classic builds to match the retail build.
 
-## 0.7.0 — All-class coverage and a reliability pass
+## 0.7.0 (2026-06-10) — All-class coverage and a reliability pass
 
 Cooldown position baselines now cover every class and spec instead of just Paladin and Mage, so icons land in sensible places on first sight regardless of what you play. This release also fixes a cluster of Filters and spec-swap bugs, makes test mode actually work, and includes a substantial allocation-reduction pass on the live engine.
 
@@ -87,7 +99,7 @@ Cooldown position baselines now cover every class and spec instead of just Palad
 - Added `/cdmaster seedtest`, a diagnostic that reports how many of the current spec's tracked spells have a learned, hardcoded, or game-seeded baseline, with sample values to sanity-check against tooltips.
 - Duration precedence is now explicit: learned (talent-adjusted, observed out of combat) takes priority over hardcoded fallbacks and game-seeded baselines, which take priority over a flat default. Hardcoded and seeded baselines no longer suppress learning the real value.
 
-## 0.6.0 — Combat-accurate cooldowns
+## 0.6.0 (2026-05-30) — Combat-accurate cooldowns
 
 A ground-up engine rewrite so cooldowns display correctly in combat under Midnight's "secret value" API restrictions. Previously, in-combat timers were extrapolated guesses that were often wrong; now each lane icon shows the real cooldown swipe and countdown, tracks the true cooldown state, and reads as a continuous clock.
 
@@ -107,7 +119,7 @@ A ground-up engine rewrite so cooldowns display correctly in combat under Midnig
 ### Developer notes
 - Added `docs/EXPERIMENTS.md` recording the Midnight secret-value investigation (no readable cooldown number exists in combat; only `isActive`/`isOnGCD` are usable) and the `/cdmaster curvetest` diagnostic that established it.
 
-## 0.5.0 — Potions, Mage support, and a performance pass
+## 0.5.0 (2026-05-23) — Potions, Mage support, and a performance pass
 
 Adds item-cooldown tracking (potions), extends fallback duration coverage to Mage, and includes a broad allocation-reduction pass across the engine and the lane renderer. Also fixes a load-blocking syntax error and a backdrop live-update bug.
 
@@ -124,7 +136,7 @@ Adds item-cooldown tracking (potions), extends fallback duration coverage to Mag
 - Engine performance: hoisted per-tick `pcall` closures to module-level functions, switched the hot pollers (`PollOneSpell` / `PollOneItem`) to multi-value returns instead of allocating a result table per call, and reused scratch tables (`_seenSpells` / `_seenItems`) across ticks. `SPELL_UPDATE_COOLDOWN` is now debounced so cooldown-change bursts collapse into a single deferred poll.
 - Lane renderer performance: pre-built integer/decimal time-string lookup tables to eliminate roughly 450 `string.format` allocations/sec from the per-icon `OnUpdate` and per-tick refresh; extracted the `ApplyConfig` and `Refresh` bodies to module-level functions so their `pcall` wrappers no longer allocate a closure at ~30 Hz across three lanes; the backdrop table is cached for the steady-state case.
 
-## 0.4.0 — Filters
+## 0.4.0 (2026-05-03) — Filters
 
 The Filters tab is now functional. Users can decide which discovered spells, items, buffs, and debuffs render in lanes, and override per-spell lane routing on a case-by-case basis.
 
@@ -143,7 +155,7 @@ The Filters tab is now functional. Users can decide which discovered spells, ite
 ### Not yet implemented
 - Filters sub-tabs for Offensives, Pet Spells, and Custom render a "Coming in v0.5" placeholder. Custom in particular requires an "add spell ID by hand" input flow, which is a feature unto itself.
 
-## 0.3.0 — Scope refocus: lanes only
+## 0.3.0 (Undated) — Scope refocus: lanes only
 
 Realized that Blizzard's built-in Cooldown Manager already covers the icon,
 status bar, and "ready" notification use cases natively. What it does not
@@ -172,7 +184,7 @@ on that one job — and on doing it well.
 - Curve-evaluation cooldown engine and persistent learning.
 - LibDataBroker launcher, minimap button, slash commands.
 
-## 0.2.0 — Engine cracked
+## 0.2.0 (2026-05-03) — Engine cracked
 
 Cooldown engine is live. Cracked the Midnight 12.0 secret-value problem by
 routing all numeric math through Blizzard's privileged
@@ -209,7 +221,7 @@ spells without ever touching tainted secret values directly.
 - Per-spell overrides, custom spell entry, import/export via LibDeflate.
 - Fallback duration tables for the remaining 12 classes.
 
-## 0.1.0 — Scaffolding
+## 0.1.0 (Undated) — Scaffolding
 
 First playable build. Loads cleanly on Mainline (Midnight 12.0+), Classic Era,
 and TBC Classic. The structural skeleton is in place; engine and tab content

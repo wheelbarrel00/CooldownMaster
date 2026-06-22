@@ -175,6 +175,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.index = index
 
 	addon.lanes[index] = f
+	addon.lanePool[index] = f   -- free-list entry; reused across profile/enable changes
 
 	-- Required: marker positioning lives only in ApplyConfigBody and the per-tick
 	-- refresh no longer applies config, so lanes built at login would otherwise
@@ -252,41 +253,65 @@ local function AcquireIcon(laneFrame, i, iconSize)
 
 	btn:SetScript("OnUpdate", function(self)
 		if not self._endTime then return end
-		local remaining = self._endTime - GetTime()
-		if remaining < 0 then remaining = 0 end
 		local cfg = self._cfg
 		if not cfg then return end
-		self:SetAlpha((cfg.iconAlpha) or 1)
+		local remaining = self._endTime - GetTime()
+		if remaining < 0 then remaining = 0 end
+
+		-- Alpha is config-driven, not time-driven: only push it on change, not every
+		-- frame (it's the same value 60x/sec otherwise).
+		local alpha = cfg.iconAlpha or 1
+		if self._alpha ~= alpha then
+			self._alpha = alpha
+			self:SetAlpha(alpha)
+		end
+
 		local off      = cfg.iconOffset or 0
 		local iconSize = self._iconSize or 40
 		-- TIMELINE = shared seconds axis (position is real time-left scaled to maxTime);
 		-- default = each icon spans the lane over its own cooldown.
 		local denom = (cfg.mode == "TIMELINE") and (cfg.maxTime or 120) or (self._duration or 120)
 		local progress = math.min(1, math.max(0, remaining / denom))
-		self:ClearAllPoints()
+
+		local point, coord
 		if cfg.vertical then
-			local laneH   = cfg.height or 400
-			local usableH = math.max(1, laneH - iconSize)
+			local usableH = math.max(1, (cfg.height or 400) - iconSize)
 			local y = progress * usableH
-			if cfg.reversed then
-				self:SetPoint("TOP", self:GetParent(), "TOP", off, -y)
-			else
-				self:SetPoint("BOTTOM", self:GetParent(), "BOTTOM", off, y)
-			end
+			if cfg.reversed then point, coord = "TOP", -y else point, coord = "BOTTOM", y end
 		else
-			local laneW  = cfg.width or 400
-			local usable = math.max(1, laneW - iconSize)
+			local usable = math.max(1, (cfg.width or 400) - iconSize)
 			local x = progress * usable
-			if cfg.reversed then
-				self:SetPoint("RIGHT", self:GetParent(), "RIGHT", -x, off)
+			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
+		end
+
+		-- Re-anchor only when the integer-pixel position, anchor point, or offset
+		-- actually changes. A long cooldown crawls <0.1 px/frame, so this skips nearly
+		-- every ClearAllPoints/SetPoint (the layout cost the old code paid each frame).
+		local rounded = math.floor(coord + 0.5)
+		if self._anchPoint ~= point or self._anchCoord ~= rounded or self._anchOff ~= off then
+			self._anchPoint, self._anchCoord, self._anchOff = point, rounded, off
+			self:ClearAllPoints()
+			if cfg.vertical then
+				self:SetPoint(point, self:GetParent(), point, off, rounded)
 			else
-				self:SetPoint("LEFT", self:GetParent(), "LEFT", x, off)
+				self:SetPoint(point, self:GetParent(), point, rounded, off)
 			end
 		end
 	end)
 
 	pool[i] = btn
 	return btn
+end
+
+
+-- Reset a pooled icon's instance keys so a reused slot re-feeds its cooldown cleanly.
+local function ClearLaneIcon(btn)
+	if not btn then return end
+	btn._endTime   = nil
+	btn._cdSpellID = nil
+	btn._cdStart   = nil
+	if btn.cd then btn.cd:Clear() end
+	btn:Hide()
 end
 
 
@@ -413,16 +438,40 @@ function ns.Lanes_RebuildOne(laneIndex)
 	local cfg = addon.db.profile.lanes[laneIndex]
 	if not cfg then return end
 
-	local existing = addon.lanes and addon.lanes[laneIndex]
-	if existing then
-		existing:Hide()
-		existing:SetParent(nil)
-		addon.lanes[laneIndex] = nil
-	end
+	-- Reuse the pooled frame: destroy-and-recreate orphaned the whole lane tree (never
+	-- GC'd) on every profile switch and enable-toggle.
+	local pooled = addon.lanePool[laneIndex]
 
 	if cfg.enabled then
-		ns.Lanes_CreateLane(addon, laneIndex, cfg)   -- applies config itself
+		if pooled then
+			for j = 1, pooled.activeIcons do
+				ClearLaneIcon(pooled.iconPool[j])
+			end
+			pooled.activeIcons = 0
+			pooled.cfg = cfg   -- a profile switch swaps in a different lane cfg table
+			addon.lanes[laneIndex] = pooled
+			ns.Lanes_ApplyConfig(laneIndex)
+			ApplyVisibility(addon)   -- ApplyConfig doesn't toggle show/hide
+		else
+			ns.Lanes_CreateLane(addon, laneIndex, cfg)   -- applies config itself
+		end
+	else
+		if pooled then pooled:Hide() end
+		addon.lanes[laneIndex] = nil
 	end
+end
+
+
+-- Stable slot assignment: pairs() order over entries is unspecified and shifts as
+-- entries are added/removed, reshuffling icons between pool slots and flickering their
+-- textures/swipes. Sort by startTime so a fresh cooldown appends to the last slot
+-- (existing icons keep theirs, no re-feed); spellID breaks ties for full determinism.
+local refreshScratch = {}
+local function ByStartTime(a, b)
+	if a.startTime ~= b.startTime then
+		return (a.startTime or 0) < (b.startTime or 0)
+	end
+	return a.spellID < b.spellID
 end
 
 
@@ -440,14 +489,7 @@ local function RefreshBody(laneIndex)
 	-- starts clean, then skip the per-tick render work (incl. lazy icon creation).
 	if not laneFrame:IsShown() then
 		for j = 1, laneFrame.activeIcons do
-			local btn = laneFrame.iconPool[j]
-			if btn then
-				btn._endTime   = nil
-				btn._cdSpellID = nil
-				btn._cdStart   = nil
-				if btn.cd then btn.cd:Clear() end
-				btn:Hide()
-			end
+			ClearLaneIcon(laneFrame.iconPool[j])
 		end
 		laneFrame.activeIcons = 0
 		return
@@ -464,7 +506,8 @@ local function RefreshBody(laneIndex)
 	local maxTime  = cfg.maxTime  or 120
 	local now      = GetTime()
 
-	local i = 0
+	local visible = refreshScratch
+	wipe(visible)
 	if entries then
 		for _, e in pairs(entries) do
 			if e.endTime
@@ -477,66 +520,62 @@ local function RefreshBody(laneIndex)
 				-- isActive entries are removed by ScanSpells at the true cooldown
 				-- end, so render them even if our extrapolated remaining ran out.
 				if remaining > 0 or e._source == "isactive" then
-					local hideForLong = remaining > maxTime and cfg.hideLongTimers
-					if not hideForLong then
-						i = i + 1
-						local btn = AcquireIcon(laneFrame, i, iconSize)
-						btn:SetSize(iconSize, iconSize)
-						if e.icon then
-							btn.tex:SetTexture(e.icon)
-						else
-							btn.tex:SetTexture(nil)
-						end
-						-- Feed the native cooldown once per instance, keyed on
-						-- spellID+startTime so a reused pool slot re-feeds when it
-						-- switches spells.
-						if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
-							btn._cdSpellID = e.spellID
-							btn._cdStart   = e.startTime
-							-- Prefer the opaque DurationObject, but the privileged
-							-- setter can throw on a stale/secret handle and leave the
-							-- widget with no cooldown, so fall back to extrapolated
-							-- numbers when it's missing or pcall fails.
-							local fed = false
-							if e.dObj and btn.cd.SetCooldownFromDurationObject then
-								fed = pcall(btn.cd.SetCooldownFromDurationObject, btn.cd, e.dObj)
-							end
-							if not fed and e.startTime and e.duration then
-								btn.cd:SetCooldown(e.startTime, e.duration)
-							end
-							btn._cdFedPath = fed and "dObj" or "numbers"
-							e._cdFedPath   = btn._cdFedPath   -- surfaced by /cdmaster debug
-						end
-
-						-- The native widget owns the countdown text; this toggle only
-						-- controls whether its number is drawn.
-						local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
-						btn.cd:SetHideCountdownNumbers(not showTime)
-
-						btn:Show()
-					btn._endTime    = e.endTime
-					btn._duration   = e.duration
-					btn._cfg        = cfg
-					btn._iconSize   = iconSize
+					if not (remaining > maxTime and cfg.hideLongTimers) then
+						visible[#visible + 1] = e
 					end
 				end
 			end
 		end
 	end
+	table.sort(visible, ByStartTime)
+
+	local count = #visible
+	for idx = 1, count do
+		local e = visible[idx]
+		local btn = AcquireIcon(laneFrame, idx, iconSize)
+		btn:SetSize(iconSize, iconSize)
+		if e.icon then
+			btn.tex:SetTexture(e.icon)
+		else
+			btn.tex:SetTexture(nil)
+		end
+		-- Feed the native cooldown once per instance, keyed on spellID+startTime so a
+		-- reused pool slot re-feeds when it switches spells.
+		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
+			btn._cdSpellID = e.spellID
+			btn._cdStart   = e.startTime
+			-- Prefer the opaque DurationObject, but the privileged setter can throw on
+			-- a stale/secret handle and leave the widget with no cooldown, so fall back
+			-- to extrapolated numbers when it's missing or pcall fails.
+			local fed = false
+			if e.dObj and btn.cd.SetCooldownFromDurationObject then
+				fed = pcall(btn.cd.SetCooldownFromDurationObject, btn.cd, e.dObj)
+			end
+			if not fed and e.startTime and e.duration then
+				btn.cd:SetCooldown(e.startTime, e.duration)
+			end
+			btn._cdFedPath = fed and "dObj" or "numbers"
+			e._cdFedPath   = btn._cdFedPath   -- surfaced by /cdmaster debug
+		end
+
+		-- The native widget owns the countdown text; this toggle only controls
+		-- whether its number is drawn.
+		local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
+		btn.cd:SetHideCountdownNumbers(not showTime)
+
+		btn:Show()
+		btn._endTime  = e.endTime
+		btn._duration = e.duration
+		btn._cfg      = cfg
+		btn._iconSize = iconSize
+	end
 
 	-- Clear the instance keys on unused pool slots so a reused slot re-feeds
 	-- its cooldown cleanly next time.
-	for j = i + 1, laneFrame.activeIcons do
-		local btn = laneFrame.iconPool[j]
-		if btn then
-			btn._endTime   = nil
-			btn._cdSpellID = nil
-			btn._cdStart   = nil
-			if btn.cd then btn.cd:Clear() end
-			btn:Hide()
-		end
+	for j = count + 1, laneFrame.activeIcons do
+		ClearLaneIcon(laneFrame.iconPool[j])
 	end
-	laneFrame.activeIcons = i
+	laneFrame.activeIcons = count
 end
 
 
