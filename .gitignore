@@ -22,8 +22,12 @@ desktop.ini
 docs/verify_comments_only.py
 __pycache__/
 
-# Local working notes (not shipped)
-audit.md
+# Markdown docs are internal / not shipped, EXCEPT the repo README and CHANGELOG.
+# (CHANGELOG.md is rewritten + committed by the release git-sequence, so it must stay tracked.)
+# Covers audit.md, docs/*.md, claude.md, and any future internal *.md.
+*.md
+!/README.md
+!/CHANGELOG.md
 
 # Local saved variables (if you symlink your WTF for testing)
 WTF/
