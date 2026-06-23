@@ -305,14 +305,18 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		local iconSize = self._iconSize or 40
 		local progress = ModeProgress(cfg, remaining, self._duration)
 
+		-- SPREAD stacking nudges icons apart along the lane axis; 0 for every other mode.
+		local shift = self._spreadShift or 0
 		local point, coord
 		if cfg.vertical then
 			local usableH = math.max(1, (cfg.height or 400) - iconSize)
-			local y = progress * usableH
+			local y = progress * usableH + shift
+			if y < 0 then y = 0 elseif y > usableH then y = usableH end
 			if cfg.reversed then point, coord = "TOP", -y else point, coord = "BOTTOM", y end
 		else
 			local usable = math.max(1, (cfg.width or 400) - iconSize)
-			local x = progress * usable
+			local x = progress * usable + shift
+			if x < 0 then x = 0 elseif x > usable then x = usable end
 			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
 		end
 
@@ -339,12 +343,72 @@ end
 -- Reset a pooled icon's instance keys so a reused slot re-feeds its cooldown cleanly.
 local function ClearLaneIcon(btn)
 	if not btn then return end
-	btn._endTime   = nil
-	btn._cdSpellID = nil
-	btn._cdStart   = nil
-	btn._stackOff  = nil
+	btn._endTime     = nil
+	btn._cdSpellID   = nil
+	btn._cdStart     = nil
+	btn._stackOff    = nil
+	btn._spreadShift = nil
+	if btn._tinted and btn.tex then
+		btn._tinted = nil
+		btn.tex:SetVertexColor(1, 1, 1)
+		btn.tex:SetDesaturated(false)
+	end
 	if btn.cd then btn.cd:Clear() end
 	btn:Hide()
+end
+
+
+-- Default icon-border trim (matches the texcoord set at creation); the zoom multiplier
+-- scales the visible fraction relative to this baseline so zoom = 1 leaves the look unchanged.
+local ICON_BASE_VISIBLE = 1 - 0.08 * 2
+
+-- Shared per-icon styling for lanes AND ready frames: configurable zoom + the "unusable"
+-- tint/desaturate. C_Spell.IsSpellUsable is a plain boolean (not a secret value in combat),
+-- so this is combat-safe. Cached so the common usable path makes no setter calls after the
+-- first frame; the texcoord is only re-applied when the zoom level changes.
+function ns.StyleIcon(btn, spellID, itemID, g)
+	local tex = btn and btn.tex
+	if not (tex and g) then return end
+
+	local zoom = g.zoom or 1
+	if zoom < 1 then zoom = 1 end
+	if btn._zoom ~= zoom then
+		btn._zoom = zoom
+		local inset = (1 - ICON_BASE_VISIBLE / zoom) * 0.5
+		tex:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+	end
+
+	local tint, desat = g.notUsableTint, g.notUsableDesaturate
+	if not (tint or desat) then
+		if btn._tinted then
+			btn._tinted = nil
+			tex:SetVertexColor(1, 1, 1)
+			tex:SetDesaturated(false)
+		end
+		return
+	end
+
+	local usable = true
+	if itemID then
+		if C_Item and C_Item.IsUsableItem then usable = C_Item.IsUsableItem(itemID) end
+	elseif spellID and C_Spell and C_Spell.IsSpellUsable then
+		usable = C_Spell.IsSpellUsable(spellID)
+	end
+
+	if usable == false then
+		if tint then
+			local c = g.notUsableColor
+			tex:SetVertexColor(c and c.r or 1, c and c.g or 1, c and c.b or 1)
+		else
+			tex:SetVertexColor(1, 1, 1)
+		end
+		tex:SetDesaturated(desat and true or false)
+		btn._tinted = true
+	elseif btn._tinted then
+		btn._tinted = nil
+		tex:SetVertexColor(1, 1, 1)
+		tex:SetDesaturated(false)
+	end
 end
 
 
@@ -529,6 +593,10 @@ local function ByStartTime(a, b)
 	return a.spellID < b.spellID
 end
 
+-- Two entries count as one shared cooldown if they started together and end within
+-- this window; the slack keeps a learned-vs-baseline duration mismatch from un-merging.
+local SHARED_CD_TOL = 0.5
+
 
 -- Reused scratch for the GROUPED stacking pass (kept module-level so the per-refresh
 -- pack allocates nothing). Sorted by lane position; spellID breaks ties for stability.
@@ -601,6 +669,30 @@ local function RefreshBody(laneIndex)
 	end
 	table.sort(visible, ByStartTime)
 
+	-- Shared-cooldown dedupe (lanes only; ready frames still pop each spell). Sorted by
+	-- startTime, so spells sharing a cooldown are contiguous; drop any whose start+length
+	-- matches one already kept in the same start group, leaving the lowest-spellID icon.
+	if g.detectSharedCD and #visible > 1 then
+		local w = 0
+		for r = 1, #visible do
+			local e = visible[r]
+			local dup = false
+			for k = w, 1, -1 do
+				local kept = visible[k]
+				if kept.startTime ~= e.startTime then break end
+				if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL then
+					dup = true
+					break
+				end
+			end
+			if not dup then
+				w = w + 1
+				visible[w] = e
+			end
+		end
+		for r = #visible, w + 1, -1 do visible[r] = nil end
+	end
+
 	local count = #visible
 	for idx = 1, count do
 		local e = visible[idx]
@@ -646,6 +738,8 @@ local function RefreshBody(laneIndex)
 		-- the cooldown can reset the swipe color.
 		btn.cd:SetSwipeColor(0, 0, 0, cfg.swipeAlpha or 0.8)
 
+		ns.StyleIcon(btn, e.spellID, e.itemID, g)
+
 		if btn._mouseOn ~= mouseOn then
 			btn._mouseOn = mouseOn
 			btn:EnableMouse(mouseOn)
@@ -658,21 +752,15 @@ local function RefreshBody(laneIndex)
 		btn._iconSize = iconSize
 	end
 
-	-- GROUPED stacking: pack overlapping icons into perpendicular rows so clustered
-	-- cooldowns stay readable. Recomputed at refresh cadence (~10 Hz); membership shifts
-	-- slowly since icons crawl <4 px between refreshes. The per-icon OnUpdate folds the
-	-- cached _stackOff into its cross-axis offset.
-	if cfg.stackEnabled and cfg.stackStyle == "GROUPED" and count > 1 then
+	-- Stacking declutters clustered cooldowns, recomputed at refresh cadence (~10 Hz);
+	-- membership shifts slowly since icons crawl <4 px between refreshes. GROUPED packs
+	-- overlaps into perpendicular rows (_stackOff, folded into the cross-axis offset by the
+	-- per-icon OnUpdate); SPREAD pushes them apart along the lane (_spreadShift).
+	local stacking = cfg.stackEnabled and count > 1
+		and (cfg.stackStyle == "GROUPED" or cfg.stackStyle == "SPREAD")
+	if stacking then
 		local laneDim = cfg.vertical and (cfg.height or 400) or (cfg.width or 400)
 		local usable  = math.max(1, laneDim - iconSize)
-		local rowStep = iconSize
-		local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
-		local dirSign
-		if cfg.vertical then
-			dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
-		else
-			dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
-		end
 
 		wipe(stackOrder)
 		for idx = 1, count do
@@ -684,28 +772,59 @@ local function RefreshBody(laneIndex)
 		end
 		table.sort(stackOrder, ByStackCoord)
 
-		wipe(stackRowEnd)
-		for i = 1, count do
-			local btn  = stackOrder[i]
-			local left = btn._stackCoord
-			local row
-			for r = 1, maxRows do
-				if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
-			end
-			if not row then
-				-- All rows full within the height budget: drop into the one that frees
-				-- soonest (smallest right edge) and accept the partial overlap.
-				row = 1
-				for r = 2, maxRows do
-					if stackRowEnd[r] < stackRowEnd[row] then row = r end
+		if cfg.stackStyle == "SPREAD" then
+			-- Walk nearest-ready first; nudge each less-ready icon out so it sits at least
+			-- one icon-width past the previous one. Keeps icons on the lane line (no row
+			-- offset), trading exact cooldown position for non-overlap.
+			local placedPrev
+			for i = 1, count do
+				local btn = stackOrder[i]
+				local nat = btn._stackCoord
+				local placed = nat
+				if placedPrev and placed < placedPrev + iconSize then
+					placed = placedPrev + iconSize
 				end
+				if placed > usable then placed = usable end
+				btn._spreadShift = placed - nat
+				btn._stackOff    = 0
+				placedPrev = placed
 			end
-			stackRowEnd[row] = left + iconSize
-			btn._stackOff = (row - 1) * rowStep * dirSign
+		else
+			local rowStep = iconSize
+			local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
+			local dirSign
+			if cfg.vertical then
+				dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
+			else
+				dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
+			end
+
+			wipe(stackRowEnd)
+			for i = 1, count do
+				local btn  = stackOrder[i]
+				local left = btn._stackCoord
+				local row
+				for r = 1, maxRows do
+					if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
+				end
+				if not row then
+					-- All rows full within the height budget: drop into the one that frees
+					-- soonest (smallest right edge) and accept the partial overlap.
+					row = 1
+					for r = 2, maxRows do
+						if stackRowEnd[r] < stackRowEnd[row] then row = r end
+					end
+				end
+				stackRowEnd[row] = left + iconSize
+				btn._stackOff    = (row - 1) * rowStep * dirSign
+				btn._spreadShift = 0
+			end
 		end
 	else
 		for idx = 1, count do
-			laneFrame.iconPool[idx]._stackOff = 0
+			local btn = laneFrame.iconPool[idx]
+			btn._stackOff    = 0
+			btn._spreadShift = 0
 		end
 	end
 

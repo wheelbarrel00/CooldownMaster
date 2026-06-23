@@ -1,5 +1,19 @@
 # Cooldown Master Changelog
 
+## 0.14.0 (2026-06-22) — Icon zoom, unusable tint, and cooldown-tracking fixes
+
+New display options for lane and ready icons, plus fixes for cooldown position and charge-spell tracking.
+
+### New Features
+- **Icon Zoom** (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look; higher crops the icon border further.
+- **Unusable icon tint** (Global tab): tint and/or desaturate icons for spells you currently can't cast (not enough resources, wrong form, and so on), in a color you choose — "Tint Unusable Icons", "Desaturate Unusable Icons", and "Unusable Tint Color".
+- **Spread stacking** (Lanes > Stacking): a new stacking style that pushes overlapping icons apart along the lane instead of stacking them into rows, so clustered cooldowns stay readable in sequence.
+- **Detect Shared Spell Cooldowns** (Global tab): collapse spells that share a cooldown into a single lane icon instead of showing duplicates.
+
+### Bug Fixes
+- Fixed certain cooldowns (such as Rising Sun Kick and Strike of the Windlord) tracking at the wrong spot on the lane. The addon now uses the exact learned cooldown length, re-anchors the timer to each cast, and re-learns lengths that changed in a patch. The countdown number was always correct.
+- Fixed multi-charge spells (such as Roll) briefly flashing onto the lane and popping a ready frame on each charge use. They now appear only once you're fully out of charges.
+
 ## 0.13.1 (2026-06-22) — Countdown font options and a cooldown-position fix
 
 Customizable countdown text on lane icons, plus a fix for some cooldowns showing at the wrong spot on the lane.

@@ -342,6 +342,24 @@ function CDM:OnSlash(input)
 				tostring(engine._seenReady and engine._seenReady[e.spellID])))
 		end
 
+		-- Live charge-spell state (combat-safe fields only; currentCharges is secret). Shows
+		-- why a charge spell does/doesn't track: it should be tracked only when usable=false.
+		for spellID, tracked in pairs(engine.trackedSpells or {}) do
+			if tracked.hasCharges then
+				local cdok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+				local uok, usable = pcall(C_Spell.IsSpellUsable, spellID)
+				local chok, ch = pcall(C_Spell.GetSpellCharges, spellID)
+				local maxC = (chok and type(ch) == "table" and ch.maxCharges) or "?"
+				self:Print(string.format("  charge %s (id=%s): isActive=%s onGCD=%s usable=%s maxCharges=%s entry=%s",
+					tostring(tracked.name), tostring(spellID),
+					tostring(cdok and info and info.isActive),
+					tostring(cdok and info and info.isOnGCD),
+					tostring(uok and usable),
+					tostring(maxC),
+					engine.entries[spellID] and "yes" or "no"))
+			end
+		end
+
 	else
 		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste")
 	end

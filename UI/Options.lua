@@ -181,10 +181,30 @@ local function BuildGlobalTab(content)
 		{ "Enable tooltips",       "enableTooltip"  },
 		{ "Detect Shared Spell Cooldowns", "detectSharedCD" },
 		{ "Tint Unusable Icons",   "notUsableTint"  },
+		{ "Desaturate Unusable Icons", "notUsableDesaturate" },
 	}
 	for _, t in ipairs(toggles) do
 		prev = MakeCheck(t[1], t[2], prev, 0)
 	end
+
+	local W = ns.Widgets
+	local cpUnusable = W.CreateColorPicker(content, {
+		label = "Unusable Tint Color", color = CDM.db.profile.global.notUsableColor, hasAlpha = false,
+		onChange = function(r, g, b)
+			local c = CDM.db.profile.global.notUsableColor
+			c.r, c.g, c.b = r, g, b
+		end,
+	})
+	cpUnusable:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
+	prev = cpUnusable
+
+	local slZoom = W.CreateSlider(content, {
+		label = "Icon Zoom", min = 1, max = 2, step = 0.05,
+		value = CDM.db.profile.global.zoom, width = 220,
+		onChange = function(v) CDM.db.profile.global.zoom = v end,
+	})
+	slZoom:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
+	prev = slZoom
 
 	-- State is dataBroker.minimap.hide, not global[key], so it can't use MakeCheck;
 	-- flip through the existing DataBroker_ToggleMinimap (Show/Hide owns the LDBIcon).
@@ -561,7 +581,7 @@ end
 
 local STACK_STYLE_OPTIONS = {
 	{ value = "GROUPED", text = "Grouped"         },
-	{ value = "SPREAD",  text = "Spread (coming soon)" },
+	{ value = "SPREAD",  text = "Spread" },
 }
 
 local GROW_DIR_H = {

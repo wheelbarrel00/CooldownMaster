@@ -118,7 +118,7 @@ ns.DEFAULTS = {
 		autohide         = false,
 		enableTooltip    = false,
 		detectSharedCD   = false,
-		zoom             = 1,
+		zoom             = 1,   -- icon zoom multiplier; 1 = default border-trim look, >1 crops in
 		notUsableTint    = false,
 		notUsableDesaturate = false,
 		notUsableColor   = { r = 0.75, g = 0.1, b = 0.1, a = 1 },

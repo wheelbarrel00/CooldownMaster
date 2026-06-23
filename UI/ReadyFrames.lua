@@ -301,6 +301,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 
 		local cfg = self.cfg
 		local cfgAlpha = (cfg and cfg.iconAlpha) or 1
+		local g = ns.CDM and ns.CDM.db and ns.CDM.db.profile.global
 
 		-- Hold countdown per icon. A pinned icon freezes (cleared only by the user),
 		-- otherwise it fades over its last second and is hidden when the hold expires.
@@ -319,6 +320,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 					needRelayout = true
 				else
 					visible = visible + 1
+					if g then ns.StyleIcon(btn, btn._spellID, btn._itemID, g) end
 					if not btn._pinned and btn._readyTime <= 1.0 then
 						btn:SetAlpha(cfgAlpha * btn._readyTime)
 					else
@@ -449,9 +451,11 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local btn = AcquireReadyIcon(target, slot)
 	btn.tex:SetTexture(entry.icon or "")
 	btn._spellID   = spellID
+	btn._itemID    = entry.itemID
 	btn._pinned    = pinned
 	btn._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
 	btn:SetAlpha(cfg.iconAlpha or 1)
+	ns.StyleIcon(btn, spellID, entry.itemID, addon.db.profile.global)
 
 	btn:Show()
 

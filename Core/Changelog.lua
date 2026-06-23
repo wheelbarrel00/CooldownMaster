@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.14.0",
+		date = "2026-06-22",
+		sections = {
+			{ head = "New Features", items = {
+				"Icon Zoom (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look; higher crops the icon border further.",
+				"Unusable icon tint (Global tab): tint and/or desaturate icons for spells you currently can't cast, in a color you choose (Tint Unusable Icons, Desaturate Unusable Icons, Unusable Tint Color).",
+				"Spread stacking (Lanes > Stacking): a new stacking style that pushes overlapping icons apart along the lane instead of into rows.",
+				"Detect Shared Spell Cooldowns (Global tab): collapse spells that share a cooldown into a single lane icon instead of showing duplicates.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed certain cooldowns (such as Rising Sun Kick and Strike of the Windlord) tracking at the wrong spot on the lane. The addon now uses the exact learned cooldown length, re-anchors the timer to each cast, and re-learns lengths that changed in a patch.",
+				"Fixed multi-charge spells (such as Roll) briefly flashing onto the lane and popping a ready frame on each charge use; they now appear only once you're fully out of charges.",
+			} },
+		},
+	},
+	{
 		version = "0.13.1",
 		date = "2026-06-22",
 		sections = {
