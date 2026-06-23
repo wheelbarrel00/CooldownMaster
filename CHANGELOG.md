@@ -1,5 +1,10 @@
 # Cooldown Master Changelog
 
+## 0.14.1 (2026-06-22) — Charge-spell display hotfix
+
+### Bug Fixes
+- Fixed multi-charge spells (such as Roll) not appearing on the lane when fully out of charges. A check added in 0.14.0 was hiding them in every case; depleted charge spells now correctly show their recharge again, while still not flickering on individual charge uses.
+
 ## 0.14.0 (2026-06-22) — Icon zoom, unusable tint, and cooldown-tracking fixes
 
 New display options for lane and ready icons, plus fixes for cooldown position and charge-spell tracking.

@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.14.1",
+		date = "2026-06-22",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Fixed multi-charge spells (such as Roll) not showing on the lane when fully out of charges (a 0.14.0 regression). They now correctly track the recharge once depleted, without flickering on individual charge uses.",
+			} },
+		},
+	},
+	{
 		version = "0.14.0",
 		date = "2026-06-22",
 		sections = {

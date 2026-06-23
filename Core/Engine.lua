@@ -615,20 +615,7 @@ function Engine:ScanSpells()
 
 		---@diagnostic disable-next-line: undefined-field
 		local rawActive = ok and info and info.isActive
-
-		-- Charge spells (Roll) report isActive on a PARTIAL recharge too, which flickered the
-		-- icon onto the lane on every charge use. It's only a real cooldown once FULLY depleted
-		-- -- IsSpellUsable is false then (no charge left to cast), a combat-safe read unlike the
-		-- secret currentCharges. Gate on tracked.hasCharges (the reliable C_CooldownViewer flag)
-		-- rather than the GetSpellCharges probe, which can come back empty in combat. While a
-		-- charge remains, treat it as ready.
-		local onCooldown = rawActive
-		if rawActive and tracked.hasCharges and C_Spell.IsSpellUsable then
-			local uok, usable = pcall(C_Spell.IsSpellUsable, spellID)
-			if uok and usable then onCooldown = false end
-		end
-
-		if onCooldown then
+		if rawActive then
 			-- Record when the cooldown began -- the spell is isActive during the post-cast
 			-- GCD, before the entry is created below, so this start is ~1 GCD earlier than
 			-- "now" at entry time and keeps the learned span from being short by a GCD.
@@ -641,12 +628,14 @@ function Engine:ScanSpells()
 		end
 
 		---@diagnostic disable-next-line: undefined-field
-		local active = onCooldown and not info.isOnGCD
+		local active = rawActive and not info.isOnGCD
 
-		-- Multi-charge blip filter: a partial-charge use blips isActive for ~1 GCD, and isOnGCD
-		-- is nil for these so it can't gate it. Require the on-cooldown state to persist past
-		-- CHARGE_TRACK_DELAY so only a sustained full-depletion recharge tracks; the blip clears
-		-- (isActive false again) well before then. 1-charge/non-charge spells are exempt.
+		-- Multi-charge blip filter: a partial-charge use blips isActive for ~1 GCD, then drops
+		-- back to false while charges remain; full depletion keeps isActive set for the whole
+		-- recharge. isOnGCD is nil for these (can't gate the blip) and IsSpellUsable is useless
+		-- here -- it ignores charge count (true even at 0 charges for a no-cost spell like Roll).
+		-- So require the active state to PERSIST past CHARGE_TRACK_DELAY: the ~1 GCD blip clears
+		-- well before then, a real recharge far outlasts it. 1-charge/non-charge spells exempt.
 		if multiCharge then
 			if active then
 				self._chargeOnCdSince[spellID] = self._chargeOnCdSince[spellID] or now
