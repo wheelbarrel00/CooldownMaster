@@ -669,7 +669,7 @@ local function RefreshBody(laneIndex)
 	end
 	table.sort(visible, ByStartTime)
 
-	-- Shared-cooldown dedupe (lanes only; ready frames still pop each spell). Sorted by
+	-- Shared-cooldown dedupe for the lane render (the Engine mirrors this for ready pops). Sorted by
 	-- startTime, so spells sharing a cooldown are contiguous; drop any whose start+length
 	-- matches one already kept in the same start group, leaving the lowest-spellID icon.
 	if g.detectSharedCD and #visible > 1 then

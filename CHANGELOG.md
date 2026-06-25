@@ -1,5 +1,11 @@
 # Cooldown Master Changelog
 
+## 0.15.0 (2026-06-24) — Shared-cooldown ready-pop dedupe
+
+### Improvements
+- **Detect Shared Spell Cooldowns** now also de-duplicates ready-frame pops. An ability tracked under two spell IDs that share a cooldown (a base spell and its override, or the same ability in two Cooldown Viewer categories) now pops a single ready icon instead of one per ID, mirroring how the lanes already collapse it. Off by default, gated on the same Global option.
+- Minor internal code cleanup (comment tidy-up; no behavior change).
+
 ## 0.14.1 (2026-06-22) — Charge-spell display hotfix
 
 ### Bug Fixes

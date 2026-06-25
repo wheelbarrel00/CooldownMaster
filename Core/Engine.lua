@@ -37,6 +37,9 @@ local MAX_DURATION = 600
 
 local READY_BLACKOUT_GRACE = 3      -- grace (s) after a loading screen; cooldowns re-sync late
 local READY_MAX_POPS_PER_SCAN = 3   -- more ready edges than this in one scan = a blackout, not real
+-- Two ready edges count as one shared cooldown if they started together and end within this
+-- window; mirrors the lane dedupe (UI/Lanes.lua) so ready pops collapse the same way.
+local SHARED_CD_TOL = 0.5
 
 -- Baseline (no haste/talent) cooldowns; a learned read overrides these because
 -- it accounts for talent modifications. Covers Paladin (Ret) and Mage (all specs).
@@ -577,6 +580,17 @@ function Engine:BestDuration(spellID)
 end
 
 
+-- Sort ready edges by cooldown start (then spellID) so shared-cooldown siblings are
+-- contiguous and the lowest spellID leads its group; module-level to avoid a per-scan closure.
+local function ByReadyEdge(a, b)
+	local ea, eb = Engine.entries[a], Engine.entries[b]
+	local sa = (ea and ea.startTime) or 0
+	local sb = (eb and eb.startTime) or 0
+	if sa ~= sb then return sa < sb end
+	return a < b
+end
+
+
 -- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so the
 -- entry set is driven off the readable C_Spell.GetSpellCooldown().isActive/
 -- .isOnGCD booleans. The opaque DurationObject is handed to a native Cooldown
@@ -724,6 +738,45 @@ function Engine:ScanSpells()
 		end
 	end
 	local massVanish = #edges > READY_MAX_POPS_PER_SCAN
+
+	-- Shared-cooldown dedupe for ready pops: one ability tracked under two spellIDs (a base
+	-- spell + its override, or the same ability in two Cooldown Viewer categories) shares a
+	-- cooldown and ends both edges in this scan, popping one icon per spellID -- across two
+	-- boxes if they route differently. Collapse siblings (same start, end within SHARED_CD_TOL)
+	-- to the lowest spellID, mirroring the lane dedupe and gated on the same opt-in flag. Must
+	-- run before the per-edge box routing below, since a per-box check can't see the cross-box
+	-- pair. Skipped under blackout/massVanish (both already suppress pops, and blackout keeps
+	-- entries); dropped siblings' entries are nil'd here so they don't leak.
+	if not blackout and not massVanish and #edges > 1 then
+		local addon = ns.CDM
+		local g = addon and addon.db and addon.db.profile.global
+		if g and g.detectSharedCD then
+			table.sort(edges, ByReadyEdge)
+			local w = 0
+			for r = 1, #edges do
+				local id = edges[r]
+				local e  = self.entries[id]
+				local dup = false
+				if e then
+					for k = w, 1, -1 do
+						local kept = self.entries[edges[k]]
+						if not kept or kept.startTime ~= e.startTime then break end
+						if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL then
+							dup = true
+							break
+						end
+					end
+				end
+				if dup then
+					self.entries[id] = nil
+				else
+					w = w + 1
+					edges[w] = id
+				end
+			end
+			for r = #edges, w + 1, -1 do edges[r] = nil end
+		end
+	end
 
 	for _, spellID in ipairs(edges) do
 		if not blackout then

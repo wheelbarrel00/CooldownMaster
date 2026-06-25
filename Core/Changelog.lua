@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.15.0",
+		date = "2026-06-24",
+		sections = {
+			{ head = "Improvements", items = {
+				"Detect Shared Spell Cooldowns now also collapses duplicate ready-frame pops: an ability tracked under two spell IDs that share a cooldown pops a single ready icon instead of one per ID, mirroring the lane dedupe. Off by default, gated on the same Global option.",
+				"Minor internal code cleanup (comment tidy-up; no behavior change).",
+			} },
+		},
+	},
+	{
 		version = "0.14.1",
 		date = "2026-06-22",
 		sections = {

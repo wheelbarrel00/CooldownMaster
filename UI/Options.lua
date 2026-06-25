@@ -141,7 +141,7 @@ local function BuildGlobalTab(content)
 			CDM.db.profile.global[key] = self:GetChecked() and true or false
 			-- Per-tick config apply is gone, so push the drag-label repaint explicitly.
 			if key == "unlockFrames" then
-				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end  -- also re-applies visibility
+				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end
 				if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(CDM) end
 			elseif (key == "enabledAlways" or key == "autohide")
 				and ns.Lanes_RefreshVisibility then

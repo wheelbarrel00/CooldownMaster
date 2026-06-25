@@ -21,7 +21,6 @@ local function PlayReadySound(name)
 			return
 		end
 	end
-	-- Not a built-in: treat the name as a LibSharedMedia sound file.
 	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
 	if ok and LSM then
 		local path = LSM:Fetch("sound", name)
@@ -120,7 +119,7 @@ local function RelayoutReadyFrame(f)
 	local iconSize = cfg.iconSize or ICON_SIZE
 	local spacing  = cfg.yPadding or 0     -- stacking-axis gap (the Icons "Spacing" slider)
 	local xPad     = cfg.xPadding or 0
-	local xOff     = cfg.iconOffset or 0    -- cross-axis nudge
+	local xOff     = cfg.iconOffset or 0
 	local step     = iconSize + spacing
 	local grow     = cfg.growDirection or "DOWN"
 
@@ -141,7 +140,6 @@ local function RelayoutReadyFrame(f)
 	local horizontal = grow == "LEFT" or grow == "RIGHT" or grow == "CENTER_H"
 	-- Block length along the stacking axis (at least one icon so an empty box is square).
 	local blockLen = (math.max(1, count) - 1) * step + iconSize
-	-- Centered grows place the first icon half a block off-center, then walk inward.
 	local half = (blockLen - iconSize) / 2
 
 	for k, btn in ipairs(active) do
@@ -459,7 +457,6 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 
 	btn:Show()
 
-	-- Replay the pop-in pulse on every ready transition (each time the spell comes up).
 	if btn.pulse then
 		btn.pulse:Stop()
 		btn.pulse:Play()

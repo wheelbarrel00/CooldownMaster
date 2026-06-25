@@ -71,7 +71,6 @@ end
 
 
 function CDM:OnInitialize()
-	-- All characters start on a shared "Default" profile; the Profiles tab can switch/create/copy per-character profiles via AceDB.
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
 
 	-- Per-character spec->profile map for auto-switch; db.char so it survives profile
@@ -176,7 +175,6 @@ function CDM:OnPlayerLogin()
 		self.db.profile.global.firstRun = false
 	end
 	self.db.profile.global.previousVersion = self.version
-	-- Match the profile to the current spec on login (only if a mapping is set).
 	self:ApplySpecProfile()
 end
 
