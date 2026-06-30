@@ -2,6 +2,7 @@ local ADDON_NAME, ns = ...
 
 local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
+local ICON_FADE_IN = 0.25  -- icon alpha fade-in on pop, so it surfaces softly instead of snapping in
 
 -- Built-in ready sounds via Blizzard SOUNDKIT (no bundled asset files). The Ready
 -- Sound dropdown lists these first, then any LibSharedMedia sounds the user has.
@@ -319,7 +320,15 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 				else
 					visible = visible + 1
 					if g then ns.StyleIcon(btn, btn._spellID, btn._itemID, g) end
-					if not btn._pinned and btn._readyTime <= 1.0 then
+					if btn._fadeIn then
+						btn._fadeIn = btn._fadeIn - elapsed
+						if btn._fadeIn <= 0 then
+							btn._fadeIn = nil
+							btn:SetAlpha(cfgAlpha)
+						else
+							btn:SetAlpha(cfgAlpha * (1 - btn._fadeIn / ICON_FADE_IN))
+						end
+					elseif not btn._pinned and btn._readyTime <= 1.0 then
 						btn:SetAlpha(cfgAlpha * btn._readyTime)
 					else
 						btn:SetAlpha(cfgAlpha)
@@ -452,7 +461,8 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	btn._itemID    = entry.itemID
 	btn._pinned    = pinned
 	btn._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
-	btn:SetAlpha(cfg.iconAlpha or 1)
+	btn._fadeIn = ICON_FADE_IN
+	btn:SetAlpha(0)
 	ns.StyleIcon(btn, spellID, entry.itemID, addon.db.profile.global)
 
 	btn:Show()

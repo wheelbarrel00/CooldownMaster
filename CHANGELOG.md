@@ -1,5 +1,20 @@
 # Cooldown Master Changelog
 
+## 0.16.0 (2026-06-30) — Smoother motion, Split mode, lane highlights, textures, and labels
+
+A pass focused on matching the look and feel of CooldownTimeline2 (with the author's blessing): smoother icon motion, a new Split lane mode, lane highlights, texture options, and editable lane labels.
+
+### New Features
+- **Split lane mode** (Lanes > General > Mode): a timeline mode where you set the time curve yourself. Place up to three control points — "a cooldown with this many seconds left sits at this percent along the lane" — to spread imminent cooldowns near the ready edge and compress far ones at the back.
+- **Lane icon highlights** (Lanes > Icons > Highlight): spells flagged Important can now stand out on the lane with a Border, Glow, Flash, or Border + Flash style in a color you pick — the same styles the ready frames use. Off by default per lane.
+- **Background and border textures** (Lanes > Appearance): the lane background and border are now selectable from any LibSharedMedia texture you have installed, instead of the single built-in fill.
+- **Editable lane labels** (Lanes > Text): each of the five lane labels now has its own text and position, so you can rename and reposition the markers (Ready / 25% / 50% / 75% / 100% are just the defaults).
+
+### Improvements
+- **Smoother lane motion.** Icons now glide along the lane at sub-pixel precision every frame instead of stepping a whole pixel at a time, so slow-moving cooldowns travel smoothly. Most noticeable on long cooldowns and in Logarithmic mode.
+- **Ready-pop fade-in.** Icons popping into a ready frame now fade in softly alongside the existing pop animation, instead of appearing instantly.
+- Logarithmic mode does a little less work per frame (no behavior change).
+
 ## 0.15.0 (2026-06-24) — Shared-cooldown ready-pop dedupe
 
 ### Improvements

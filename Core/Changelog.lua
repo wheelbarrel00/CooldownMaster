@@ -2,6 +2,23 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.0",
+		date = "2026-06-30",
+		sections = {
+			{ head = "New Features", items = {
+				"Split lane mode (Lanes > General > Mode): a timeline mode where you set the time curve yourself with up to three control points -- a cooldown with this many seconds left sits at this percent along the lane -- spreading imminent cooldowns near the ready edge and compressing far ones at the back.",
+				"Lane icon highlights (Lanes > Icons > Highlight): spells flagged Important can stand out on the lane with a Border, Glow, Flash, or Border + Flash style in a color you pick. Off by default per lane.",
+				"Background and border textures (Lanes > Appearance): both are now selectable from any LibSharedMedia texture you have installed, instead of the single built-in fill.",
+				"Editable lane labels (Lanes > Text): each of the five labels now has its own text and position, so you can rename and reposition them (Ready / 25% / 50% / 75% / 100% are just the defaults).",
+			} },
+			{ head = "Improvements", items = {
+				"Smoother lane motion: icons glide at sub-pixel precision every frame instead of stepping a whole pixel at a time, so slow cooldowns travel smoothly. Most noticeable on long cooldowns and in Logarithmic mode.",
+				"Ready-pop fade-in: icons popping into a ready frame fade in softly instead of appearing instantly.",
+				"Logarithmic mode does a little less work per frame (no behavior change).",
+			} },
+		},
+	},
+	{
 		version = "0.15.0",
 		date = "2026-06-24",
 		sections = {

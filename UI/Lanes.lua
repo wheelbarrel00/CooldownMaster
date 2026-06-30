@@ -4,6 +4,14 @@ local _dragFailWarnTime = 0  -- luacheck: ignore
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 local STANDARD_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
+
+-- Register the built-in names so saved "CDM Smooth"/"CDM Shadow" resolve and list
+-- alongside the user's LSM media; WHITE8x8 keeps the default flat look unchanged.
+if LSM then
+	pcall(LSM.Register, LSM, "statusbar", "CDM Smooth", WHITE8X8)
+	pcall(LSM.Register, LSM, "border",    "CDM Shadow", WHITE8X8)
+end
 
 
 -- Prebuilt countdown-text tables avoid ~450 string.format allocs/sec from the
@@ -223,13 +231,45 @@ end
 -- (maxTime); LOG = same axis logarithmic, so the last seconds spread across most of the
 -- lane and long cooldowns compress near the far end; default = each icon spans its own
 -- cooldown. Shared by the per-icon OnUpdate and the stacking pass so they never drift.
+-- LOG's denominator depends only on maxTime; memo it so we don't math.log it every frame.
+local logDenomCache = {}
 local function ModeProgress(cfg, remaining, duration)
 	local p
 	local m = cfg.mode
 	if m == "TIMELINE" then
 		p = remaining / (cfg.maxTime or 120)
 	elseif m == "LOG" then
-		p = math.log(1 + remaining) / math.log(1 + (cfg.maxTime or 120))
+		local mt = cfg.maxTime or 120
+		local denom = logDenomCache[mt]
+		if not denom then denom = math.log(1 + mt); logDenomCache[mt] = denom end
+		p = math.log(1 + remaining) / denom
+	elseif m == "SPLIT" then
+		local sp = cfg.split
+		local maxT = cfg.maxTime or 120
+		local v = remaining
+		if v > maxT then v = maxT end
+		-- Piecewise-linear remap through (0,0) -> up to 3 (time,pos) splits -> (maxT,1),
+		-- so the user spreads imminent seconds and compresses far ones on their own curve.
+		local n = (sp and sp.count) or 0
+		local pts = sp and sp.points
+		local pv, pp = 0, 0
+		p = nil
+		if pts then
+			for i = 1, n do
+				local pt = pts[i]
+				if pt and v <= pt.t then
+					local span = pt.t - pv
+					p = (span > 0) and (pp + (pt.p - pp) * ((v - pv) / span)) or pp
+					break
+				elseif pt then
+					pv, pp = pt.t, pt.p
+				end
+			end
+		end
+		if not p then
+			local span = maxT - pv
+			p = (span > 0) and (pp + (1 - pp) * ((v - pv) / span)) or 1
+		end
 	else
 		p = remaining / (duration or 120)
 	end
@@ -262,6 +302,25 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		local fmt = GetCountdownFormatter()
 		if fmt then btn.cd:SetCountdownFormatter(fmt) end
 	end
+
+	-- Highlight overlay for Important spells (Border / Glow / Flash), mirroring the
+	-- ready box. Additive border anchored a few px out so it tracks icon size.
+	btn.hl = btn:CreateTexture(nil, "OVERLAY")
+	btn.hl:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+	btn.hl:SetBlendMode("ADD")
+	btn.hl:SetPoint("TOPLEFT", btn, "TOPLEFT", -6, 6)
+	btn.hl:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 6, -6)
+	btn.hl:Hide()
+	local okFlash, flash = pcall(function()
+		local ag = btn.hl:CreateAnimationGroup()
+		ag:SetLooping("BOUNCE")
+		local a = ag:CreateAnimation("Alpha")
+		a:SetDuration(0.5)
+		if a.SetFromAlpha then a:SetFromAlpha(1.0); a:SetToAlpha(0.2)
+		elseif a.SetChange then a:SetChange(-0.8) end
+		return ag
+	end)
+	if okFlash then btn.hlFlash = flash end
 
 	btn:SetScript("OnEnter", function(self)
 		-- Raise above stack-mates so an occluded stacked icon can be hovered; only
@@ -320,17 +379,14 @@ local function AcquireIcon(laneFrame, i, iconSize)
 			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
 		end
 
-		-- Re-anchor only when the integer-pixel position, anchor point, or offset
-		-- actually changes. A long cooldown crawls <0.1 px/frame, so this skips nearly
-		-- every ClearAllPoints/SetPoint (the layout cost the old code paid each frame).
-		local rounded = math.floor(coord + 0.5)
-		if self._anchPoint ~= point or self._anchCoord ~= rounded or self._anchOff ~= off then
-			self._anchPoint, self._anchCoord, self._anchOff = point, rounded, off
+		-- Float coord, not pixel-rounded: SetPoint renders sub-pixel so the icon glides; rounding reintroduces stair-stepping.
+		if self._anchPoint ~= point or self._anchCoord ~= coord or self._anchOff ~= off then
+			self._anchPoint, self._anchCoord, self._anchOff = point, coord, off
 			self:ClearAllPoints()
 			if cfg.vertical then
-				self:SetPoint(point, self:GetParent(), point, off, rounded)
+				self:SetPoint(point, self:GetParent(), point, off, coord)
 			else
-				self:SetPoint(point, self:GetParent(), point, rounded, off)
+				self:SetPoint(point, self:GetParent(), point, coord, off)
 			end
 		end
 	end)
@@ -353,8 +409,41 @@ local function ClearLaneIcon(btn)
 		btn.tex:SetVertexColor(1, 1, 1)
 		btn.tex:SetDesaturated(false)
 	end
+	if btn.hlFlash then btn.hlFlash:Stop() end
+	if btn.hl then btn.hl:Hide() end
+	btn._hlStyle = nil
 	if btn.cd then btn.cd:Clear() end
 	btn:Hide()
+end
+
+
+local DEFAULT_HL_COLOR = { r = 1, g = 0.82, b = 0, a = 0.6 }
+
+-- Lane-icon highlight for Important spells, reusing the ready-box overlay. Gated on the
+-- effective style+color so the 10 Hz refresh doesn't restart the flash every tick.
+local function ApplyLaneHighlight(btn, cfg, important)
+	if not btn.hl then return end
+	local hl = cfg.highlight
+	local style = (important and hl and hl.style) or "NONE"
+	if style == "NONE" then
+		if btn._hlStyle ~= "NONE" then
+			btn._hlStyle = "NONE"
+			if btn.hlFlash then btn.hlFlash:Stop() end
+			btn.hl:Hide()
+		end
+		return
+	end
+	local c = (hl and hl.color) or DEFAULT_HL_COLOR
+	if btn._hlStyle == style and btn._hlR == c.r and btn._hlG == c.g
+		and btn._hlB == c.b and btn._hlA == c.a then
+		return
+	end
+	btn._hlStyle, btn._hlR, btn._hlG, btn._hlB, btn._hlA = style, c.r, c.g, c.b, c.a
+	if btn.hlFlash then btn.hlFlash:Stop() end
+	btn.hl:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
+	btn.hl:SetAlpha(c.a or 0.6)
+	btn.hl:Show()
+	if style ~= "BORDER" and btn.hlFlash then btn.hlFlash:Play() end
 end
 
 
@@ -453,17 +542,20 @@ local function ApplyConfigBody(laneIndex)
 	-- /reload. Cache the table for the steady state (no alloc), but on a
 	-- structural change swap in a fresh reference so SetBackdrop re-applies.
 	local borderOn = cfg.borderEnabled ~= false
-	local edgeFile = borderOn and "Interface\\Buttons\\WHITE8x8" or ""
+	local bgFile   = (LSM and LSM:Fetch("statusbar", cfg.bgTexture, true)) or WHITE8X8
+	local edgeTex  = (LSM and LSM:Fetch("border", cfg.borderTexture, true)) or WHITE8X8
+	local edgeFile = borderOn and edgeTex or ""
 	local edgeSize = borderOn and (cfg.borderSize or 1) or 0
 	local pad      = borderOn and (cfg.borderPadding or 0) or 0
 	local bd = laneFrame._backdropCache
 	local needsNew = (not bd)
+		or bd.bgFile ~= bgFile
 		or bd.edgeFile ~= edgeFile
 		or bd.edgeSize ~= edgeSize
 		or bd.insets.left ~= pad
 	if needsNew then
 		bd = {
-			bgFile   = "Interface\\Buttons\\WHITE8x8",
+			bgFile   = bgFile,
 			edgeFile = edgeFile,
 			edgeSize = edgeSize,
 			insets   = { left = pad, right = pad, top = pad, bottom = pad },
@@ -507,20 +599,22 @@ local function ApplyConfigBody(laneIndex)
 					m:ClearAllPoints()
 					local pos = def.pos or 0
 					if cfg.reversed then pos = 1 - pos end
+					-- Labels at the extremes pin to the lane end (inset) so they don't clip;
+					-- everything between centers on its position.
 					if cfg.vertical then
 						local laneH = cfg.height or 400
-						if i == 1 then
+						if pos <= 0.02 then
 							m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
-						elseif i == 5 then
+						elseif pos >= 0.98 then
 							m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
 						else
 							m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * laneH)
 						end
 					else
 						local laneW = cfg.width or 400
-						if i == 1 then
+						if pos <= 0.02 then
 							m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
-						elseif i == 5 then
+						elseif pos >= 0.98 then
 							m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
 						else
 							m:SetPoint("CENTER", laneFrame, "LEFT", pos * laneW, 0)
@@ -694,6 +788,7 @@ local function RefreshBody(laneIndex)
 	end
 
 	local count = #visible
+	local overrides = addon.db.profile.spellOverrides
 	for idx = 1, count do
 		local e = visible[idx]
 		local btn = AcquireIcon(laneFrame, idx, iconSize)
@@ -750,6 +845,9 @@ local function RefreshBody(laneIndex)
 		btn._duration = e.duration
 		btn._cfg      = cfg
 		btn._iconSize = iconSize
+
+		local ov = overrides and overrides[e.spellID]
+		ApplyLaneHighlight(btn, cfg, ov and ov.important == true)
 	end
 
 	-- Stacking declutters clustered cooldowns, recomputed at refresh cadence (~10 Hz);

@@ -257,6 +257,7 @@ local MODE_OPTIONS = {
 	{ value = "LINEAR",   text = "Linear"                },
 	{ value = "TIMELINE", text = "Timeline (seconds)"    },
 	{ value = "LOG",      text = "Logarithmic (seconds)" },
+	{ value = "SPLIT",    text = "Split (seconds)"       },
 }
 
 local FONT_FLAG_OPTIONS = {
@@ -286,7 +287,39 @@ local TRACKING_OPTIONS = {
 }
 
 local TEXTURE_OPTIONS_FG = { { value = "CDM Smooth", text = "CDM Smooth" } }
-local TEXTURE_OPTIONS_BORDER = { { value = "CDM Shadow", text = "CDM Shadow" } }
+
+local function BuildStatusbarOptions()
+	local opts = {}
+	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if LSM then
+		for _, key in ipairs(LSM:List("statusbar")) do
+			opts[#opts + 1] = { value = key, text = key }
+		end
+	end
+	if #opts == 0 then opts[1] = { value = "CDM Smooth", text = "CDM Smooth" } end
+	return opts
+end
+
+local function BuildBorderOptions()
+	local opts = {}
+	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+	if LSM then
+		for _, key in ipairs(LSM:List("border")) do
+			opts[#opts + 1] = { value = key, text = key }
+		end
+	end
+	if #opts == 0 then opts[1] = { value = "CDM Shadow", text = "CDM Shadow" } end
+	return opts
+end
+
+
+local HL_STYLE_OPTIONS = {
+	{ value = "NONE",         text = "None"           },
+	{ value = "BORDER",       text = "Border"         },
+	{ value = "GLOW",         text = "Glow"           },
+	{ value = "FLASH",        text = "Flash"          },
+	{ value = "BORDER_FLASH", text = "Border + Flash" },
+}
 
 
 local lanesState = {
@@ -371,6 +404,38 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		value = cfg.maxTime, width = 240,
 		onChange = function(v) cfg.maxTime = v; RefreshLane(laneIndex) end,
 	}))
+
+	cfg.split = cfg.split or { count = 1, points = {} }
+	if type(cfg.split.points) ~= "table" then cfg.split.points = {} end
+	for i = 1, 3 do
+		if type(cfg.split.points[i]) ~= "table" then
+			cfg.split.points[i] = { t = 30 * i, p = 0.58 + 0.12 * i }
+		end
+	end
+
+	local secSplit = W.CreateSectionHeader(parent, "Split Points (Split mode)")
+	secSplit:SetWidth(parent:GetWidth() - pad * 2)
+	place(secSplit, 18)
+
+	place(W.CreateSlider(parent, {
+		label = "Split Points", min = 1, max = 3, step = 1,
+		value = cfg.split.count or 1, width = 240,
+		onChange = function(v) cfg.split.count = v; RefreshLane(laneIndex) end,
+	}))
+
+	for i = 1, 3 do
+		local pt = cfg.split.points[i]
+		place(W.CreateSlider(parent, {
+			label = "Point " .. i .. " Time (sec)", min = 1, max = 180, step = 1,
+			value = pt.t, width = 240,
+			onChange = function(v) pt.t = v; RefreshLane(laneIndex) end,
+		}))
+		place(W.CreateSlider(parent, {
+			label = "Point " .. i .. " Position (%)", min = 1, max = 99, step = 1,
+			value = math.floor((pt.p or 0.5) * 100 + 0.5), width = 240,
+			onChange = function(v) pt.p = v / 100; RefreshLane(laneIndex) end,
+		}))
+	end
 
 	place(W.CreateCheckbox(parent, {
 		label = "Hide Long Timers", checked = cfg.hideLongTimers,
@@ -513,10 +578,9 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 
 	local bgTexDD = W.CreateDropdown(parent, {
 		label = "Background Texture", value = cfg.bgTexture,
-		options = TEXTURE_OPTIONS_FG, width = 200,
+		options = BuildStatusbarOptions(), width = 200,
 		onChange = function(v) cfg.bgTexture = v; RefreshLane(laneIndex) end,
 	})
-	bgTexDD:SetEnabled(false)
 	place(bgTexDD)
 
 	place(W.CreateColorPicker(parent, {
@@ -551,10 +615,9 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 
 	local borderTexDD = W.CreateDropdown(parent, {
 		label = "Border Texture", value = cfg.borderTexture,
-		options = TEXTURE_OPTIONS_BORDER, width = 200,
+		options = BuildBorderOptions(), width = 200,
 		onChange = function(v) cfg.borderTexture = v; RefreshLane(laneIndex) end,
 	})
-	borderTexDD:SetEnabled(false)
 	place(borderTexDD)
 
 	place(W.CreateColorPicker(parent, {
@@ -688,6 +751,29 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		onChange = function(v) cfg.swipeAlpha = v; RefreshLane(laneIndex) end,
 	}))
 
+	cfg.highlight = cfg.highlight or { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.6 } }
+	if type(cfg.highlight.color) ~= "table" then
+		cfg.highlight.color = { r = 1, g = 0.82, b = 0, a = 0.6 }
+	end
+	local secHL = W.CreateSectionHeader(parent, "Highlight (Important spells)")
+	secHL:SetWidth(parent:GetWidth() - pad * 2)
+	place(secHL, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Highlight Style", value = cfg.highlight.style or "NONE",
+		options = HL_STYLE_OPTIONS, width = 200,
+		onChange = function(v) cfg.highlight.style = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateColorPicker(parent, {
+		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.highlight.color
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+
 	local secTxt = W.CreateSectionHeader(parent, "Icon Text")
 	secTxt:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTxt, 18)
@@ -762,11 +848,25 @@ local function BuildLaneTextForm(parent, laneIndex)
 	for i = 1, 5 do
 		local def = cfg.laneText and cfg.laneText[i]
 		if def then
-			local label = string.format("Show \"%s\"", def.text or ("Marker " .. i))
 			place(W.CreateCheckbox(parent, {
-				label = label, checked = def.enabled,
+				label = "Label " .. i .. " enabled", checked = def.enabled,
 				onChange = function(v)
 					cfg.laneText[i].enabled = v
+					RefreshLane(laneIndex)
+				end,
+			}))
+			place(W.CreateEditBox(parent, {
+				label = "Text", value = def.text or "", width = 200, maxLetters = 24,
+				onChange = function(text)
+					cfg.laneText[i].text = text
+					RefreshLane(laneIndex)
+				end,
+			}))
+			place(W.CreateSlider(parent, {
+				label = "Position (%)", min = 0, max = 100, step = 1,
+				value = math.floor((def.pos or 0) * 100 + 0.5), width = 240,
+				onChange = function(v)
+					cfg.laneText[i].pos = v / 100
 					RefreshLane(laneIndex)
 				end,
 			}))
@@ -2001,13 +2101,7 @@ local READY_GROW_OPTIONS = {
 	{ value = "CENTER_H", text = "Center (horizontal)" },
 }
 
-local READY_HL_STYLE_OPTIONS = {
-	{ value = "NONE",         text = "None"           },
-	{ value = "BORDER",       text = "Border"         },
-	{ value = "GLOW",         text = "Glow"           },
-	{ value = "FLASH",        text = "Flash"          },
-	{ value = "BORDER_FLASH", text = "Border + Flash" },
-}
+local READY_HL_STYLE_OPTIONS = HL_STYLE_OPTIONS
 
 local readyState = {
 	boxIndex   = 1,

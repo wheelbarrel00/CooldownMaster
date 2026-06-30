@@ -8,6 +8,10 @@ local function lane(frameName)
 		vertical       = false,
 		mode           = "LINEAR",
 		maxTime        = 120,
+		split          = {
+			count  = 1,
+			points = { { t = 30, p = 0.70 }, { t = 60, p = 0.85 }, { t = 90, p = 0.95 } },
+		},
 		hideLongTimers = true,
 		overrideAutohide = false,
 		primaryTracking   = "NONE",
@@ -50,6 +54,8 @@ local function lane(frameName)
 		iconFontSize   = 0,   -- 0 = auto (scales with iconSize, matching the native count)
 		iconFontFlags  = "OUTLINE",
 		iconFontColor  = { r = 1, g = 1, b = 1, a = 1 },
+
+		highlight      = { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.6 } },
 
 		laneText = {
 			{ enabled = true, text = "Ready", pos = 0    },
