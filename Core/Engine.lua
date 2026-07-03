@@ -1052,24 +1052,70 @@ function Engine:PollAllItems()
 end
 
 
+local TEST_DURATIONS = { 6, 11, 18, 28, 42, 60 }
+
+-- Sourced from the player's tracked set so the demo is flavor-correct and honors their routing.
+function Engine:CollectTestPicks(maxN)
+	local byCat = {}
+	for spellID, tracked in pairs(self.trackedSpells) do
+		if tracked.name and tracked.name ~= "?" then
+			local c = tracked.category or 0
+			byCat[c] = byCat[c] or {}
+			byCat[c][#byCat[c] + 1] = spellID
+		end
+	end
+
+	local picks = {}
+	local order = { 0, 2, 1, 3 }   -- spells, buffs, utility, debuffs
+	local cursor = {}
+	local added = true
+	while #picks < maxN and added do
+		added = false
+		for _, c in ipairs(order) do
+			local list = byCat[c]
+			local pos = (cursor[c] or 0) + 1
+			if list and list[pos] then
+				cursor[c] = pos
+				picks[#picks + 1] = { spellID = list[pos], category = c }
+				added = true
+				if #picks >= maxN then break end
+			end
+		end
+	end
+
+	if #picks == 0 then
+		for _, spellID in ipairs(self.testSpellIDs) do
+			picks[#picks + 1] = { spellID = spellID, category = 0 }
+		end
+	end
+	return picks
+end
+
+
 function Engine:StartTestMode()
 	self.testActive = true
 	wipe(self.entries)
 	local now = GetTime()
-	local durations = { 5, 15, 30, 60 }
-	for i, spellID in ipairs(self.testSpellIDs) do
-		local name, icon = GetSpellNameIcon(spellID)
-		local dur = durations[i] or 30
+
+	local picks = self:CollectTestPicks(#TEST_DURATIONS)
+	for i, pick in ipairs(picks) do
+		local spellID = pick.spellID
+		local tracked = self.trackedSpells[spellID]
+		local name, icon
+		if tracked then name, icon = tracked.name, tracked.icon end
+		if not name then name, icon = GetSpellNameIcon(spellID) end
+		local dur = TEST_DURATIONS[i] or TEST_DURATIONS[#TEST_DURATIONS]
 		self.entries[spellID] = {
-			spellID    = spellID,
-			name       = name,
-			icon       = icon,
-			startTime  = now,
-			duration   = dur,
-			endTime    = now + dur,
-			laneIndex  = 1,
-			category   = 0,
-			_source    = "test",
+			spellID   = spellID,
+			name      = name,
+			icon      = icon,
+			startTime = now,
+			duration  = dur,
+			endTime   = now + dur,
+			laneIndex = self:ResolveLaneIndex(spellID, pick.category),
+			category  = pick.category,
+			_source   = "test",
+			_testDur  = dur,
 		}
 	end
 end
@@ -1082,6 +1128,7 @@ function Engine:StopTestMode()
 			self.entries[spellID] = nil
 		end
 	end
+	if ns.ReadyFrames_ClearAll then ns.ReadyFrames_ClearAll() end
 	-- Repopulate immediately: the tick sweep runs at 1 Hz, so without this the
 	-- lanes would sit empty for up to a second after leaving test mode.
 	self:ScanSpells()
@@ -1093,12 +1140,17 @@ function Engine:Tick()
 	self._tickCount = self._tickCount + 1
 
 	if self.testActive then
-		-- Expire test entries by endTime. Live entries are removed only by
-		-- ScanSpells (isActive), since the extrapolated endTime can be wrong.
+		-- Finish: pop to the ready frame like a real cooldown, then re-seed so the demo loops.
 		local now = GetTime()
 		for spellID, entry in pairs(self.entries) do
 			if entry._source == "test" and entry.endTime and now >= entry.endTime then
-				self.entries[spellID] = nil
+				if ns.ReadyFrames_OnReadyTransition then
+					ns.ReadyFrames_OnReadyTransition(spellID, entry)
+				end
+				local dur = entry._testDur or entry.duration or 30
+				entry.startTime = now
+				entry.duration  = dur
+				entry.endTime   = now + dur
 			end
 		end
 	else

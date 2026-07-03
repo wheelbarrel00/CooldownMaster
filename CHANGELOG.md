@@ -1,5 +1,11 @@
 # Cooldown Master Changelog
 
+## 0.16.6 (2026-07-03) — Live Test Mode preview
+
+### Improvements
+- **Test Mode is now a live preview.** Clicking Test (Global tab) plays a looping demo: sample cooldowns — drawn from your own tracked spells and buffs — travel the lane timeline and then pop into the ready frame at the finish, so you can watch the full cooldown-to-ready flow and fine-tune your settings against it. The samples route through your actual lane, ready-box, and filter settings, on both retail and Classic.
+- Added a **Stop Test** button next to Test, and closing the options window now ends the test automatically.
+
 ## 0.16.5 (2026-07-03) — WoW Classic support
 
 ### New Features

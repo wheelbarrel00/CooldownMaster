@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.6",
+		date = "2026-07-03",
+		sections = {
+			{ head = "Improvements", items = {
+				"Test Mode is now a live preview: clicking Test plays a looping demo where sample cooldowns (drawn from your own tracked spells and buffs) travel the lane and then pop into the ready frame at the finish, so you can watch the full flow and fine-tune your settings. Samples route through your actual lane, ready-box, and filter settings, on both retail and Classic.",
+				"Added a Stop Test button next to Test, and closing the options window now ends the test automatically.",
+			} },
+		},
+	},
+	{
 		version = "0.16.5",
 		date = "2026-07-03",
 		sections = {

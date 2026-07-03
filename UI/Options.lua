@@ -31,6 +31,11 @@ local function BuildPanel()
 	panel:SetScript("OnDragStop",  panel.StopMovingOrSizing)
 	panel:Hide()
 
+	-- Leaving the panel ends test mode so the demo isn't left looping.
+	panel:SetScript("OnHide", function()
+		if ns.CDM and ns.Engine and ns.Engine.testActive then ns.CDM:ToggleTestMode() end
+	end)
+
 	Theme.ApplyBackdrop(panel)
 
 	local header = Theme.CreateHeader(panel, ns.CONST.ADDON_DISPLAY)
@@ -231,10 +236,16 @@ local function BuildGlobalTab(content)
 	end)
 	prev = cbMinimap
 
-	local testBtn = Theme.CreateButton(content, "Toggle Test Mode", 180, 30)
+	local testBtn = Theme.CreateButton(content, "Test", 110, 30)
 	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
 	testBtn:SetScript("OnClick", function()
-		CDM:ToggleTestMode()
+		if ns.Engine and not ns.Engine.testActive then CDM:ToggleTestMode() end
+	end)
+
+	local stopTestBtn = Theme.CreateButton(content, "Stop Test", 110, 30)
+	stopTestBtn:SetPoint("TOPLEFT", testBtn, "TOPRIGHT", 8, 0)
+	stopTestBtn:SetScript("OnClick", function()
+		if ns.Engine and ns.Engine.testActive then CDM:ToggleTestMode() end
 	end)
 end
 

@@ -199,6 +199,16 @@ local function ClearReadyIcons(f)
 end
 
 
+function ns.ReadyFrames_ClearAll()
+	local addon = ns.CDM
+	if not addon then return end
+	for i = 1, 3 do
+		local f = addon.readyFrames and addon.readyFrames[i]
+		if f then ClearReadyIcons(f) end
+	end
+end
+
+
 function ns.ReadyFrames_Build(addon)
 	-- Repair saved cfg fields corrupted by an older bug (e.g. color tables written as scalars).
 	for i = 1, 3 do
