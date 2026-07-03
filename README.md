@@ -12,8 +12,10 @@ Supports **Midnight (retail 12.0+)**, **Classic Era**, and **Burning Crusade
 Classic**, and registers a LibDataBroker launcher + minimap button so panel
 addons like Titan Panel, Bazooka, and ChocolateBar pick it up automatically.
 
-> Built using **CooldownTimeline2 (CDTL2)** by cliffclive / Vreenak as a
-> reference. Thanks to the original author.
+> **Cooldown Master** carries forward the idea behind **CooldownTimeline2
+> (CDTL2)** by cliffclive / Vreenak. After Midnight changed how cooldowns work,
+> I rebuilt the concept from the ground up for 12.0 with the original author's
+> blessing — full credit for the original timeline-cooldown idea goes to him.
 
 ## Midnight 12.0 and the secret-value API
 

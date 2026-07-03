@@ -2058,6 +2058,14 @@ local function BuildAboutTab(content)
 	end
 	gap(10)
 
+	header("Credits")
+	body(ABOUT_WHITE .. "Cooldown Master carries forward the idea behind " .. ABOUT_CLOSE
+		.. ABOUT_GOLD .. "CooldownTimeline2 (CDTL2)" .. ABOUT_CLOSE
+		.. ABOUT_WHITE .. " by " .. ABOUT_CLOSE
+		.. ABOUT_GOLD .. "cliffclive" .. ABOUT_CLOSE
+		.. ABOUT_WHITE .. " - the timeline-cooldown addon that inspired this one. After Midnight changed how cooldowns work, I rebuilt the concept from the ground up for 12.0 with his blessing. Full credit for the original timeline-cooldown idea goes to him. Thank you, cliffclive." .. ABOUT_CLOSE)
+	gap(10)
+
 	header("Thanks")
 	body(ABOUT_WHITE .. "Built with feedback, reports, and ideas from the community. Thank you!" .. ABOUT_CLOSE)
 	gap(10)

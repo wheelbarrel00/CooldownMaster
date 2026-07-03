@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.4",
+		date = "2026-07-03",
+		sections = {
+			{ head = "Improvements", items = {
+				"Cooldown Master is now available on CurseForge.",
+				"Added a Credits section to the About tab acknowledging CooldownTimeline2 (CDTL2) by cliffclive, whose addon inspired this one.",
+			} },
+		},
+	},
+	{
 		version = "0.16.3",
 		date = "2026-07-03",
 		sections = {

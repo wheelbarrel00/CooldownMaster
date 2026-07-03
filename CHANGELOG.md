@@ -1,5 +1,11 @@
 # Cooldown Master Changelog
 
+## 0.16.4 (2026-07-03) — Now on CurseForge
+
+### Improvements
+- Cooldown Master is now available on CurseForge.
+- Added a Credits section to the in-game About tab acknowledging CooldownTimeline2 (CDTL2) by cliffclive, whose addon inspired this one.
+
 ## 0.16.3 (2026-07-03) — Code cleanup
 
 ### Maintenance
