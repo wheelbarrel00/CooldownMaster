@@ -1338,7 +1338,7 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
 
-	-- Register item rows (keyed by itemID == spellID by convention) so async GET_ITEM_INFO_RECEIVED can update name/icon in place. Spells are always cached by build time.
+	-- Register item rows (keyed by itemID == spellID by convention) so the async ItemMixin load can update name/icon in place. Spells are always cached by build time.
 	if info.kind == "item" then
 		filtersState.itemRows = filtersState.itemRows or {}
 		filtersState.itemRows[spellID] = { name = name, icon = tex }
@@ -1584,14 +1584,18 @@ local function BuildColorsTab(content)
 		local y = -(pad + 30 + row * cellH)
 
 		local profile = ns.CDM.db.profile
-		profile.classColors[token] = profile.classColors[token]
-			or ns.CONST.CLASS_COLORS[token]
-			or { r = 1, g = 1, b = 1, a = 1 }
+		if not profile.classColors[token] then
+			-- Copy, don't alias CONST.CLASS_COLORS (edits would leak into the shared default); seed alpha.
+			local base = ns.CONST.CLASS_COLORS[token]
+			profile.classColors[token] = base
+				and { r = base.r, g = base.g, b = base.b, a = base.a or 1 }
+				or { r = 1, g = 1, b = 1, a = 1 }
+		end
 
 		local cp = W.CreateColorPicker(content, {
 			label = CLASS_DISPLAY_NAMES[token] or token,
 			color = profile.classColors[token],
-			hasAlpha = false,
+			hasAlpha = true,
 			onChange = function(r, g, b, a)
 				local c = profile.classColors[token]
 				c.r, c.g, c.b = r, g, b

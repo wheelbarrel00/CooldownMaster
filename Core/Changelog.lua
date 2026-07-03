@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.8",
+		date = "2026-07-03",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Classic potions now show properly. On Classic Era and Burning Crusade Classic, tracked potions previously appeared as unnamed 'Item ######' placeholder rows that never resolved. Potions are now discovered from your bags and display their real name and icon. Retail was unaffected.",
+				"Fixed editing a class color on the Colors tab being able to alter the built-in default colors shared by other profiles.",
+			} },
+			{ head = "New Features", items = {
+				"Class-color opacity: the class-color pickers on the Colors tab now include an opacity slider, so a class-tinted lane background can be made semi-transparent.",
+			} },
+			{ head = "Improvements", items = {
+				"Ready frames now have a default sound: when a cooldown becomes ready it plays a short click by default instead of being silent. Change it or turn it off under Ready > Sound for each ready box.",
+			} },
+		},
+	},
+	{
 		version = "0.16.7",
 		date = "2026-07-03",
 		sections = {

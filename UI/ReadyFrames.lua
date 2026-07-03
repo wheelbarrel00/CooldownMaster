@@ -4,14 +4,20 @@ local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
 local ICON_FADE_IN = 0.25  -- icon alpha fade-in on pop, so it surfaces softly instead of snapping in
 
--- Built-in ready sounds via Blizzard SOUNDKIT (no bundled asset files). The Ready
--- Sound dropdown lists these first, then any LibSharedMedia sounds the user has.
+-- Built-in ready sounds (SOUNDKIT + one bundled click), listed before LibSharedMedia sounds.
 local READY_BUILTIN_SOUNDS = {
 	{ name = "CDM: Ready Check",  kit = "READY_CHECK"            },
 	{ name = "CDM: Quest Ding",   kit = "IG_QUEST_LIST_COMPLETE" },
 	{ name = "CDM: Raid Warning", kit = "RAID_WARNING"           },
 }
 ns.READY_BUILTIN_SOUNDS = READY_BUILTIN_SOUNDS
+
+do
+	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
+	if ok and LSM then
+		LSM:Register("sound", "CDM: Ready Click", [[Interface\AddOns\CooldownMaster\media\ready-click.ogg]])
+	end
+end
 
 local function PlayReadySound(name)
 	if not name or name == "None" then return end

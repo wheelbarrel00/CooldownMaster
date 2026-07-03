@@ -1,5 +1,17 @@
 # Cooldown Master Changelog
 
+## 0.16.8 (2026-07-03) — Classic potions, class-color opacity, ready sound
+
+### Bug Fixes
+- **Classic potions now show properly.** On Classic Era and Burning Crusade Classic, tracked potions previously appeared as unnamed "Item ######" placeholder rows that never resolved. Potions are now discovered from your bags and display their real name and icon. (Retail was unaffected.)
+- Fixed editing a class color on the Colors tab being able to alter the built-in default colors shared by other profiles.
+
+### New Features
+- **Class-color opacity.** The class-color pickers on the Colors tab now include an opacity slider, so a class-tinted lane background can be made semi-transparent.
+
+### Improvements
+- **Ready frames now have a default sound.** When a cooldown becomes ready it plays a short click by default, instead of being silent. Change it — or turn it off — under Ready > Sound for each ready box.
+
 ## 0.16.7 (2026-07-03) — Hidden-spell ready-pop fix
 
 ### Bug Fixes

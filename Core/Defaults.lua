@@ -83,7 +83,7 @@ local function readyFrame(frameName, x, y, enabled)
 		alpha          = 1.0,
 		growDirection  = "DOWN",
 		normalDuration = 5,
-		normalSound    = "None",
+		normalSound    = "CDM: Ready Click",
 		pTime          = 0,    -- post-combat linger seconds; 0 = off (icons clear on their own hold)
 
 		-- "Important" spells (per-spell override) use these instead of the normal hold/sound.

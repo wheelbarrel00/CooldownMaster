@@ -134,7 +134,7 @@ local function GetPlayerBuff(i)
 end
 
 
--- Async on first cache miss: returns nil until GET_ITEM_INFO_RECEIVED fires.
+-- Instant path: nil until the item is cached; addItem's ItemMixin fills it in async.
 local function GetItemNameIcon(itemID)
 	if not (C_Item and C_Item.GetItemInfo) then return nil, nil end
 	local name = C_Item.GetItemInfo(itemID)
@@ -553,9 +553,6 @@ function Engine:BuildTrackedItems()
 
 	local function addItem(itemID, category, slot)
 		if not itemID or self.trackedItems[itemID] then return end
-		if C_Item and C_Item.RequestLoadItemDataByID then
-			C_Item.RequestLoadItemDataByID(itemID)
-		end
 		local name, icon = GetItemNameIcon(itemID)
 		self.trackedItems[itemID] = {
 			name     = name or ("Item " .. itemID),
@@ -564,11 +561,29 @@ function Engine:BuildTrackedItems()
 			kind     = "item",
 			slot     = slot,   -- set for equipped trinkets (polled via the inventory slot)
 		}
+		-- ItemMixin fills real name/icon/link once the item data loads (or now if cached).
+		if Item and Item.CreateFromItemID then
+			local item = Item:CreateFromItemID(itemID)
+			if not item:IsItemEmpty() then
+				item:ContinueOnItemLoad(function()
+					local tracked = Engine.trackedItems[itemID]
+					if not tracked then return end
+					tracked.name = item:GetItemName() or tracked.name
+					tracked.icon = item:GetItemIcon() or tracked.icon
+					tracked.link = item:GetItemLink()
+					if ns.Options_UpdateTrackedItemDisplay then
+						ns.Options_UpdateTrackedItemDisplay(itemID, tracked.name, tracked.icon)
+					end
+				end)
+			end
+		end
 	end
 
-	-- Baseline potions: always tracked even if not currently carried.
-	for _, itemID in ipairs(POTION_ITEMS) do
-		addItem(itemID, ns.CONST.POTION_CATEGORY)
+	-- Retail Midnight potion IDs; absent on Classic/TBC, so there the bag scan below is the only source.
+	if ns.Compat.HAS_BLIZZ_CDM then
+		for _, itemID in ipairs(POTION_ITEMS) do
+			addItem(itemID, ns.CONST.POTION_CATEGORY)
+		end
 	end
 
 	-- Auto-discover carried potions/flasks from the bags (reagent bag excluded).
@@ -1195,24 +1210,6 @@ function Engine:Start(addon)
 				ns.Options_InvalidateFilterLists()
 			end
 		end)
-	end
-
-	-- Item names/icons not cached at BuildTrackedItems time arrive later via
-	-- GET_ITEM_INFO_RECEIVED.
-	if not self.itemInfoFrame then
-		local f = CreateFrame("Frame")
-		f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-		f:SetScript("OnEvent", function(_, _, itemID, success)
-			if not (success and itemID and Engine.trackedItems[itemID]) then return end
-			local name, icon = GetItemNameIcon(itemID)
-			local tracked = Engine.trackedItems[itemID]
-			if name then tracked.name = name end
-			if icon then tracked.icon = icon end
-			if ns.Options_UpdateTrackedItemDisplay then
-				ns.Options_UpdateTrackedItemDisplay(itemID, name, icon)
-			end
-		end)
-		self.itemInfoFrame = f
 	end
 
 	if not self.specEventFrame then
