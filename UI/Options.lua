@@ -129,7 +129,7 @@ local function BuildGlobalTab(content)
 	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
 	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
-	local function MakeCheck(label, key, anchor, xOff)
+	local function MakeCheck(label, key, anchor, xOff, tooltip)
 		local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 		cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", xOff or 0, -4)
 		cb:SetSize(24, 24)
@@ -148,6 +148,17 @@ local function BuildGlobalTab(content)
 				ns.Lanes_RefreshVisibility()
 			end
 		end)
+		if tooltip then
+			-- Extend the hit rect over the label so hovering the whole row shows the tip.
+			cb:SetHitRectInsets(0, -180, 0, 0)
+			cb:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				GameTooltip:AddLine(label)
+				GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+				GameTooltip:Show()
+			end)
+			cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		end
 		return cb
 	end
 
@@ -177,14 +188,14 @@ local function BuildGlobalTab(content)
 	local prev = cbAlways
 	local toggles = {
 		{ "Unlock Frames",         "unlockFrames"   },
-		{ "Auto-hide Frames",      "autohide"       },
+		{ "Auto-hide Frames",      "autohide", "Out of combat, hides each lane's background, border, name, and markers, but your tracked cooldown icons stay visible. The chrome returns in combat. Tick a lane's Override Autohide (Lanes > General) to keep its chrome always shown." },
 		{ "Enable tooltips",       "enableTooltip"  },
 		{ "Detect Shared Spell Cooldowns", "detectSharedCD" },
 		{ "Tint Unusable Icons",   "notUsableTint"  },
 		{ "Desaturate Unusable Icons", "notUsableDesaturate" },
 	}
 	for _, t in ipairs(toggles) do
-		prev = MakeCheck(t[1], t[2], prev, 0)
+		prev = MakeCheck(t[1], t[2], prev, 0, t[3])
 	end
 
 	local W = ns.Widgets
@@ -444,6 +455,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 
 	place(W.CreateCheckbox(parent, {
 		label = "Override Autohide", checked = cfg.overrideAutohide,
+		tooltip = "Keeps this lane's background, border, and markers visible even when Auto-hide Frames is on.",
 		onChange = function(v)
 			cfg.overrideAutohide = v
 			RefreshLane(laneIndex)
@@ -1173,12 +1185,14 @@ local function BuildFiltersDefaultsForm(parent)
 	place(W.CreateCheckbox(parent, {
 		label   = "Enabled",
 		checked = cfg.enabled,
+		tooltip = "Untick to stop tracking this whole category. None of its cooldowns will show on a lane or pop a ready frame.",
 		onChange = function(v) cfg.enabled = v end,
 	}))
 
 	place(W.CreateCheckbox(parent, {
 		label   = "Show by Default",
 		checked = cfg.showByDefault,
+		tooltip = "On: spells in this category show unless you hide one individually. Off: spells stay hidden until you enable each one.",
 		onChange = function(v) cfg.showByDefault = v end,
 	}))
 

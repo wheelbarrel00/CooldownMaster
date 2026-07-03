@@ -73,6 +73,18 @@ function Widgets.CreateCheckbox(parent, cfg)
 		if root._onChange then root._onChange(v) end
 	end)
 
+	if cfg.tooltip then
+		-- Extend the hit rect over the label so hovering anywhere on the row shows the tip.
+		cb:SetHitRectInsets(0, cb:GetWidth() - root:GetWidth(), 0, 0)
+		cb:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(cfg.label or "")
+			GameTooltip:AddLine(cfg.tooltip, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end
+
 	root._cb       = cb
 	root._onChange = cfg.onChange
 

@@ -66,23 +66,65 @@ local function VisibilityGatePasses(g)
 end
 
 
-local function LaneShouldShow(addon, cfg)
-	local g = addon.db.profile.global
-	-- Test mode force-shows for positioning. Lock state deliberately does NOT affect
-	-- visibility (locking only disables dragging); the gate/autohide below own it.
+local function LaneGatePasses(addon)
 	if ns.Engine and ns.Engine.testActive then return true end
-	if not VisibilityGatePasses(g) then return false end
-	if g.autohide and not addon.combat and not cfg.overrideAutohide then return false end
-	return true
+	return VisibilityGatePasses(addon.db.profile.global)
+end
+
+
+-- Autohide hides only the chrome (bg/border/name/markers), never the icon children, so
+-- cooldowns stay visible out of combat. Unlock force-shows chrome so it can be dragged.
+local function ChromeShown(addon, cfg)
+	local g = addon.db.profile.global
+	if ns.Engine and ns.Engine.testActive then return true end
+	if g.unlockFrames then return true end
+	if not g.autohide then return true end
+	if addon.combat then return true end
+	return cfg.overrideAutohide and true or false
+end
+
+
+-- Alpha-toggle the chrome only; never the frame alpha or the icon children (that is what
+-- keeps icons lit). Backdrop is the frame's own artwork, so alpha-zero it, don't detach.
+local function SetLaneChrome(addon, f, cfg, show)
+	local bg = f._chromeBg
+	if bg then
+		pcall(f.SetBackdropColor, f, bg.r, bg.g, bg.b, show and (bg.a or 1) or 0)
+	end
+	local bc = f._chromeBorder
+	if bc then
+		pcall(f.SetBackdropBorderColor, f, bc.r, bc.g, bc.b, show and (bc.a or 1) or 0)
+	else
+		pcall(f.SetBackdropBorderColor, f, 0, 0, 0, 0)
+	end
+	if f.label then
+		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) or 0)
+	end
+	if f.markers and cfg.laneText then
+		for i = 1, 5 do
+			local m, def = f.markers[i], cfg.laneText[i]
+			if m and def then
+				if show and def.enabled then m:Show() else m:Hide() end
+			end
+		end
+	end
 end
 
 
 local function ApplyVisibility(addon)
 	if not (addon and addon.db and addon.lanes) then return end
+	local unlocked = addon.db.profile.global.unlockFrames
 	for i = 1, 3 do
 		local f = addon.lanes[i]
 		if f and f.cfg then
-			if LaneShouldShow(addon, f.cfg) then f:Show() else f:Hide() end
+			if LaneGatePasses(addon) then
+				f:Show()
+				SetLaneChrome(addon, f, f.cfg, ChromeShown(addon, f.cfg))
+			else
+				f:Hide()
+			end
+			-- Drag-only mouse: a shown-but-chrome-hidden lane must not swallow clicks.
+			f:EnableMouse(unlocked)
 		end
 	end
 end
@@ -104,7 +146,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f:SetSize(cfg.width, cfg.height)
 	f:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
 	f:SetClampedToScreen(true)
-	f:EnableMouse(true)   -- always on; OnMouseDown gates by unlockFrames
+	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only; ApplyVisibility keeps it in sync
 	f.laneIndex = index
 
 	f:SetScript("OnMouseDown", function(self, button)
@@ -574,6 +616,10 @@ local function ApplyConfigBody(laneIndex)
 		pcall(laneFrame.SetBackdropBorderColor, laneFrame, 0, 0, 0, 0)
 	end
 
+	-- Cache resolved chrome colors so SetLaneChrome can alpha-toggle the backdrop cheaply.
+	laneFrame._chromeBg     = bg
+	laneFrame._chromeBorder = (borderOn and cfg.borderColor) or nil
+
 	laneFrame:SetSize(cfg.width, cfg.height)
 	-- Don't reposition mid-drag (fights the mouse); IsMoving may be absent on
 	-- some frame types, so guard the call.
@@ -629,6 +675,9 @@ local function ApplyConfigBody(laneIndex)
 	end
 
 	ConfigureLaneCountFont(laneFrame, cfg)
+
+	-- This path restored chrome to full; re-apply the current show/hide state.
+	SetLaneChrome(addon, laneFrame, cfg, ChromeShown(addon, cfg))
 end
 
 
@@ -949,15 +998,8 @@ end
 
 
 function ns.Lanes_RefreshUnlockState(addon)
-	for i = 1, 3 do
-		local f = addon.lanes[i]
-		if f and f.label then
-			local unlocked = addon.db.profile.global.unlockFrames
-			f.label:SetAlpha(unlocked and 0.6 or 0)
-		end
-	end
-	-- No ApplyVisibility here: lock/unlock only toggles dragging + the drag label, so it
-	-- must never hide a lane. Visibility is owned by the gate/autohide on their own events.
+	-- Applies chrome + drag-mouse + label in one pass; only the gate (never lock) hides a lane.
+	ApplyVisibility(addon)
 end
 
 

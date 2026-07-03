@@ -2,6 +2,19 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.2",
+		date = "2026-07-02",
+		sections = {
+			{ head = "Improvements", items = {
+				"Auto-hide Frames now hides only each lane's background, border, name, and markers -- your tracked cooldown icons stay visible out of combat and return with the chrome in combat. Use a lane's Override Autohide to keep its chrome pinned.",
+				"Added tooltips to the Auto-hide Frames, Override Autohide, and per-category Enabled / Show by Default options so their effect is clear at a glance.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Locked lanes no longer capture mouse clicks over their area; clicks now pass through to the game world beneath them.",
+			} },
+		},
+	},
+	{
 		version = "0.16.1",
 		date = "2026-07-02",
 		sections = {
