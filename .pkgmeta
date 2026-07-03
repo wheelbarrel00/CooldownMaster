@@ -1,8 +1,5 @@
 package-as: CooldownMaster
 
-# CurseForge project ID — set this after creating the project (the packager reads it from the TOC's X-Curse-Project-ID).
-curse-id:
-
 enable-nolib-creation: no
 
 changelog-title: Cooldown Master
