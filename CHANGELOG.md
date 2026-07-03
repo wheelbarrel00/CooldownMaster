@@ -1,5 +1,10 @@
 # Cooldown Master Changelog
 
+## 0.16.3 (2026-07-03) — Code cleanup
+
+### Maintenance
+- Internal code comment cleanup and tidying. No functional, gameplay, or settings changes.
+
 ## 0.16.2 (2026-07-02) — Auto-hide keeps your icons
 
 ### Improvements

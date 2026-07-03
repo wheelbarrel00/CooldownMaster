@@ -141,10 +141,9 @@ local function DeferredCooldownPoll()
 end
 
 
--- A cast fires UNIT_SPELLCAST_SUCCEEDED and SPELL_UPDATE_COOLDOWN within a few
--- frames; this 100ms window collapses the pair (and proc bursts) into one
--- ScanSpells. Each scan allocates a GetSpellCooldown table per tracked spell,
--- so scan count is the dominant GC knob.
+-- Collapse the cast's UNIT_SPELLCAST_SUCCEEDED + SPELL_UPDATE_COOLDOWN (and proc
+-- bursts) into one ScanSpells; each scan allocates a table per tracked spell, so
+-- scan count is the dominant GC knob.
 local SCAN_DEBOUNCE = 0.1
 local function ScheduleDeferredScan()
 	if Engine._spellUpdatePending then return end
@@ -192,8 +191,7 @@ function Engine:GetActiveEntries()
 end
 
 
--- Known durations are saved to AceDB so each spell only needs to be observed
--- once ever, surviving /reload and login.
+-- Persisted to AceDB so each spell is observed once ever, surviving /reload and login.
 
 function Engine:LoadPersistedDurations()
 	local addon = ns.CDM
@@ -471,8 +469,7 @@ end
 
 
 -- Hoisted to module scope so LearnDuration's pcalls reuse these rather than
--- allocate two closures per call (it runs every scan for each not-yet-learned
--- active spell).
+-- allocate two closures per call (runs every scan for each unlearned active spell).
 local function ReadTotalDuration(dObj)
 	if dObj.GetTotalDuration then
 		return dObj:GetTotalDuration()
@@ -522,14 +519,10 @@ function Engine:LearnDuration(spellID, dObj)
 end
 
 
--- Combat-safe duration learning from observation: when a tracked cooldown finishes, the
--- wall-clock span since it went active IS its real length -- no secret value is read. This
--- corrects spells whose extrapolated position undershot (charge spells get no base-cooldown
--- seed, and a spell never seen on cooldown out of combat is never learned), which otherwise
--- race to the ready edge and pin there until the real cooldown ends. Stored in its own
--- layer BELOW knownDurations so a precise out-of-combat read still wins and is never blocked
--- by this. Converge UP only: a proc/haste reset can shorten an observed span but never
--- lengthen it, so the longest span seen is the true cooldown.
+-- Learn a cooldown's real length from its observed wall-clock span when it finishes
+-- (combat-safe, no secret read); rescues spells whose extrapolation undershoots (charge
+-- spells, or any never seen on cooldown out of combat). Stored below knownDurations so a
+-- precise out-of-combat read still wins. Converge UP only: the longest span seen is the true cd.
 function Engine:ObserveDuration(spellID, observed)
 	if type(observed) ~= "number" or observed <= 1.5 then return end
 	local current = self.observedDurations[spellID]
@@ -543,12 +536,10 @@ function Engine:ObserveDuration(spellID, observed)
 end
 
 
--- A successful cast (re)starts the cooldown NOW. Re-anchor the start so a spell recast before
--- a scan caught its brief ready gap -- an 8s cooldown spammed on cooldown like Rising Sun Kick
--- -- keeps extrapolating from THIS cast, not the first cast of the run (which pinned the icon
--- at the ready edge). Charge spells are skipped: a charge cast isn't a full cooldown start. The
--- cast spellID can differ from the tracked (cooldown-viewer) ID for some abilities; those just
--- don't re-anchor (no regression).
+-- A successful cast restarts the cooldown NOW: re-anchor the start so a spell recast before
+-- a scan caught its ready gap keeps extrapolating from this cast, not the run's first (which
+-- pinned the icon at the ready edge). Charge spells skipped (a charge use isn't a full start);
+-- a cast ID that differs from the tracked ID just won't re-anchor.
 function Engine:OnTrackedCast(spellID)
 	if not spellID then return end
 	local tracked = self.trackedSpells and self.trackedSpells[spellID]
@@ -564,13 +555,10 @@ function Engine:OnTrackedCast(spellID)
 end
 
 
--- Position-extrapolation duration. The out-of-combat read (known) is exact -- it reads the real
--- cooldown object's total, haste/talent-adjusted -- so a plausible known wins outright. The
--- in-combat observation (obs) is wall-clock and OVER-counts when a spell is recast before a scan
--- catches its brief ready gap, conflating several cooldown cycles into one long span (this made
--- fast-cast spells extrapolate ~2-3x too slow). obs now only rescues a missing known or a
--- GCD-length-bogus one -- as the longer of the two, preserving the old guard against a stale,
--- too-short stored known. Baseline/default are the caller's fallback below this.
+-- Extrapolation duration. A plausible out-of-combat known (exact, haste/talent-adjusted) wins
+-- outright; the in-combat observation only rescues a missing or GCD-bogus known, as the longer
+-- of the two (obs over-counts recasts, so it can't be trusted over a good known). Baseline/
+-- default are the caller's fallback below this.
 function Engine:BestDuration(spellID)
 	local k = self.knownDurations[spellID]
 	local o = self.observedDurations[spellID]
@@ -591,11 +579,9 @@ local function ByReadyEdge(a, b)
 end
 
 
--- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so the
--- entry set is driven off the readable C_Spell.GetSpellCooldown().isActive/
--- .isOnGCD booleans. The opaque DurationObject is handed to a native Cooldown
--- widget for the exact swipe/countdown; only icon position is extrapolated from
--- a duration learned out of combat.
+-- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so the entry set is
+-- driven off the readable GetSpellCooldown().isActive/.isOnGCD booleans; the opaque
+-- DurationObject feeds a native Cooldown widget for the exact swipe, only position is extrapolated.
 function Engine:ScanSpells()
 	if not (C_Spell and C_Spell.GetSpellCooldown) then return end
 
@@ -609,16 +595,11 @@ function Engine:ScanSpells()
 	for spellID, tracked in pairs(self.trackedSpells) do
 		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
 
-		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false while
-		-- ANY charge remains, so it only counts as on-cooldown once fully depleted
-		-- (isActive true) -- a partial recharge is NOT a cooldown and must not show in a
-		-- lane or pop a ready frame. currentCharges is a SECRET value in combat (like
-		-- every cooldown number) -- reading or comparing it taints and throws -- but
-		-- maxCharges IS readable, and combined with the isActive gate below it's enough:
-		-- "active and multiCharge" means fully depleted, so we feed the widget the
-		-- charge-duration object (the spell-cooldown object is blank for charge spells).
-		-- 1-charge pseudo-charge spells (Touch of the Magi) fail maxCharges > 1 and use
-		-- the spell-cooldown path unchanged.
+		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false while any
+		-- charge remains, so it's on cooldown only once fully depleted. currentCharges is
+		-- SECRET in combat (reading or comparing it taints and throws) but maxCharges is, so
+		-- maxCharges > 1 plus the isActive gate below means fully depleted; then feed the
+		-- charge-duration object (blank for charge spells). 1-charge spells use the normal path.
 		local multiCharge = false
 		if C_Spell.GetSpellCharges then
 			local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
@@ -644,12 +625,10 @@ function Engine:ScanSpells()
 		---@diagnostic disable-next-line: undefined-field
 		local active = rawActive and not info.isOnGCD
 
-		-- Multi-charge blip filter: a partial-charge use blips isActive for ~1 GCD, then drops
-		-- back to false while charges remain; full depletion keeps isActive set for the whole
-		-- recharge. isOnGCD is nil for these (can't gate the blip) and IsSpellUsable is useless
-		-- here -- it ignores charge count (true even at 0 charges for a no-cost spell like Roll).
-		-- So require the active state to PERSIST past CHARGE_TRACK_DELAY: the ~1 GCD blip clears
-		-- well before then, a real recharge far outlasts it. 1-charge/non-charge spells exempt.
+		-- Multi-charge blip filter: a partial use blips isActive for ~1 GCD (isOnGCD is nil here
+		-- so it can't gate it, and IsSpellUsable ignores charge count), while full depletion holds
+		-- it for the whole recharge. Require the active state to persist past CHARGE_TRACK_DELAY so
+		-- only a real recharge shows. 1-charge/non-charge spells exempt.
 		if multiCharge then
 			if active then
 				self._chargeOnCdSince[spellID] = self._chargeOnCdSince[spellID] or now
@@ -710,10 +689,8 @@ function Engine:ScanSpells()
 				-- Still running: keep the extrapolated position (don't reset
 				-- startTime), just refresh the handle.
 				existing.dObj = dObj or existing.dObj
-				-- A duration learned AFTER the entry was created (e.g. born in combat at
-				-- the 30s default, then learned out of combat) should replace the stale
-				-- guess so the icon stops extrapolating from the wrong length. Keep
-				-- startTime; only correct the span (the countdown number stays exact via dObj).
+				-- A duration learned after the entry was created (born in combat at the 30s default,
+				-- then learned) replaces the stale guess: keep startTime, correct only the span (dObj exact).
 				local learned = self:BestDuration(spellID)
 				if learned and existing.duration ~= learned then
 					existing.duration = learned
@@ -723,10 +700,9 @@ function Engine:ScanSpells()
 		end
 	end
 
-	-- A loading screen briefly reports every cooldown as not-active while it's still
-	-- running, so a scan landing there would pop the whole tracked set ready at once.
-	-- Suppress popups in the blackout window (keep entries) and, as a backstop, stay
-	-- silent if an implausibly large batch goes ready in one scan.
+	-- A loading screen briefly reports every cooldown as not-active, so a scan landing there
+	-- would pop the whole set ready at once. Suppress popups in the blackout window (keep
+	-- entries), and as a backstop stay silent if an implausibly large batch goes ready at once.
 	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
 
 	self._readyEdges = self._readyEdges or {}
@@ -739,14 +715,11 @@ function Engine:ScanSpells()
 	end
 	local massVanish = #edges > READY_MAX_POPS_PER_SCAN
 
-	-- Shared-cooldown dedupe for ready pops: one ability tracked under two spellIDs (a base
-	-- spell + its override, or the same ability in two Cooldown Viewer categories) shares a
-	-- cooldown and ends both edges in this scan, popping one icon per spellID -- across two
-	-- boxes if they route differently. Collapse siblings (same start, end within SHARED_CD_TOL)
-	-- to the lowest spellID, mirroring the lane dedupe and gated on the same opt-in flag. Must
-	-- run before the per-edge box routing below, since a per-box check can't see the cross-box
-	-- pair. Skipped under blackout/massVanish (both already suppress pops, and blackout keeps
-	-- entries); dropped siblings' entries are nil'd here so they don't leak.
+	-- Shared-cooldown dedupe for ready pops: one ability tracked under two spellIDs (base +
+	-- override, or two Cooldown Viewer categories) ends both edges in this scan, popping one icon
+	-- each. Collapse siblings (same start, end within SHARED_CD_TOL) to the lowest spellID, gated
+	-- on the opt-in flag. Runs before the box routing below (a per-box check can't see the
+	-- cross-box pair); skipped under blackout/massVanish. Dropped siblings' entries are nil'd here.
 	if not blackout and not massVanish and #edges > 1 then
 		local addon = ns.CDM
 		local g = addon and addon.db and addon.db.profile.global
@@ -935,10 +908,9 @@ function Engine:Tick()
 			end
 		end
 	else
-		-- Safety-net sweep every 10th tick (1 Hz). Cooldown edges are caught by
-		-- the event paths; this only covers events they miss (e.g. dropped across
-		-- a loading screen). Scanning every tick allocated ~400 tables/sec at 40
-		-- tracked spells, for data that rarely changed between ticks.
+		-- Safety-net sweep every 10th tick (1 Hz): covers cooldown edges the event paths miss
+		-- (e.g. dropped across a loading screen). Scanning every tick allocated ~400 tables/sec
+		-- at 40 tracked spells, for data that rarely changed between ticks.
 		self._scanCounter = (self._scanCounter or 0) + 1
 		if self._scanCounter >= 10 then
 			self._scanCounter = 0
@@ -1030,10 +1002,9 @@ function Engine:Start(addon)
 		self.spellUpdateFrame = f
 	end
 
-	-- The scan itself is driven off isActive (authoritative), so it needn't match the cast
-	-- spellID; but OnTrackedCast uses it to re-anchor the cooldown start to this cast (best
-	-- effort -- an override ID just won't match). Debounced because the cast also fires
-	-- SPELL_UPDATE_COOLDOWN a few frames later (otherwise two scans per cast).
+	-- The scan is driven off isActive (authoritative), so it needn't match the cast spellID;
+	-- OnTrackedCast uses it to re-anchor the cooldown start (best effort -- an override ID won't
+	-- match). Debounced because the cast also fires SPELL_UPDATE_COOLDOWN a few frames later.
 	if not self.castSucceededFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")

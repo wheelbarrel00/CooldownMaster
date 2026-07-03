@@ -239,10 +239,9 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 end
 
 
--- Remaining time is secret in combat, so we can't format it; the Cooldown widget
--- calls this privileged formatter with the secret value. Breakpoints = Blizzard
--- defaults minus the minute-collapse, giving whole seconds under 1:00 then M:SS
--- all the way up (default shows bare minutes like "4m" above 2 minutes).
+-- Remaining time is secret in combat, so the Cooldown widget calls this privileged
+-- formatter with the secret value. Breakpoints = Blizzard defaults minus the minute-collapse:
+-- whole seconds under 1:00, then M:SS all the way up (default shows bare minutes above 2 min).
 local CDFormatter   -- nil = untried, false = unavailable, object = ready
 local function GetCountdownFormatter()
 	if CDFormatter ~= nil then return CDFormatter or nil end
@@ -269,11 +268,10 @@ local function GetCountdownFormatter()
 end
 
 
--- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis
--- (maxTime); LOG = same axis logarithmic, so the last seconds spread across most of the
--- lane and long cooldowns compress near the far end; default = each icon spans its own
--- cooldown. Shared by the per-icon OnUpdate and the stacking pass so they never drift.
--- LOG's denominator depends only on maxTime; memo it so we don't math.log it every frame.
+-- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis (maxTime);
+-- LOG = same axis logarithmic (last seconds spread wide, long cooldowns compress); default =
+-- each icon spans its own cooldown. Shared by the per-icon OnUpdate and the stacking pass so
+-- they never drift; memo LOG's maxTime-only denominator so we don't math.log it every frame.
 local logDenomCache = {}
 local function ModeProgress(cfg, remaining, duration)
 	local p
@@ -494,9 +492,8 @@ end
 local ICON_BASE_VISIBLE = 1 - 0.08 * 2
 
 -- Shared per-icon styling for lanes AND ready frames: configurable zoom + the "unusable"
--- tint/desaturate. C_Spell.IsSpellUsable is a plain boolean (not a secret value in combat),
--- so this is combat-safe. Cached so the common usable path makes no setter calls after the
--- first frame; the texcoord is only re-applied when the zoom level changes.
+-- tint/desaturate. IsSpellUsable is a plain boolean (combat-safe). Cached so the usable path
+-- makes no setter calls after the first frame; texcoord re-applied only when zoom changes.
 function ns.StyleIcon(btn, spellID, itemID, g)
 	local tex = btn and btn.tex
 	if not (tex and g) then return end
@@ -579,10 +576,9 @@ local function ApplyConfigBody(laneIndex)
 	local bg = cfg.bgColor
 	if cfg.bgClassColor and classCol then bg = classCol end
 
-	-- BackdropTemplateMixin reference-compares the backdropInfo table and skips
-	-- work on the same reference, so mutating cached fields silently fails until
-	-- /reload. Cache the table for the steady state (no alloc), but on a
-	-- structural change swap in a fresh reference so SetBackdrop re-applies.
+	-- BackdropTemplateMixin reference-compares the backdropInfo table and skips work on the
+	-- same reference, so mutating cached fields silently fails until /reload. Cache it for the
+	-- steady state (no alloc), but on a structural change swap in a fresh reference to re-apply.
 	local borderOn = cfg.borderEnabled ~= false
 	local bgFile   = (LSM and LSM:Fetch("statusbar", cfg.bgTexture, true)) or WHITE8X8
 	local edgeTex  = (LSM and LSM:Fetch("border", cfg.borderTexture, true)) or WHITE8X8
@@ -724,10 +720,9 @@ function ns.Lanes_RebuildOne(laneIndex)
 end
 
 
--- Stable slot assignment: pairs() order over entries is unspecified and shifts as
--- entries are added/removed, reshuffling icons between pool slots and flickering their
--- textures/swipes. Sort by startTime so a fresh cooldown appends to the last slot
--- (existing icons keep theirs, no re-feed); spellID breaks ties for full determinism.
+-- Stable slot assignment: pairs() order is unspecified and shifts as entries are added/removed,
+-- reshuffling icons between pool slots and flickering their textures/swipes. Sort by startTime
+-- so a fresh cooldown appends to the last slot (existing icons keep theirs); spellID breaks ties.
 local refreshScratch = {}
 local function ByStartTime(a, b)
 	if a.startTime ~= b.startTime then
@@ -899,10 +894,9 @@ local function RefreshBody(laneIndex)
 		ApplyLaneHighlight(btn, cfg, ov and ov.important == true)
 	end
 
-	-- Stacking declutters clustered cooldowns, recomputed at refresh cadence (~10 Hz);
-	-- membership shifts slowly since icons crawl <4 px between refreshes. GROUPED packs
-	-- overlaps into perpendicular rows (_stackOff, folded into the cross-axis offset by the
-	-- per-icon OnUpdate); SPREAD pushes them apart along the lane (_spreadShift).
+	-- Stacking declutters clustered cooldowns, recomputed at refresh cadence (~10 Hz); membership
+	-- shifts slowly since icons crawl <4 px between refreshes. GROUPED packs overlaps into
+	-- perpendicular rows (_stackOff); SPREAD pushes them apart along the lane (_spreadShift).
 	local stacking = cfg.stackEnabled and count > 1
 		and (cfg.stackStyle == "GROUPED" or cfg.stackStyle == "SPREAD")
 	if stacking then

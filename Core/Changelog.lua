@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.3",
+		date = "2026-07-03",
+		sections = {
+			{ head = "Maintenance", items = {
+				"Internal code comment cleanup and tidying. No functional, gameplay, or settings changes.",
+			} },
+		},
+	},
+	{
 		version = "0.16.2",
 		date = "2026-07-02",
 		sections = {

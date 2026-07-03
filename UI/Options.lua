@@ -1601,10 +1601,9 @@ for _, def in ipairs(TABS) do
 end
 
 
--- Profile import/export via the embedded AceSerializer + LibDeflate. Serializing
--- db.profile captures only its non-default keys (AceDB defaults live on a metatable),
--- so an import merges over the recipient's defaults and reproduces the sender's
--- effective settings.
+-- Profile import/export via the embedded AceSerializer + LibDeflate. Serializing db.profile
+-- captures only its non-default keys (AceDB defaults live on a metatable), so an import merges
+-- over the recipient's defaults and reproduces the sender's effective settings.
 local function ProfileExportString()
 	local ser = LibStub("AceSerializer-3.0", true)
 	local def = LibStub("LibDeflate", true)
