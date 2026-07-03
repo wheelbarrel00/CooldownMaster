@@ -1,5 +1,10 @@
 # Cooldown Master Changelog
 
+## 0.16.1 (2026-07-02) — New icon
+
+### Improvements
+- **New icon**: now shown on the minimap button, addon list, and data-broker displays.
+
 ## 0.16.0 (2026-06-30) — Smoother motion, Split mode, lane highlights, textures, and labels
 
 A pass focused on matching the look and feel of CooldownTimeline2 (with the author's blessing): smoother icon motion, a new Split lane mode, lane highlights, texture options, and editable lane labels.

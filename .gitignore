@@ -8,15 +8,10 @@ Thumbs.db
 desktop.ini
 
 # Editor
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
+.vscode/
 *.code-workspace
 *.swp
 *.swo
-
-# Claude Code local config
-.claude/
 
 # Local comment-cleanup verifier (tooling)
 docs/verify_comments_only.py
@@ -24,7 +19,7 @@ __pycache__/
 
 # Markdown docs are internal / not shipped, EXCEPT the repo README and CHANGELOG.
 # (CHANGELOG.md is rewritten + committed by the release git-sequence, so it must stay tracked.)
-# Covers audit.md, docs/*.md, claude.md, and any future internal *.md.
+# Covers audit.md, docs/*.md, and any future internal *.md.
 *.md
 !/README.md
 !/CHANGELOG.md

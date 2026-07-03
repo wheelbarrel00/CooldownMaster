@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.1",
+		date = "2026-07-02",
+		sections = {
+			{ head = "Improvements", items = {
+				"New addon icon, used on the minimap button, addon list, and data-broker displays.",
+			} },
+		},
+	},
+	{
 		version = "0.16.0",
 		date = "2026-06-30",
 		sections = {

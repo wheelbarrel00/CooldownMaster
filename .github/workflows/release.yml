@@ -1,26 +1,61 @@
-name: Package and release
+name: Package and Release
 
 on:
   push:
     tags:
-      - '**'
+      - "v*"
+  workflow_dispatch:  # allow manual runs from the Actions tab
 
 permissions:
-  contents: write
+  contents: write   # allow the packager to create the GitHub Release for the tag
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
-      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
     steps:
-      - name: Clone project
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # full history so the packager can read all tags
+
+      - name: Verify required secrets
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+        run: |
+          if [ -z "$CF_API_KEY" ]; then
+            echo "::error::CF_API_KEY secret is not set on this repository."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "CF_API_KEY is present (length: ${#CF_API_KEY})."
+
+      - name: Show tag info
+        run: |
+          echo "Ref: $GITHUB_REF"
+          TAG="${GITHUB_REF#refs/tags/}"
+          # actions/checkout peels an annotated tag into a lightweight local ref,
+          # so a naive `git cat-file -t` would report 'commit' and falsely warn
+          # "alpha" on every release. Re-fetch the real tag objects first so the
+          # check is accurate and only fires on a genuinely lightweight tag.
+          git fetch --force --tags origin >/dev/null 2>&1 || true
+          TYPE=$(git cat-file -t "$TAG" 2>/dev/null || echo "unknown")
+          echo "Tag: $TAG  (object type: $TYPE)"
+          if [ "$TYPE" != "tag" ]; then
+            echo "::warning::'$TAG' is a lightweight tag — the packager will treat this as an ALPHA build. For a stable CurseForge release use: git tag -a $TAG -m \"$TAG\" && git push origin $TAG"
+          else
+            echo "Annotated tag — packaging as a stable release."
+          fi
+
+      - name: Build per-release changelog
+        run: awk '/^## / { if (seen) exit; seen=1 } seen' CHANGELOG.md > .release_changelog.md
 
       - name: Package and release
         uses: BigWigsMods/packager@v2
+        env:
+          # The CurseForge project ID is read from the TOC file:
+          #   ## X-Curse-Project-ID: <id>
+          # NOT from .pkgmeta. If that TOC field is blank the packager
+          # silently skips CurseForge and only creates the GitHub release.
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

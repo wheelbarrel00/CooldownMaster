@@ -10,7 +10,7 @@ function ns.DataBroker_Init(addon)
 	local launcher = LDB:NewDataObject(ns.CONST.ADDON_NAME, {
 		type    = "launcher",
 		text    = ns.CONST.ADDON_DISPLAY,
-		icon    = "Interface\\Icons\\Spell_Holy_BorrowedTime",
+		icon    = "Interface\\AddOns\\CooldownMaster\\media\\minimap",
 		label   = ns.CONST.ADDON_DISPLAY,
 
 		OnClick = function(_, button)

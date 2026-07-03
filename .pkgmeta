@@ -1,12 +1,14 @@
 package-as: CooldownMaster
 
-# Replace with your actual CurseForge project ID after creating the project
+# CurseForge project ID — set this after creating the project (the packager reads it from the TOC's X-Curse-Project-ID).
 curse-id:
 
 enable-nolib-creation: no
 
 changelog-title: Cooldown Master
-changelog-file: CHANGELOG.md
+manual-changelog:
+  filename: .release_changelog.md
+  markup-type: markdown
 
 externals:
     Libs/LibStub:
@@ -38,4 +40,4 @@ ignore:
     - .vscode
     - screenshots
     - LICENSE
-    - claude.md
+    - .release_changelog.md
