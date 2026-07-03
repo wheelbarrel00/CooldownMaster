@@ -904,7 +904,13 @@ function Engine:ScanSpells()
 	wipe(edges)
 	for spellID, entry in pairs(self.entries) do
 		if entry._source ~= "test" and entry.kind ~= "item" and not seen[spellID] then
-			edges[#edges + 1] = spellID
+			-- Hidden spells stay out of the ready sweep + shared-cd dedupe (else a hidden sibling can
+			-- suppress a visible one); clear the finished entry instead of popping it.
+			if not blackout and not self:IsSpellVisible(spellID, entry.category) then
+				self.entries[spellID] = nil
+			else
+				edges[#edges + 1] = spellID
+			end
 		end
 	end
 	local massVanish = #edges > READY_MAX_POPS_PER_SCAN

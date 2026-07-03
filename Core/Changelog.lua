@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.7",
+		date = "2026-07-03",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Fixed a spell hidden in Filters still popping into a ready frame (or suppressing a visible spell) when Detect Shared Cooldowns was enabled. Hidden spells are now kept out of the ready-frame logic entirely, matching how the lanes already hide them.",
+			} },
+		},
+	},
+	{
 		version = "0.16.6",
 		date = "2026-07-03",
 		sections = {

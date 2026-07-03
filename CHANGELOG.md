@@ -1,5 +1,10 @@
 # Cooldown Master Changelog
 
+## 0.16.7 (2026-07-03) — Hidden-spell ready-pop fix
+
+### Bug Fixes
+- Fixed a spell hidden in Filters still popping into a ready frame (or suppressing a visible spell) when **Detect Shared Cooldowns** was enabled. Hidden spells are now excluded from the ready-frame logic entirely, matching how the lanes already hide them.
+
 ## 0.16.6 (2026-07-03) — Live Test Mode preview
 
 ### Improvements
