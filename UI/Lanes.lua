@@ -87,24 +87,26 @@ end
 -- Alpha-toggle the chrome only; never the frame alpha or the icon children (that is what
 -- keeps icons lit). Backdrop is the frame's own artwork, so alpha-zero it, don't detach.
 local function SetLaneChrome(addon, f, cfg, show)
+	-- cfg.alpha fades the bar chrome only; icons keep their own iconAlpha (the frame stays opaque).
+	local a = cfg.alpha or 1
 	local bg = f._chromeBg
 	if bg then
-		pcall(f.SetBackdropColor, f, bg.r, bg.g, bg.b, show and (bg.a or 1) or 0)
+		pcall(f.SetBackdropColor, f, bg.r, bg.g, bg.b, show and (bg.a or 1) * a or 0)
 	end
 	local bc = f._chromeBorder
 	if bc then
-		pcall(f.SetBackdropBorderColor, f, bc.r, bc.g, bc.b, show and (bc.a or 1) or 0)
+		pcall(f.SetBackdropBorderColor, f, bc.r, bc.g, bc.b, show and (bc.a or 1) * a or 0)
 	else
 		pcall(f.SetBackdropBorderColor, f, 0, 0, 0, 0)
 	end
 	if f.label then
-		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) or 0)
+		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) * a or 0)
 	end
 	if f.markers and cfg.laneText then
 		for i = 1, 5 do
 			local m, def = f.markers[i], cfg.laneText[i]
 			if m and def then
-				if show and def.enabled then m:Show() else m:Hide() end
+				if show and def.enabled then m:SetAlpha(a); m:Show() else m:Hide() end
 			end
 		end
 	end
@@ -208,8 +210,9 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 			ns.CONST.RGB.PANEL_BORDER)
 	end
 
-	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	label:SetPoint("CENTER")
+	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	-- Name floats just above the bar so it never overlaps the % markers, at any lane height.
+	label:SetPoint("BOTTOM", f, "TOP", 0, 2)
 	label:SetText(cfg.frameName)
 	label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
@@ -218,6 +221,8 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.markers = {}
 	for i = 1, 5 do
 		local m = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		local mfp, _, mfl = m:GetFont()
+		if mfp then m:SetFont(mfp, 9, mfl) end
 		m:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 		m:Hide()
 		f.markers[i] = m
@@ -624,7 +629,8 @@ local function ApplyConfigBody(laneIndex)
 		laneFrame:ClearAllPoints()
 		laneFrame:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
 	end
-	laneFrame:SetAlpha(cfg.alpha or 1)
+	-- Frame stays opaque so icons keep their own iconAlpha; cfg.alpha fades the bar chrome (SetLaneChrome).
+	laneFrame:SetAlpha(1)
 
 	if laneFrame.label then
 		laneFrame.label:SetText(cfg.frameName or "")

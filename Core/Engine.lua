@@ -122,6 +122,18 @@ local function GetSpellNameIcon(spellID)
 end
 
 
+-- Player's i-th HELPFUL aura via modern C_UnitAuras, or legacy UnitAura on Classic.
+local function GetPlayerBuff(i)
+	if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+		local d = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+		if d then return d.name, d.spellId, d.duration, d.icon, d.expirationTime end
+	elseif UnitAura then
+		local name, icon, _, _, duration, expiration, _, _, _, spellID = UnitAura("player", i, "HELPFUL")
+		return name, spellID, duration, icon, expiration
+	end
+end
+
+
 -- Async on first cache miss: returns nil until GET_ITEM_INFO_RECEIVED fires.
 local function GetItemNameIcon(itemID)
 	if not (C_Item and C_Item.GetItemInfo) then return nil, nil end
@@ -313,6 +325,11 @@ function Engine:BuildTrackedSpells()
 	wipe(self.trackedSpells)
 	wipe(self.cdIDToSpellID)
 
+	if not ns.Compat.HAS_BLIZZ_CDM then
+		self:BuildTrackedSpellsClassic()
+		return
+	end
+
 	if not (C_CooldownViewer
 		and C_CooldownViewer.GetCooldownViewerCategorySet
 		and C_CooldownViewer.GetCooldownViewerCooldownInfo) then
@@ -352,6 +369,178 @@ function Engine:BuildTrackedSpells()
 	end
 
 	self:SeedBaselineDurations()
+end
+
+
+-- Classic has no C_CooldownViewer: scan the spellbook, keep spells whose base cooldown exceeds the GCD.
+function Engine:BuildTrackedSpellsClassic()
+	if type(GetSpellBaseCooldown) ~= "function" then return end
+
+	local function consider(spellID)
+		if not spellID or self.trackedSpells[spellID] then return end
+		local cdMS, gcdMS = GetSpellBaseCooldown(spellID)
+		if not cdMS or cdMS <= 0 or cdMS <= (gcdMS or 0) then return end
+		local name, icon = GetSpellNameIcon(spellID)
+		if name then
+			self.trackedSpells[spellID] = { name = name, icon = icon, category = 0 }
+		end
+	end
+
+	if GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemName then
+		local bookType = BOOKTYPE_SPELL or "spell"
+		for tab = 1, GetNumSpellTabs() do
+			local offset, numSlots = select(3, GetSpellTabInfo(tab))
+			if offset and numSlots then
+				for j = offset + 1, offset + numSlots do
+					consider((select(3, GetSpellBookItemName(j, bookType))))
+				end
+			end
+		end
+	elseif C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemType then
+		local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+		for i = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+			local line = C_SpellBook.GetSpellBookSkillLineInfo(i)
+			if line and line.itemIndexOffset and line.numSpellBookItems then
+				for j = line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems do
+					consider((select(2, C_SpellBook.GetSpellBookItemType(j, bank))))
+				end
+			end
+		end
+	end
+end
+
+
+-- Classic cooldown numbers are readable in combat (no secret values): entries carry real
+-- start/duration and no dObj, so RefreshBody feeds the widget via SetCooldown.
+function Engine:ScanSpellsClassic()
+	local getCD = ns.Compat and ns.Compat.GetSpellCooldown
+	if not getCD then return end
+
+	self._seenSpells = self._seenSpells or {}
+	local seen = self._seenSpells
+	wipe(seen)
+	local now = GetTime()
+
+	for spellID, tracked in pairs(self.trackedSpells) do
+		local start, duration = getCD(spellID)
+		-- A real cooldown, not the shared 1.5s GCD every spell reports while one is running.
+		if start and duration and start > 0 and duration > 1.5 then
+			seen[spellID] = true
+			local endTime = start + duration
+			local e = self.entries[spellID]
+			if not e then
+				local cat = tracked.category or 0
+				self.entries[spellID] = {
+					spellID   = spellID,
+					name      = tracked.name,
+					icon      = tracked.icon,
+					startTime = start,
+					duration  = duration,
+					endTime   = endTime,
+					laneIndex = self:ResolveLaneIndex(spellID, cat),
+					category  = cat,
+					_source   = "classic",
+				}
+			else
+				e.startTime = start
+				e.duration  = duration
+				e.endTime   = endTime
+			end
+		end
+	end
+
+	-- A loading screen briefly reports cooldowns as inactive, which would pop the whole set
+	-- ready at once; keep entries and stay silent until the blackout window passes.
+	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
+	if not blackout then
+		self._readyEdges = self._readyEdges or {}
+		local edges = self._readyEdges
+		wipe(edges)
+		for spellID, e in pairs(self.entries) do
+			if e._source == "classic" and not seen[spellID] then
+				edges[#edges + 1] = spellID
+			end
+		end
+		for _, spellID in ipairs(edges) do
+			local e = self.entries[spellID]
+			if self.trackedSpells[spellID] and ns.ReadyFrames_OnReadyTransition then
+				ns.ReadyFrames_OnReadyTransition(spellID, e)
+			end
+			self.entries[spellID] = nil
+		end
+	end
+end
+
+
+-- Classic buffs (Seals, Blessings) have no cooldown, so track them as auras timed by remaining
+-- duration. Category 2 routes to the Buffs filter/lane; discovered lazily as auras appear.
+function Engine:ScanBuffs()
+	self._seenBuffs = self._seenBuffs or {}
+	local seen = self._seenBuffs
+	wipe(seen)
+	local now = GetTime()
+	local discovered = false
+
+	for i = 1, 40 do
+		local name, spellID, duration, icon, expiration = GetPlayerBuff(i)
+		if not name then break end
+		if spellID and duration and duration > 0 and expiration and expiration > now
+			and IsPlayerSpell and IsPlayerSpell(spellID) then
+			local tracked = self.trackedSpells[spellID]
+			-- Don't fight a spell already tracked as a cooldown.
+			if not tracked or tracked.category == 2 then
+				if not tracked then
+					self.trackedSpells[spellID] = { name = name, icon = icon, category = 2 }
+					discovered = true
+				end
+				if self:IsSpellVisible(spellID, 2) then
+					seen[spellID] = true
+					local e = self.entries[spellID]
+					if not e then
+						self.entries[spellID] = {
+							spellID   = spellID,
+							name      = name,
+							icon      = icon,
+							startTime = expiration - duration,
+							duration  = duration,
+							endTime   = expiration,
+							laneIndex = self:ResolveLaneIndex(spellID, 2),
+							category  = 2,
+							_source   = "buff",
+						}
+					elseif e._source == "buff" then
+						e.startTime = expiration - duration
+						e.duration  = duration
+						e.endTime   = expiration
+					end
+				end
+			end
+		end
+	end
+
+	-- Loading screens briefly report no auras; keep entries and stay silent in the blackout.
+	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
+	if not blackout then
+		self._buffEdges = self._buffEdges or {}
+		local edges = self._buffEdges
+		wipe(edges)
+		for spellID, e in pairs(self.entries) do
+			if e._source == "buff" and not seen[spellID] then
+				edges[#edges + 1] = spellID
+			end
+		end
+		for _, spellID in ipairs(edges) do
+			local e = self.entries[spellID]
+			if self:IsSpellVisible(spellID, 2) and ns.ReadyFrames_OnReadyTransition then
+				ns.ReadyFrames_OnReadyTransition(spellID, e)
+			end
+			self.entries[spellID] = nil
+		end
+	end
+
+	if discovered and ns.Options_InvalidateFilterLists then
+		ns.Options_InvalidateFilterLists()
+	end
 end
 
 
@@ -583,6 +772,11 @@ end
 -- driven off the readable GetSpellCooldown().isActive/.isOnGCD booleans; the opaque
 -- DurationObject feeds a native Cooldown widget for the exact swipe, only position is extrapolated.
 function Engine:ScanSpells()
+	if not ns.Compat.HAS_BLIZZ_CDM then
+		self:ScanSpellsClassic()
+		self:ScanBuffs()
+		return
+	end
 	if not (C_Spell and C_Spell.GetSpellCooldown) then return end
 
 	self._seenSpells = self._seenSpells or {}
@@ -989,6 +1183,33 @@ function Engine:Start(addon)
 			end
 		end)
 		self.specEventFrame = f
+	end
+
+	-- Classic's tracked set comes from a spellbook scan, so rebuild it when the spellbook
+	-- changes (learning spells, MoP talent swaps). SPELLS_CHANGED fires in bursts, so debounce.
+	if not ns.Compat.HAS_BLIZZ_CDM and not self.spellsChangedFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("SPELLS_CHANGED")
+		f:SetScript("OnEvent", function()
+			if self._spellsRebuildPending then return end
+			self._spellsRebuildPending = true
+			C_Timer.After(1, function()
+				self._spellsRebuildPending = false
+				self:BuildTrackedSpells()
+				if ns.Options_InvalidateFilterLists then
+					ns.Options_InvalidateFilterLists()
+				end
+			end)
+		end)
+		self.spellsChangedFrame = f
+	end
+
+	-- Classic buffs change on UNIT_AURA (not SPELL_UPDATE_COOLDOWN); rescan the player's auras on change.
+	if not ns.Compat.HAS_BLIZZ_CDM and not self.auraEventFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterUnitEvent("UNIT_AURA", "player")
+		f:SetScript("OnEvent", function() self:ScanBuffs() end)
+		self.auraEventFrame = f
 	end
 
 	-- Debounced so a burst of cooldown changes collapses into a single scan.

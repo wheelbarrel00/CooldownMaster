@@ -2,6 +2,20 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.16.5",
+		date = "2026-07-03",
+		sections = {
+			{ head = "New Features", items = {
+				"WoW Classic support: Cooldown Master now runs on Classic flavors that lack retail's Cooldown Viewer. It scans your spellbook and tracks abilities whose cooldown is longer than the global cooldown, reading live cooldown times directly. Class buffs with no cooldown (Paladin Seals and Blessings, and the like) are tracked by remaining duration under the Buffs category, and the tracked set refreshes as you learn spells or swap talents.",
+			} },
+			{ head = "Improvements", items = {
+				"Lane transparency now fades the bar, not the icons: a lane's Box Alpha dims only the bar background, border, name, and markers, while the cooldown icons keep their own Icon Alpha and stay fully visible.",
+				"Refreshed default layout for new installs: thinner, wider lanes with tighter borders, slightly smaller icons, and a repositioned first ready box. Existing profiles are untouched.",
+				"Lane and ready-box names now float just above the frame instead of centered inside it, so the label never overlaps the bar or its markers.",
+			} },
+		},
+	},
+	{
 		version = "0.16.4",
 		date = "2026-07-03",
 		sections = {

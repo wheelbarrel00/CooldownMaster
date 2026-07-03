@@ -1,6 +1,6 @@
 local ADDON_NAME, ns = ...
 
-local function lane(frameName)
+local function lane(frameName, y)
 	return {
 		enabled        = true,
 		frameName      = frameName,
@@ -23,10 +23,10 @@ local function lane(frameName)
 		stTexture      = "CDM Smooth",
 		stColor        = { r = 1, g = 1, b = 1, a = 1 },
 
-		width          = 400,
-		height         = 44,
+		width          = 575,
+		height         = 17,
 		x              = 0,
-		y              = -250,
+		y              = y or -175,
 		anchor         = "CENTER",
 		fgTexture      = "CDM Smooth",
 		fgColor        = { r = 0.92, g = 0.72, b = 0.02, a = 1 },
@@ -38,13 +38,13 @@ local function lane(frameName)
 		borderTexture  = "CDM Shadow",
 		borderEnabled  = true,
 		borderColor    = { r = 0,   g = 0,   b = 0,   a = 1 },
-		borderPadding  = 5,
-		borderSize     = 5,
+		borderPadding  = 0,
+		borderSize     = 2,
 
-		iconSize       = 40,
+		iconSize       = 35,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
-		swipeAlpha     = 0.8,   -- cooldown-swipe darkness; 0 = no tint (spell art fully visible)
+		swipeAlpha     = 0,   -- cooldown-swipe darkness; 0 = no tint (spell art fully visible)
 		iconText       = {
 			{ enabled = true,  text = "[cd.stacks]" },
 			{ enabled = true,  text = "[cd.time]"   },
@@ -102,8 +102,8 @@ local function readyFrame(frameName, x, y, enabled)
 		borderTexture  = "CDM Shadow",
 		borderEnabled  = true,
 		borderColor    = { r = 0, g = 0, b = 0, a = 1 },
-		borderSize     = 5,
-		borderPadding  = 5,
+		borderSize     = 1,
+		borderPadding  = 1,
 
 		iconText       = {
 			{ enabled = true,  text = "[cd.stacks]" },
@@ -134,13 +134,13 @@ ns.DEFAULTS = {
 	classColors = {},  -- populated from CONST.CLASS_COLORS at first run
 
 	lanes = {
-		[1] = lane("Lane 1"),
-		[2] = lane("Lane 2"),
-		[3] = lane("Lane 3"),
+		[1] = lane("Lane 1", -175),
+		[2] = lane("Lane 2", -210),
+		[3] = lane("Lane 3", -245),
 	},
 
 	readyFrames = {
-		[1] = readyFrame("Ready 1", -200, -120, true),
+		[1] = readyFrame("Ready 1", -200, 30, true),
 		[2] = readyFrame("Ready 2",  200, -120, false),
 		[3] = readyFrame("Ready 3",    0,  120, false),
 	},

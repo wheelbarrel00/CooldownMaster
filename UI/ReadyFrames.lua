@@ -385,8 +385,9 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		end
 	end)
 
-	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	label:SetPoint("CENTER")
+	local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	-- Name floats just above the box so the label fits (the box is only icon-sized).
+	label:SetPoint("BOTTOM", f, "TOP", 0, 2)
 	label:SetText(cfg.frameName)
 	label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
