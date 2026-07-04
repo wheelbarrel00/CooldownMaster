@@ -27,6 +27,25 @@ local function applyBackdrop(frame, fillColor, borderColor)
 end
 
 
+-- Slider/dropdown labels are FontStrings (no mouse input), so lay a transparent hit frame
+-- over the label to surface cfg.tooltip on hover. Sits above the label only, so it never
+-- blocks the control beneath it.
+local function attachLabelTooltip(root, label, cfg)
+	if not cfg.tooltip then return end
+	local hit = CreateFrame("Frame", nil, root)
+	hit:SetPoint("TOPLEFT", label, "TOPLEFT", 0, 0)
+	hit:SetPoint("BOTTOMRIGHT", label, "BOTTOMRIGHT", 0, 0)
+	hit:EnableMouse(true)
+	hit:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(cfg.label or "")
+		GameTooltip:AddLine(cfg.tooltip, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+
 function Widgets.CreateSectionHeader(parent, labelText)
 	local f = CreateFrame("Frame", nil, parent)
 	f:SetHeight(18)
@@ -109,6 +128,7 @@ function Widgets.CreateSlider(parent, cfg)
 	label:SetPoint("TOP", root, "TOP", 0, 0)
 	label:SetText(cfg.label or "")
 	label:SetTextColor(1, 1, 1)
+	attachLabelTooltip(root, label, cfg)
 
 	local track = CreateFrame("Frame", nil, root,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -226,6 +246,7 @@ function Widgets.CreateDropdown(parent, cfg)
 	label:SetPoint("TOP", root, "TOP", 0, 0)
 	label:SetText(cfg.label or "")
 	label:SetTextColor(1, 1, 1)
+	attachLabelTooltip(root, label, cfg)
 
 	local btn = CreateFrame("Button", nil, root,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)

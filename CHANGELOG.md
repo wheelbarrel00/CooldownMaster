@@ -1,5 +1,19 @@
 # Cooldown Master Changelog
 
+## 0.18.0 (2026-07-04) — GCD/Swing tracking, ready-icon cap, Classic fixes
+
+### New Features
+- **GCD & Swing tracking on the lanes.** Each lane can now show your global cooldown or main-hand swing timer as a recurring indicator — either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with its own size, color, and direction. (Classic flavors; on retail this is handled by Blizzard's built-in Cooldown Manager.)
+- **Max Ready Icons.** Each ready box now caps how many ready icons show at once (Ready > General), so a burst of cooldowns coming off at the same time no longer floods the box. Newest readies take priority.
+- **`/cm` shortcut.** Every slash command now also works as `/cm` (e.g. `/cm`, `/cm lock`, `/cm test`) in addition to `/cdmaster`.
+
+### Bug Fixes
+- Fixed the Filters list on Classic showing the same spell multiple times — for example **Soul Reaper appearing three times** on a Mists Death Knight — and listing **off-spec abilities** you can't use, like a Frost ability on a Blood Death Knight. The list now shows only what your current specialization can actually cast.
+
+### Improvements
+- **Death Gate** is now filed under the **Utility** filter instead of Spells on Classic.
+- Added hover tooltips to several options: Mode, Primary/Secondary Tracking, ST Height, Stack Style, Highlight Style, and the ready-box Anchor.
+
 ## 0.17.0 (2026-07-03) — Mists of Pandaria Classic support
 
 ### New Features

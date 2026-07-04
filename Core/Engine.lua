@@ -376,14 +376,26 @@ end
 function Engine:BuildTrackedSpellsClassic()
 	if type(GetSpellBaseCooldown) ~= "function" then return end
 
+	self.gcdProbe = nil
+	local seenNames = {}
 	local function consider(spellID)
 		if not spellID or self.trackedSpells[spellID] then return end
+		-- The spellbook enumerates inactive-spec tabs too (a Blood DK sees Frost's Pillar of
+		-- Frost); IsPlayerSpell keeps only what the active spec can actually cast.
+		if IsPlayerSpell and not IsPlayerSpell(spellID) then return end
 		local cdMS, gcdMS = GetSpellBaseCooldown(spellID)
+		-- First known on-GCD, no-cooldown spell doubles as a GCD probe: its live cooldown
+		-- reflects the GCD on pre-3.0 clients where spell 61304/Moonfire don't (per-class).
+		if not self.gcdProbe and gcdMS and gcdMS > 0 and (not cdMS or cdMS <= gcdMS) then
+			self.gcdProbe = spellID
+		end
 		if not cdMS or cdMS <= 0 or cdMS <= (gcdMS or 0) then return end
 		local name, icon = GetSpellNameIcon(spellID)
-		if name then
-			self.trackedSpells[spellID] = { name = name, icon = icon, category = 0 }
-		end
+		-- MoP ships per-spec spell variants under one name (Soul Reaper x3); dedupe by name.
+		if not name or seenNames[name] then return end
+		seenNames[name] = true
+		local cat = ns.CONST.CLASSIC_UTILITY_SPELLS[spellID] and 1 or 0
+		self.trackedSpells[spellID] = { name = name, icon = icon, category = cat }
 	end
 
 	if GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemName then

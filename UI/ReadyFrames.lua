@@ -460,6 +460,28 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local important = override and override.important == true
 	local pinned    = override and override.pinned == true
 
+	-- Cap concurrent pops for this box: at the limit, recycle the non-pinned icon closest to
+	-- fading so the freshest ready always surfaces; drop the new pop if all slots are pinned.
+	local maxIcons = cfg.maxIcons or 10
+	if maxIcons > 0 then
+		local visible, evict, evictTime = 0, nil, nil
+		for i = 1, #target.iconPool do
+			local b = target.iconPool[i]
+			if b and b:IsShown() then
+				visible = visible + 1
+				if not b._pinned and (not evict or (b._readyTime or 0) < evictTime) then
+					evict, evictTime = b, (b._readyTime or 0)
+				end
+			end
+		end
+		if visible >= maxIcons then
+			if not evict then return end
+			ClearIconHighlight(evict)
+			evict:Hide()
+			evict:SetAlpha(1)
+		end
+	end
+
 	local slot = nil
 	for i = 1, #target.iconPool do
 		local btn = target.iconPool[i]

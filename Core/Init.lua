@@ -281,6 +281,9 @@ function CDM:OnSlash(input)
 	elseif input == "haste" then
 		self:OnSlashHaste()
 
+	elseif input == "tracking" then
+		if ns.Lanes_TrackingReport then ns.Lanes_TrackingReport() end
+
 	elseif input == "debug" then
 		local engine = ns.Engine
 		if not engine then
@@ -358,7 +361,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cdmaster | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste | tracking")
 	end
 end
 

@@ -110,6 +110,13 @@ local function SetLaneChrome(addon, f, cfg, show)
 			end
 		end
 	end
+	-- Tracking bars are combat-rhythm chrome, so they hide with the rest of it; the flag also
+	-- stops the per-frame UpdateTracking from re-showing them while chrome is hidden.
+	f._chromeHidden = not show
+	if not show then
+		if f.primaryFill then f.primaryFill:Hide() end
+		if f.st then f.st:Hide() end
+	end
 end
 
 
@@ -129,6 +136,203 @@ local function ApplyVisibility(addon)
 			f:EnableMouse(unlocked)
 		end
 	end
+end
+
+
+-- Recurring-timer tracking (GCD / main-hand swing) drawn on the lane: primaryTracking fills
+-- the whole lane, secondaryTracking is a small bar sliding across it. Retail's Cooldown
+-- Manager owns this, so it stays off there (matching the hidden options).
+local TRACKING_ENABLED = not ns.Compat.IS_RETAIL
+
+-- 61304 is Blizzard's hidden Global Cooldown spell (canonical GCD probe on the modern
+-- engine); 8921 (Moonfire, no cooldown of its own) is a fallback for older clients.
+local GCD_SPELLS = { 61304, 8921 }
+
+local swingEnd, swingSpeed   -- main-hand swing state, player-wide
+local swingActive = false    -- any enabled lane tracking SWING; gates the combat-log work
+
+function ns.Lanes_HandleSwingLog()
+	if not swingActive then return end
+	local _, sub, _, srcGUID = CombatLogGetCurrentEventInfo()
+	if srcGUID ~= UnitGUID("player") then return end
+	-- isOffHand lands at a different arg index for a landed hit vs a miss.
+	local isOffHand
+	if sub == "SWING_DAMAGE" then
+		isOffHand = select(21, CombatLogGetCurrentEventInfo())
+	elseif sub == "SWING_MISSED" then
+		isOffHand = select(13, CombatLogGetCurrentEventInfo())
+	else
+		return
+	end
+	if isOffHand then return end
+	local mh = UnitAttackSpeed("player")
+	if mh and mh > 0 then
+		swingSpeed = mh
+		swingEnd   = GetTime() + mh
+	end
+end
+
+local function RecomputeTrackingNeeds()
+	local addon = ns.CDM
+	swingActive = false
+	if TRACKING_ENABLED and addon and addon.db then
+		for i = 1, 3 do
+			local cfg = addon.db.profile.lanes[i]
+			if cfg and cfg.enabled
+				and (cfg.primaryTracking == "SWING" or cfg.secondaryTracking == "SWING") then
+				swingActive = true
+				break
+			end
+		end
+	end
+	if not addon then return end
+	if swingActive then
+		addon:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", ns.Lanes_HandleSwingLog)
+	else
+		addon:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	end
+end
+
+local function gcdFraction(id)
+	local start, duration = ns.Compat.GetSpellCooldown(id)
+	if start and duration and start > 0 and duration > 0 then
+		local p = (start + duration - GetTime()) / duration
+		if p < 0 then return 0 elseif p > 1 then return 1 end
+		return p
+	end
+end
+
+local function CalcTracking(which)
+	if which == "GCD" then
+		-- Prefer the spellbook probe (a spell the player actually knows, so it reflects the
+		-- GCD on every flavor); fall back to the fixed IDs that only work on newer clients.
+		local probe = ns.Engine and ns.Engine.gcdProbe
+		if probe then
+			local p = gcdFraction(probe)
+			if p then return p end
+		end
+		for _, id in ipairs(GCD_SPELLS) do
+			local p = gcdFraction(id)
+			if p then return p end
+		end
+		return 0
+	elseif which == "SWING" then
+		if not swingEnd or not swingSpeed or swingSpeed <= 0 then return 1 end
+		local remaining = swingEnd - GetTime()
+		if remaining <= 0 then return 1 end
+		return remaining / swingSpeed
+	end
+	return 0
+end
+
+-- The Reverse toggle flips relative to the lane's own direction, so by default the tick
+-- sweeps the same way the cooldown icons travel.
+local function PositionPrimary(f, cfg, v)
+	local fill = f.primaryFill
+	fill:ClearAllPoints()
+	local rev = (cfg.primaryReverse and true or false) ~= (cfg.reversed and true or false)
+	if cfg.vertical then
+		fill:SetWidth(cfg.width or 575)
+		fill:SetHeight(math.max(0.5, v * (cfg.height or 17)))
+		local pt = rev and "TOP" or "BOTTOM"
+		fill:SetPoint(pt, f, pt, 0, 0)
+	else
+		fill:SetHeight(cfg.height or 17)
+		fill:SetWidth(math.max(0.5, v * (cfg.width or 575)))
+		local pt = rev and "RIGHT" or "LEFT"
+		fill:SetPoint(pt, f, pt, 0, 0)
+	end
+end
+
+local function PositionSecondary(f, cfg, v)
+	local st = f.st
+	st:ClearAllPoints()
+	local rev = (cfg.secondaryReverse and true or false) ~= (cfg.reversed and true or false)
+	if cfg.vertical then
+		local usable = math.max(1, (cfg.height or 17) - (cfg.stHeight or 24))
+		local y = v * usable
+		if rev then st:SetPoint("TOP", f, "TOP", 0, -y)
+		else st:SetPoint("BOTTOM", f, "BOTTOM", 0, y) end
+	else
+		local usable = math.max(1, (cfg.width or 575) - (cfg.stWidth or 7))
+		local x = v * usable
+		if rev then st:SetPoint("RIGHT", f, "RIGHT", -x, 0)
+		else st:SetPoint("LEFT", f, "LEFT", x, 0) end
+	end
+end
+
+local function ApplyTrackingConfig(f, cfg)
+	if not (f and f.st and f.primaryFill) then return end
+	local col = cfg.stColor or { r = 1, g = 1, b = 1, a = 1 }
+	local tex = (LSM and LSM:Fetch("statusbar", cfg.stTexture, true)) or WHITE8X8
+	f.st:SetTexture(tex)
+	f.st:SetVertexColor(col.r, col.g, col.b, col.a or 1)
+	f.st:SetSize(cfg.stWidth or 7, cfg.stHeight or 24)
+	f.primaryFill:SetTexture(tex)
+	f.primaryFill:SetVertexColor(col.r, col.g, col.b, col.a or 1)
+	-- Gate the per-frame UpdateTracking so idle NONE/NONE lanes (the default) do no work.
+	f._track = (cfg.primaryTracking and cfg.primaryTracking ~= "NONE")
+		or (cfg.secondaryTracking and cfg.secondaryTracking ~= "NONE") or false
+	if not f._track then
+		f.primaryFill:Hide()
+		f.st:Hide()
+	end
+end
+
+local function UpdateTracking(f)
+	local cfg = f.cfg
+	if not (cfg and f.st) then return end
+
+	if cfg.primaryTracking and cfg.primaryTracking ~= "NONE" then
+		local v = CalcTracking(cfg.primaryTracking)
+		-- Hide at the extremes too: an idle swing reads 1, which must not sit as a full fill.
+		if v > 0 and v < 1 then PositionPrimary(f, cfg, v); f.primaryFill:Show()
+		else f.primaryFill:Hide() end
+	else
+		f.primaryFill:Hide()
+	end
+
+	if cfg.secondaryTracking and cfg.secondaryTracking ~= "NONE" then
+		local v = CalcTracking(cfg.secondaryTracking)
+		-- Hide at the extremes so an idle GCD/swing leaves no tick parked at the lane edge.
+		if v > 0 and v < 1 then PositionSecondary(f, cfg, v); f.st:Show()
+		else f.st:Hide() end
+	else
+		f.st:Hide()
+	end
+end
+
+
+local trackMon
+function ns.Lanes_TrackingReport()
+	local addon = ns.CDM
+	if not addon then return end
+	addon:Print(string.format("Tracking enabled: %s | swingActive: %s | swingSpeed: %s",
+		tostring(TRACKING_ENABLED), tostring(swingActive), tostring(swingSpeed)))
+	for i = 1, 3 do
+		local cfg = addon.db.profile.lanes[i]
+		local f = addon.lanes and addon.lanes[i]
+		if cfg then
+			addon:Print(string.format("Lane %d: pri=%s sec=%s | frame=%s st=%s fill=%s",
+				i, tostring(cfg.primaryTracking), tostring(cfg.secondaryTracking),
+				f and "yes" or "NO", (f and f.st) and "yes" or "NO",
+				(f and f.primaryFill) and "yes" or "NO"))
+		end
+	end
+	-- GCD/swing are transient, so sample for 5s instead of snapshotting the idle moment.
+	trackMon = trackMon or CreateFrame("Frame")
+	trackMon._t, trackMon._gcd, trackMon._sw = 0, 0, 1
+	addon:Print("Sampling 5s -- cast a few spells and swing at a target now...")
+	trackMon:SetScript("OnUpdate", function(self, e)
+		self._t = self._t + e
+		local g = CalcTracking("GCD"); if g > self._gcd then self._gcd = g end
+		local s = CalcTracking("SWING"); if s < self._sw then self._sw = s end
+		if self._t >= 5 then
+			self:SetScript("OnUpdate", nil)
+			addon:Print(string.format("Sampled peaks -> GCD reached: %.2f | Swing dropped to: %.2f",
+				self._gcd, self._sw))
+		end
+	end)
 end
 
 
@@ -184,6 +388,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	end)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
+		if TRACKING_ENABLED and self._track and not self._chromeHidden then UpdateTracking(self) end
 		if not self._isDragging then return end
 
 		local cursorX, cursorY = GetCursorPosition()
@@ -226,6 +431,14 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 		m:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 		m:Hide()
 		f.markers[i] = m
+	end
+
+	if TRACKING_ENABLED then
+		f.primaryFill = f:CreateTexture(nil, "ARTWORK")
+		f.primaryFill:Hide()
+		f.st = f:CreateTexture(nil, "OVERLAY", nil, 2)
+		f.st:Hide()
+		ApplyTrackingConfig(f, cfg)
 	end
 
 	f.iconPool   = {}
@@ -677,6 +890,9 @@ local function ApplyConfigBody(laneIndex)
 	end
 
 	ConfigureLaneCountFont(laneFrame, cfg)
+
+	ApplyTrackingConfig(laneFrame, cfg)
+	RecomputeTrackingNeeds()
 
 	-- This path restored chrome to full; re-apply the current show/hide state.
 	SetLaneChrome(addon, laneFrame, cfg, ChromeShown(addon, cfg))

@@ -418,6 +418,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 
 	place(W.CreateDropdown(parent, {
 		label = "Mode", value = cfg.mode, options = MODE_OPTIONS, width = 200,
+		tooltip = "How a cooldown's time-left maps to its spot on the lane. Linear spaces time evenly; Timeline and Logarithmic compress long timers so near-ready cooldowns spread out; Split places icons using your own time-to-position points below.",
 		onChange = function(v) cfg.mode = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -483,6 +484,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		place(W.CreateDropdown(parent, {
 			label = "Primary Tracking", value = cfg.primaryTracking,
 			options = TRACKING_OPTIONS, width = 200,
+			tooltip = "Fills the whole lane like a progress bar for a recurring timer. GCD follows your global cooldown; Swing follows your main-hand swing timer; None turns it off. Uses the ST color and texture below.",
 			onChange = function(v) cfg.primaryTracking = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateCheckbox(parent, {
@@ -493,6 +495,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		place(W.CreateDropdown(parent, {
 			label = "Secondary Tracking", value = cfg.secondaryTracking,
 			options = TRACKING_OPTIONS, width = 200,
+			tooltip = "A second tracking bar, separate from Primary Tracking. GCD or Swing; None turns it off. Its size and color are the ST (Secondary Tracking) options below.",
 			onChange = function(v) cfg.secondaryTracking = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateCheckbox(parent, {
@@ -508,6 +511,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		place(W.CreateSlider(parent, {
 			label = "ST Height", min = 1, max = 120, step = 1,
 			value = cfg.stHeight, width = 220,
+			tooltip = "ST stands for Secondary Tracking. Sets the height, in pixels, of the Secondary Tracking bar set above.",
 			onChange = function(v) cfg.stHeight = v; RefreshLane(laneIndex) end,
 		}))
 
@@ -692,6 +696,7 @@ local function BuildLaneStackingForm(parent, laneIndex)
 	place(W.CreateDropdown(parent, {
 		label = "Stack Style", value = cfg.stackStyle, options = STACK_STYLE_OPTIONS,
 		width = 200,
+		tooltip = "How cooldowns that land on the same spot are arranged. Grouped stacks them in one pile with a count; Spread fans them apart so each icon stays visible.",
 		onChange = function(v) cfg.stackStyle = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -761,6 +766,7 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	place(W.CreateDropdown(parent, {
 		label = "Highlight Style", value = cfg.highlight.style or "NONE",
 		options = HL_STYLE_OPTIONS, width = 200,
+		tooltip = "Visual emphasis drawn on icons flagged Important (per spell, in Filters). Border outlines the icon; Glow and Flash pulse it; Border + Flash does both; None disables it.",
 		onChange = function(v) cfg.highlight.style = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -1895,12 +1901,12 @@ local ABOUT_BUG_URL      = "https://github.com/wheelbarrel00/CooldownMaster/issu
 local ABOUT_RELEASES_URL = "https://github.com/wheelbarrel00/CooldownMaster/releases"
 
 local ABOUT_COMMANDS = {
-	{ cmd = "/cdmaster",         desc = "Open or close the options window" },
-	{ cmd = "/cdmaster lock",    desc = "Lock the lane frames" },
-	{ cmd = "/cdmaster unlock",  desc = "Unlock the lane frames for moving" },
-	{ cmd = "/cdmaster test",    desc = "Toggle sample cooldowns in Lane 1" },
-	{ cmd = "/cdmaster reset",   desc = "Reset the current profile to defaults" },
-	{ cmd = "/cdmaster version", desc = "Print the version and game flavor" },
+	{ cmd = "/cm",         desc = "Open or close the options window (or /cdmaster)" },
+	{ cmd = "/cm lock",    desc = "Lock the lane frames" },
+	{ cmd = "/cm unlock",  desc = "Unlock the lane frames for moving" },
+	{ cmd = "/cm test",    desc = "Toggle sample cooldowns in Lane 1" },
+	{ cmd = "/cm reset",   desc = "Reset the current profile to defaults" },
+	{ cmd = "/cm version", desc = "Print the version and game flavor" },
 }
 
 local ABOUT_OTHER_ADDONS = {
@@ -2189,6 +2195,10 @@ local function BuildReadyGeneralForm(parent, i)
 		label = "Post-Combat Hide (sec, 0 = off)", min = 0, max = 30, step = 1, value = cfg.pTime or 0, width = 240,
 		onChange = function(v) cfg.pTime = v end,
 	}))
+	place(W.CreateSlider(parent, {
+		label = "Max Ready Icons", min = 1, max = 10, step = 1, value = cfg.maxIcons or 10, width = 240,
+		onChange = function(v) cfg.maxIcons = v end,
+	}))
 	place(W.CreateDropdown(parent, {
 		label = "Ready Sound", value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
 		onChange = function(v) cfg.normalSound = v end,
@@ -2223,6 +2233,7 @@ local function BuildReadyAppearanceForm(parent, i)
 	}))
 	place(W.CreateDropdown(parent, {
 		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		tooltip = "Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from.",
 		onChange = function(v) cfg.anchor = v; ReadyApply(i) end,
 	}))
 

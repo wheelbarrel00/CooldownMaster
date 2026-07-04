@@ -4,9 +4,9 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.17.0",
+	VERSION          = "0.18.0",
 
-	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster" },
+	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
 	-- Must match ## SavedVariables in the .toc.
 	SV_KEY           = "CooldownMasterDB",
@@ -58,6 +58,13 @@ ns.CONST = {
 
 	POTION_CATEGORY  = 100,
 	TRINKET_CATEGORY = 101,
+
+	-- Classic discovery has no Blizzard category tagging, so these baseline travel/teleport
+	-- spells would land in Spells; file them under Utility (category 1) instead. Keyed by
+	-- spellID (locale-stable). Extend as more surface.
+	CLASSIC_UTILITY_SPELLS = {
+		[50977] = true,  -- Death Gate
+	},
 
 	-- Order matters: drives the Filters sub-tab strip order.
 	FILTER_CATEGORIES = {

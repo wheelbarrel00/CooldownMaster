@@ -96,16 +96,17 @@ directory and `/reload`.
 
 ## Slash commands
 
-| Command            | Action                                       |
-| ------------------ | -------------------------------------------- |
-| `/cdmaster`        | Open / close the options panel               |
-| `/cdmaster lock`   | Lock all frames                              |
-| `/cdmaster unlock` | Unlock all frames for repositioning          |
-| `/cdmaster test`   | Toggle test mode (fake cooldowns for layout) |
-| `/cdmaster reset`  | Reset all settings (requires `/reload`)      |
-| `/cdmaster version`| Print version + flavor                       |
+| Command       | Action                                       |
+| ------------- | -------------------------------------------- |
+| `/cm`         | Open / close the options panel               |
+| `/cm lock`    | Lock all frames                              |
+| `/cm unlock`  | Unlock all frames for repositioning          |
+| `/cm test`    | Toggle test mode (fake cooldowns for layout) |
+| `/cm reset`   | Reset all settings (requires `/reload`)      |
+| `/cm version` | Print version + flavor                       |
 
-`/cooldownmaster` is also accepted as the long form. A handful of diagnostic
+`/cdmaster` and `/cooldownmaster` are the long forms of `/cm` — each works with
+every subcommand above (e.g. `/cdmaster lock`). A handful of diagnostic
 subcommands (`debug`, `api`, `spells`, `seedtest`, `curvetest`) exist for
 troubleshooting the cooldown engine.
 

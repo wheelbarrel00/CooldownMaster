@@ -2,6 +2,24 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.18.0",
+		date = "2026-07-04",
+		sections = {
+			{ head = "New Features", items = {
+				"GCD and Swing tracking on the lanes: each lane can show your global cooldown or main-hand swing timer as a recurring indicator, either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with size, color, and direction. Classic flavors only; on retail this is handled by Blizzard's Cooldown Manager.",
+				"Max Ready Icons: each ready box now caps how many ready icons show at once (Ready > General), so a burst of cooldowns coming off together no longer floods the box. Newest readies take priority.",
+				"The /cm shortcut: every slash command now also works as /cm (for example /cm, /cm lock, /cm test) in addition to /cdmaster.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed the Filters list on Classic showing the same spell multiple times (for example Soul Reaper appearing three times on a Mists Death Knight) and listing off-spec abilities you cannot use (like a Frost ability on a Blood Death Knight). The list now shows only what your current specialization can actually cast.",
+			} },
+			{ head = "Improvements", items = {
+				"Death Gate is now filed under the Utility filter instead of Spells on Classic.",
+				"Added hover tooltips to several options: Mode, Primary and Secondary Tracking, ST Height, Stack Style, Highlight Style, and the ready-box Anchor.",
+			} },
+		},
+	},
+	{
 		version = "0.17.0",
 		date = "2026-07-03",
 		sections = {

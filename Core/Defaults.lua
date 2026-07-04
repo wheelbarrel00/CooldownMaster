@@ -16,12 +16,12 @@ local function lane(frameName, y)
 		overrideAutohide = false,
 		primaryTracking   = "NONE",
 		primaryReverse    = false,
-		secondaryTracking = "GCD",
+		secondaryTracking = "NONE",
 		secondaryReverse  = false,
-		stWidth        = 5,
-		stHeight       = 44,
+		stWidth        = 7,
+		stHeight       = 24,
 		stTexture      = "CDM Smooth",
-		stColor        = { r = 1, g = 1, b = 1, a = 1 },
+		stColor        = { r = 0.99, g = 0.99, b = 0.99, a = 0.85 },
 
 		width          = 575,
 		height         = 17,
@@ -82,6 +82,7 @@ local function readyFrame(frameName, x, y, enabled)
 		normalDuration = 5,
 		normalSound    = "CDM: Ready Click",
 		pTime          = 0,    -- post-combat linger seconds; 0 = off (icons clear on their own hold)
+		maxIcons       = 10,   -- cap on simultaneously-visible ready icons in this box (1-10)
 
 		-- "Important" spells (per-spell override) use these instead of the normal hold/sound.
 		highlightDuration = 10,
