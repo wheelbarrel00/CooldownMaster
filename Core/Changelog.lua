@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.17.0",
+		date = "2026-07-03",
+		sections = {
+			{ head = "New Features", items = {
+				"Mists of Pandaria Classic support: Cooldown Master now runs on the MoP Classic client (5.5.x), using the same spellbook-scan cooldown tracking as the other Classic flavors. The Colors tab covers MoP's full class list, including Death Knight and Monk.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed the Profiles tab showing blank (with a Lua error) on Mists of Pandaria Classic. The per-specialization auto-switch controls now use that client's specialization API; the same fix also covers spec-based profile auto-switching at login.",
+			} },
+			{ head = "Improvements", items = {
+				"Renamed the lane's 'Background' appearance settings to 'Lane' (Lane, Lane Texture, Lane Color, Use Class Color), since they control the visible lane strip.",
+				"Removed the non-functional 'Foreground' lane appearance controls, a leftover from an unused bar-style display model.",
+			} },
+		},
+	},
+	{
 		version = "0.16.8",
 		date = "2026-07-03",
 		sections = {

@@ -571,50 +571,26 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 		onChange = function(v) cfg.anchor = v; RefreshLane(laneIndex) end,
 	}))
 
-	local secFG = W.CreateSectionHeader(parent, "Foreground")
-	secFG:SetWidth(parent:GetWidth() - pad * 2)
-	place(secFG, 18)
-
-	local fgTexDD = W.CreateDropdown(parent, {
-		label = "Foreground Texture", value = cfg.fgTexture,
-		options = TEXTURE_OPTIONS_FG, width = 200,
-		onChange = function(v) cfg.fgTexture = v; RefreshLane(laneIndex) end,
-	})
-	fgTexDD:SetEnabled(false)
-	place(fgTexDD)
-
-	place(W.CreateColorPicker(parent, {
-		label = "Foreground Color", color = cfg.fgColor, hasAlpha = true,
-		onChange = function(r, g, b, a)
-			cfg.fgColor.r, cfg.fgColor.g, cfg.fgColor.b, cfg.fgColor.a = r, g, b, a
-			RefreshLane(laneIndex)
-		end,
-	}))
-	place(W.CreateCheckbox(parent, {
-		label = "Use Class Color (Foreground)", checked = cfg.fgClassColor,
-		onChange = function(v) cfg.fgClassColor = v; RefreshLane(laneIndex) end,
-	}))
-
-	local secBG = W.CreateSectionHeader(parent, "Background")
+	local secBG = W.CreateSectionHeader(parent, "Lane")
 	secBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBG, 18)
 
 	local bgTexDD = W.CreateDropdown(parent, {
-		label = "Background Texture", value = cfg.bgTexture,
+		label = "Lane Texture", value = cfg.bgTexture,
 		options = BuildStatusbarOptions(), width = 200,
 		onChange = function(v) cfg.bgTexture = v; RefreshLane(laneIndex) end,
 	})
 	place(bgTexDD)
 
 	place(W.CreateColorPicker(parent, {
-		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		label = "Lane Color", color = cfg.bgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
 			RefreshLane(laneIndex)
 		end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Use Class Color (Background)", checked = cfg.bgClassColor,
+		label = "Use Class Color (Lane)", checked = cfg.bgClassColor,
 		onChange = function(v) cfg.bgClassColor = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -1547,6 +1523,12 @@ local CLASS_TOKENS_CLASSIC = {
 	"ROGUE", "SHAMAN", "WARLOCK", "WARRIOR",
 }
 
+-- MoP adds Death Knight and Monk; no Demon Hunter/Evoker yet.
+local CLASS_TOKENS_MOP = {
+	"DEATHKNIGHT", "DRUID", "HUNTER", "MAGE", "MONK", "PALADIN",
+	"PRIEST", "ROGUE", "SHAMAN", "WARLOCK", "WARRIOR",
+}
+
 local CLASS_DISPLAY_NAMES = {
 	DEATHKNIGHT = "Death Knight",
 	DEMONHUNTER = "Demon Hunter",
@@ -1571,7 +1553,8 @@ local function BuildColorsTab(content)
 	local header = Theme.CreateHeader(content, "Class Colors", "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
-	local tokens = ns.Compat.IS_RETAIL and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC
+	local tokens = ns.Compat.IS_MOP and CLASS_TOKENS_MOP
+		or (ns.Compat.IS_RETAIL and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC)
 
 	local cols = 3
 	local cellW = math.floor((Theme.PANEL.WIDTH - pad * 2 - 40) / cols)
@@ -1838,10 +1821,12 @@ local function BuildProfilesTab(content)
 		StaticPopup_Show("COOLDOWNMASTER_IMPORT_PROFILE", db:GetCurrentProfile())
 	end)
 
-	-- Second column (the panel is wide): per-spec auto-switch. Retail spec API only;
-	-- the map lives in db.char (per character), so the dropdowns read CDM.db.char.
-	local numSpecs = GetNumSpecializations and GetNumSpecializations()
-	if numSpecs and numSpecs > 0 then
+	-- Second column (the panel is wide): per-spec auto-switch. Spec-capable flavors
+	-- only (retail + MoP); the map lives in db.char (per character), so the dropdowns
+	-- read CDM.db.char. Gate on GetSpecInfo(1) as a guard so a flavor that reports a
+	-- spec count but can't resolve per-index info self-hides instead of erroring.
+	local numSpecs = ns.Compat.GetNumSpecs()
+	if numSpecs and numSpecs > 0 and ns.Compat.GetSpecInfo(1) then
 		local rx = 470
 		local specHeader = Theme.CreateHeader(content, "Auto-switch by Specialization", "GameFontNormalLarge")
 		specHeader:SetPoint("TOPLEFT", content, "TOPLEFT", rx, -pad)
@@ -1859,7 +1844,7 @@ local function BuildProfilesTab(content)
 		local map = ns.CDM.db.char.specProfiles
 		local ry  = -(pad + 58)
 		for i = 1, numSpecs do
-			local specID, specName = GetSpecializationInfo(i)
+			local specID, specName = ns.Compat.GetSpecInfo(i)
 			if specID then
 				local dd = W.CreateDropdown(content, {
 					label = specName, value = map[specID] or "", width = ddW, options = specOpts,

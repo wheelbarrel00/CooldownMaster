@@ -159,9 +159,9 @@ end
 function CDM:OnEnable()
 	self:RegisterEvent("PLAYER_LOGIN",          "OnPlayerLogin")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
-	-- Retail-only event; gate registration so Classic flavors don't register an
-	-- unknown event.
-	if GetNumSpecializations then
+	-- Specs exist on retail + MoP only; gate registration so spec-less flavors
+	-- (Era/TBC) don't register an unknown event.
+	if ns.Compat.GetNumSpecs() then
 		self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", "OnSpecChanged")
 	end
 end
@@ -182,10 +182,10 @@ end
 -- Specialization). No-op when unmapped, already active, the spec API is absent
 -- (Classic), or the mapped profile was deleted.
 function CDM:ApplySpecProfile()
-	if not (GetSpecialization and self.db.char.specProfiles) then return end
-	local idx = GetSpecialization()
+	if not self.db.char.specProfiles then return end
+	local idx = ns.Compat.GetSpecIndex()
 	if not idx then return end
-	local specID = GetSpecializationInfo(idx)
+	local specID = ns.Compat.GetSpecInfo(idx)
 	if not specID then return end
 	local target = self.db.char.specProfiles[specID]
 	if not target or target == self.db:GetCurrentProfile() then return end
