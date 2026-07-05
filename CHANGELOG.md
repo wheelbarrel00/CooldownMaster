@@ -1,5 +1,24 @@
 # Cooldown Master Changelog
 
+## 0.19.0 (2026-07-05) — What's New popup, icon borders, vertical lanes
+
+### New Features
+- **What's New popup.** After an update, Cooldown Master shows a short summary of what changed. Choose how you're notified under **Global > After an update**: a **Popup window**, a quiet clickable **Chat link** in your chat, or **Off**. Reopen it any time with `/cm whatsnew`, or tick "Don't show these again" to silence it for good.
+- **Per-lane icon borders.** Each cooldown icon can now have a solid border in a size and color you choose, on both lanes (**Lanes > Appearance**) and ready boxes (**Ready > Icons**). Off by default.
+- **Vertical lanes.** A new **Vertical** toggle (**Lanes > General**) runs a lane top-to-bottom instead of left-to-right, swapping its Width and Height so the bar keeps its shape.
+- **Sound preview.** A **Play** button next to Ready Sound and Highlight Sound (Ready tab) lets you audition the sound without waiting for a cooldown to pop.
+
+### Bug Fixes
+- **Fixed icon shake in Spread stacking.** In Linear mode with Spread stacking, an icon catching up to the one ahead would bump and shake several times before passing it. Stacked icons now slide smoothly at full frame rate.
+
+### Improvements
+- **The Ignore Threshold now works.** Previously a dead slider, it now hides any spell whose full base cooldown is longer than its category's Ignore Threshold (a per-spell override still wins) — handy for keeping very long cooldowns off a short lane.
+- **Empty ready boxes honor Auto-hide.** They used to disappear whenever empty and locked; now they follow your global Auto-hide setting. With Auto-hide off (the default), empty ready boxes stay visible.
+- **Stronger Important-spell highlight.** The highlight for spells flagged Important is now a full-icon glow instead of a thin hollow border, so it stands out at a glance.
+- **Global-tab tooltips.** Every option on the Global tab now has a hover tooltip explaining what it does.
+- **Clearer Filters list.** The per-spell Filters list now has an aligned **Show / Lane / Ready Box / Flags** column header.
+- **Tidier Countdown Timer option.** The lane icon-text settings were simplified to a single **Show Timer** toggle under a **Countdown Timer** header.
+
 ## 0.18.1 (2026-07-04) — Cooldown fixes & smoother lane travel
 
 ### Bug Fixes

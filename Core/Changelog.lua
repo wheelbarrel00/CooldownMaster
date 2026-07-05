@@ -2,6 +2,29 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.19.0",
+		date = "2026-07-05",
+		sections = {
+			{ head = "New Features", items = {
+				"What's New popup: after an update, Cooldown Master shows a short summary of what changed. Choose how you are notified under Global > After an update: a Popup window, a quiet clickable Chat link in your chat, or Off. Reopen it any time with /cm whatsnew, or tick 'Don't show these again' to turn it off for good.",
+				"Per-lane icon borders: each cooldown icon can now have a solid border in a size and color you pick, on both lanes (Lanes > Appearance) and ready boxes (Ready > Icons). Off by default.",
+				"Vertical lanes: a new Vertical toggle (Lanes > General) runs a lane top to bottom instead of left to right, swapping its Width and Height so the bar keeps its shape.",
+				"Sound preview: a Play button next to Ready Sound and Highlight Sound (Ready tab) lets you hear the sound without waiting for a cooldown to pop.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed icon shake with Spread stacking. In Linear mode, an icon catching up to the one ahead of it would bump and shake several times before passing. Stacked icons now slide smoothly at full frame rate.",
+			} },
+			{ head = "Improvements", items = {
+				"The Ignore Threshold now works. Previously a dead slider, it now hides any spell whose full base cooldown is longer than its category's Ignore Threshold. A per-spell override still wins.",
+				"Empty ready boxes now honor Auto-hide instead of always hiding when empty. With Auto-hide off (the default), empty ready boxes stay visible.",
+				"Stronger highlight for Important spells: a full-icon glow instead of a thin hollow border, so it stands out at a glance.",
+				"Added hover tooltips to every option on the Global tab.",
+				"The per-spell Filters list now has an aligned Show / Lane / Ready Box / Flags column header.",
+				"Simplified the lane icon-text settings to a single Show Timer toggle under a Countdown Timer header.",
+			} },
+		},
+	},
+	{
 		version = "0.18.1",
 		date = "2026-07-04",
 		sections = {

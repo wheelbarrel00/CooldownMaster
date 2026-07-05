@@ -684,6 +684,15 @@ function Engine:IsSpellVisible(spellID, category)
 		return override.visible == true
 	end
 
+	-- Ignore Threshold: hide an ability whose full cooldown is longer than the category's
+	-- threshold -- a static "don't track hour-long cooldowns" filter, distinct from a lane's
+	-- maxTime display window. Only when the length is known; an explicit override above wins.
+	local thr = fcfg.ignoreThreshold
+	if thr and spellID then
+		local dur = self:BestDuration(spellID)
+		if dur and dur > thr then return false end
+	end
+
 	return fcfg.showByDefault ~= false
 end
 

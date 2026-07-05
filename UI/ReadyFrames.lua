@@ -34,6 +34,7 @@ local function PlayReadySound(name)
 		if path then pcall(PlaySoundFile, path, "SFX") end
 	end
 end
+ns.ReadyFrames_PreviewSound = PlayReadySound
 
 local function AcquireReadyIcon(f, index)
 	local pool = f.iconPool
@@ -42,6 +43,11 @@ local function AcquireReadyIcon(f, index)
 
 	btn = CreateFrame("Frame", "CooldownMaster_Ready_"..f.index.."_Btn_"..index, f)
 	btn:SetSize(ICON_SIZE, ICON_SIZE)
+
+	-- Per-box icon border (off by default): a solid backing that extends a few px beyond the
+	-- icon so a clean ring shows around it; sized/colored/toggled per box via ns.ApplyIconBorder.
+	btn.border = btn:CreateTexture(nil, "BACKGROUND")
+	btn.border:Hide()
 
 	btn.tex = btn:CreateTexture(nil, "ARTWORK")
 	btn.tex:SetAllPoints(btn)
@@ -79,6 +85,16 @@ local function AcquireReadyIcon(f, index)
 	btn.hl:SetPoint("TOPLEFT", btn, "TOPLEFT", -6, 6)
 	btn.hl:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 6, -6)
 	btn.hl:Hide()
+
+	-- Full-icon glow so the highlight fills the icon, not just its edge (the border texture
+	-- alone leaves the center empty). Additive, colored to match; the border carries the flash.
+	btn.hlFill = btn:CreateTexture(nil, "OVERLAY")
+	btn.hlFill:SetTexture("Interface\\Buttons\\WHITE8x8")
+	btn.hlFill:SetBlendMode("ADD")
+	btn.hlFill:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+	btn.hlFill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+	btn.hlFill:Hide()
+
 	local okFlash, flash = pcall(function()
 		local ag = btn.hl:CreateAnimationGroup()
 		ag:SetLooping("BOUNCE")
@@ -99,6 +115,7 @@ end
 local function ClearIconHighlight(btn)
 	if btn.hlFlash then btn.hlFlash:Stop() end
 	if btn.hl then btn.hl:Hide() end
+	if btn.hlFill then btn.hlFill:Hide() end
 end
 
 
@@ -110,15 +127,32 @@ local function ApplyIconHighlight(btn, cfg, important)
 	local style = (hl and hl.style) or "BORDER"
 	if style == "NONE" then return end
 
-	local c = (hl and hl.color) or { r = 1, g = 0.82, b = 0, a = 0.6 }
+	local c = (hl and hl.color) or { r = 1, g = 0.82, b = 0, a = 0.8 }
 	btn.hl:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
 	btn.hl:SetAlpha(c.a or 0.6)
 	btn.hl:Show()
+	if btn.hlFill then
+		btn.hlFill:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
+		btn.hlFill:SetAlpha((c.a or 0.6) * 0.5)
+		btn.hlFill:Show()
+	end
 	-- BORDER is static; GLOW / FLASH / BORDER_FLASH pulse (we deliberately avoid the
 	-- deprecated Blizzard ActionButton glow API, which is gone on some flavors).
 	if style ~= "BORDER" and btn.hlFlash then
 		btn.hlFlash:Play()
 	end
+end
+
+-- A ready box normally hides once it goes empty and locked. Keep it up anyway while test mode
+-- or unlock is on (for positioning), or when global autohide is OFF -- mirroring the lanes,
+-- where autohide-off means the frame is always shown. With autohide ON the empty box keeps its
+-- fade-out behavior.
+local function ReadyBoxKeepShown(g)
+	if not g then return false end
+	if ns.Engine and ns.Engine.testActive then return true end
+	if g.unlockFrames then return true end
+	if not g.autohide then return true end
+	return false
 end
 
 local function RelayoutReadyFrame(f)
@@ -151,6 +185,7 @@ local function RelayoutReadyFrame(f)
 
 	for k, btn in ipairs(active) do
 		btn:SetSize(iconSize, iconSize)
+		if ns.ApplyIconBorder then ns.ApplyIconBorder(btn, cfg) end
 		btn:ClearAllPoints()
 		local off = step * (k - 1)
 		if grow == "UP" then
@@ -174,12 +209,12 @@ local function RelayoutReadyFrame(f)
 		f:SetSize(iconSize + margin * 2, blockLen + margin * 2)
 	end
 
-	-- While unlocked the box stays visible (so it can be positioned) and with icons
-	-- it shows at full alpha; when it goes empty + locked, hiding is deferred to the
-	-- box-fade pass in the OnUpdate so the backdrop fades out instead of snapping off.
+	-- With icons the box shows at full alpha; when it goes empty it stays shown while unlock,
+	-- test, or autohide-off keeps it up (see ReadyBoxKeepShown), otherwise hiding is deferred
+	-- to the box-fade pass in the OnUpdate so the backdrop fades out instead of snapping off.
 	local cdm = ns.CDM
-	local unlocked = cdm and cdm.db and cdm.db.profile.global.unlockFrames
-	if unlocked or count > 0 then
+	local g = cdm and cdm.db and cdm.db.profile.global
+	if count > 0 or ReadyBoxKeepShown(g) then
 		f._boxFade = nil
 		f:SetAlpha(cfg.alpha or 1)
 		f:Show()
@@ -380,11 +415,11 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			RelayoutReadyFrame(self)
 		end
 
-		-- Box-level fade: empty + locked fades the backdrop out over BOX_FADE_DUR then
-		-- hides; OnUpdate only runs while shown, so this owns the empty-box hide.
+		-- Box-level fade: when empty and nothing keeps it shown (unlock/test/autohide-off) it
+		-- fades the backdrop out over BOX_FADE_DUR then hides; OnUpdate only runs while shown,
+		-- so this owns the empty-box hide.
 		local boxAlpha = (cfg and cfg.alpha) or 1
-		local unlocked = ns.CDM and ns.CDM.db and ns.CDM.db.profile.global.unlockFrames
-		if unlocked or visible > 0 then
+		if visible > 0 or ReadyBoxKeepShown(g) then
 			if self._boxFade then
 				self._boxFade = nil
 				self:SetAlpha(boxAlpha)
@@ -529,6 +564,17 @@ function ns.ReadyFrames_RefreshUnlockState(addon)
 			end
 			RelayoutReadyFrame(f)
 		end
+	end
+end
+
+
+-- Re-evaluate each box's shown state after an autohide toggle. Relayout shows a box that
+-- should now stay up (autohide off); one that should now hide when empty is left to the
+-- OnUpdate box-fade, which runs while it is still shown.
+function ns.ReadyFrames_RefreshVisibility(addon)
+	for i = 1, 3 do
+		local f = addon.readyFrames and addon.readyFrames[i]
+		if f then RelayoutReadyFrame(f) end
 	end
 end
 

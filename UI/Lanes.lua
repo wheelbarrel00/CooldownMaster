@@ -477,6 +477,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
 		if TRACKING_ENABLED and self._track and not self._chromeHidden then UpdateTracking(self) end
+		ns.Lanes_RepackSpread(self)
 		if not self._isDragging then return end
 
 		local cursorX, cursorY = GetCursorPosition()
@@ -632,6 +633,12 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn = CreateFrame("Frame", nil, laneFrame)
 	btn:SetSize(iconSize, iconSize)
 
+	-- Per-lane icon border (off by default): a solid backing that extends a few px beyond the
+	-- icon so a clean ring shows around it. Below ARTWORK so the icon covers its center; sized,
+	-- colored, and toggled per lane in RefreshBody via ApplyIconBorder.
+	btn.border = btn:CreateTexture(nil, "BACKGROUND")
+	btn.border:Hide()
+
 	btn.tex = btn:CreateTexture(nil, "ARTWORK")
 	btn.tex:SetAllPoints(btn)
 	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim default icon border
@@ -665,6 +672,16 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn.hl:SetPoint("TOPLEFT", btn, "TOPLEFT", -6, 6)
 	btn.hl:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 6, -6)
 	btn.hl:Hide()
+
+	-- Full-icon glow so the highlight fills the icon, not just its edge (the border texture
+	-- alone leaves the center empty). Additive, colored to match; the border carries the flash.
+	btn.hlFill = btn:CreateTexture(nil, "OVERLAY")
+	btn.hlFill:SetTexture(WHITE8X8)
+	btn.hlFill:SetBlendMode("ADD")
+	btn.hlFill:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+	btn.hlFill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+	btn.hlFill:Hide()
+
 	local okFlash, flash = pcall(function()
 		local ag = btn.hl:CreateAnimationGroup()
 		ag:SetLooping("BOUNCE")
@@ -804,13 +821,14 @@ local function ClearLaneIcon(btn)
 	end
 	if btn.hlFlash then btn.hlFlash:Stop() end
 	if btn.hl then btn.hl:Hide() end
+	if btn.hlFill then btn.hlFill:Hide() end
 	btn._hlStyle = nil
 	if btn.cd then btn.cd:Clear() end
 	btn:Hide()
 end
 
 
-local DEFAULT_HL_COLOR = { r = 1, g = 0.82, b = 0, a = 0.6 }
+local DEFAULT_HL_COLOR = { r = 1, g = 0.82, b = 0, a = 0.8 }
 
 -- Lane-icon highlight for Important spells, reusing the ready-box overlay. Gated on the
 -- effective style+color so the 10 Hz refresh doesn't restart the flash every tick.
@@ -823,6 +841,7 @@ local function ApplyLaneHighlight(btn, cfg, important)
 			btn._hlStyle = "NONE"
 			if btn.hlFlash then btn.hlFlash:Stop() end
 			btn.hl:Hide()
+			if btn.hlFill then btn.hlFill:Hide() end
 		end
 		return
 	end
@@ -836,6 +855,11 @@ local function ApplyLaneHighlight(btn, cfg, important)
 	btn.hl:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
 	btn.hl:SetAlpha(c.a or 0.6)
 	btn.hl:Show()
+	if btn.hlFill then
+		btn.hlFill:SetVertexColor(c.r or 1, c.g or 1, c.b or 1)
+		btn.hlFill:SetAlpha((c.a or 0.6) * 0.5)
+		btn.hlFill:Show()
+	end
 	if style ~= "BORDER" and btn.hlFlash then btn.hlFlash:Play() end
 end
 
@@ -890,6 +914,38 @@ function ns.StyleIcon(btn, spellID, itemID, g)
 		tex:SetVertexColor(1, 1, 1)
 		tex:SetDesaturated(false)
 	end
+end
+
+
+local DEFAULT_ICON_BORDER = { r = 0, g = 0, b = 0, a = 1 }
+
+-- Icon border shared by lane icons and ready icons (cfg = the lane / ready-box table). Memoized
+-- on the enabled flag, size, and color so the refresh only re-anchors/recolors on an actual
+-- change; the border is a solid backing that extends `size` px beyond the icon, showing a ring.
+function ns.ApplyIconBorder(btn, cfg)
+	local b = btn.border
+	if not b then return end
+	if not cfg.iconBorder then
+		if btn._bOn ~= false then
+			btn._bOn = false
+			b:Hide()
+		end
+		return
+	end
+	local sz = cfg.iconBorderSize or 1
+	local c  = cfg.iconBorderColor or DEFAULT_ICON_BORDER
+	local a  = c.a or 1
+	if btn._bOn and btn._bSz == sz
+		and btn._bR == c.r and btn._bG == c.g and btn._bB == c.b and btn._bA == a then
+		return
+	end
+	btn._bOn, btn._bSz = true, sz
+	btn._bR, btn._bG, btn._bB, btn._bA = c.r, c.g, c.b, a
+	b:ClearAllPoints()
+	b:SetPoint("TOPLEFT", btn, "TOPLEFT", -sz, sz)
+	b:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", sz, -sz)
+	b:SetColorTexture(c.r, c.g, c.b, a)
+	b:Show()
 end
 
 
@@ -1105,6 +1161,114 @@ local function ByStackCoord(a, b)
 end
 
 
+-- Stacking placement. GROUPED packs overlaps into perpendicular rows (_stackOff); SPREAD pushes
+-- them apart along the lane (_spreadShift). Extracted so the 60 Hz lane OnUpdate can re-run SPREAD
+-- live: the shift is relative to each icon's natural position, which the per-icon OnUpdate keeps
+-- moving, so a shift computed only at the ~10 Hz refresh makes a blocked icon drift off its slot
+-- then snap back each refresh -- a visible sawtooth as two icons pass. GROUPED's offset is on the
+-- stable cross axis, so it needs no live re-run.
+local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
+	local stacking = cfg.stackEnabled and count > 1
+		and (cfg.stackStyle == "GROUPED" or cfg.stackStyle == "SPREAD")
+	if not stacking then
+		for idx = 1, count do
+			local btn = laneFrame.iconPool[idx]
+			if btn then
+				btn._stackOff    = 0
+				btn._spreadShift = 0
+			end
+		end
+		return
+	end
+
+	local laneDim = cfg.vertical and (cfg.height or 400) or (cfg.width or 400)
+	local usable  = math.max(1, laneDim - iconSize)
+
+	wipe(stackOrder)
+	local n = 0
+	for idx = 1, count do
+		local btn = laneFrame.iconPool[idx]
+		if btn and btn._endTime then
+			local remaining = btn._endTime - now
+			if remaining < 0 then remaining = 0 end
+			local p = ModeProgress(cfg, remaining, btn._duration)
+			-- Mirror the render path's ready-edge floor so stacking decides from where
+			-- icons actually draw, not up to 2% of lane short of it.
+			if btn._isActive and p < ICON_READY_FLOOR then p = ICON_READY_FLOOR end
+			btn._stackCoord = p * usable
+			n = n + 1
+			stackOrder[n] = btn
+		end
+	end
+	if n < 2 then
+		local btn = stackOrder[1]
+		if btn then btn._stackOff = 0; btn._spreadShift = 0 end
+		return
+	end
+	table.sort(stackOrder, ByStackCoord)
+
+	if cfg.stackStyle == "SPREAD" then
+		-- Walk nearest-ready first; nudge each less-ready icon out so it sits at least one
+		-- icon-width past the previous one. Keeps icons on the lane line (no row offset).
+		local placedPrev
+		for i = 1, n do
+			local btn = stackOrder[i]
+			local nat = btn._stackCoord
+			local placed = nat
+			if placedPrev and placed < placedPrev + iconSize then
+				placed = placedPrev + iconSize
+			end
+			if placed > usable then placed = usable end
+			btn._spreadShift = placed - nat
+			btn._stackOff    = 0
+			placedPrev = placed
+		end
+	else
+		local rowStep = iconSize
+		local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
+		local dirSign
+		if cfg.vertical then
+			dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
+		else
+			dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
+		end
+
+		wipe(stackRowEnd)
+		for i = 1, n do
+			local btn  = stackOrder[i]
+			local left = btn._stackCoord
+			local row
+			for r = 1, maxRows do
+				if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
+			end
+			if not row then
+				-- All rows full within the height budget: drop into the one that frees
+				-- soonest (smallest right edge) and accept the partial overlap.
+				row = 1
+				for r = 2, maxRows do
+					if stackRowEnd[r] < stackRowEnd[row] then row = r end
+				end
+			end
+			stackRowEnd[row] = left + iconSize
+			btn._stackOff    = (row - 1) * rowStep * dirSign
+			btn._spreadShift = 0
+		end
+	end
+end
+
+
+-- SPREAD spacing must track live positions (see ApplyStacking), so the 60 Hz lane OnUpdate
+-- re-runs it: a passing icon then stays glued to its neighbor instead of drift-and-snapping
+-- once per refresh. Self-gates to SPREAD lanes; no-op otherwise.
+function ns.Lanes_RepackSpread(laneFrame)
+	local cfg = laneFrame.cfg
+	if not (cfg and cfg.stackEnabled and cfg.stackStyle == "SPREAD") then return end
+	local count = laneFrame.activeIcons or 0
+	if count < 2 then return end
+	ApplyStacking(laneFrame, cfg, count, cfg.iconSize or 40, GetTime())
+end
+
+
 -- Body extracted to a module-level function so the pcall wrapper can reference it
 -- by name rather than allocating a fresh closure at 30 Hz across 3 lanes.
 local function RefreshBody(laneIndex)
@@ -1251,6 +1415,7 @@ local function RefreshBody(laneIndex)
 		end
 
 		ns.StyleIcon(btn, e.spellID, e.itemID, g)
+		ns.ApplyIconBorder(btn, cfg)
 
 		if btn._mouseOn ~= mouseOn then
 			btn._mouseOn = mouseOn
@@ -1268,84 +1433,10 @@ local function RefreshBody(laneIndex)
 		ApplyLaneHighlight(btn, cfg, ov and ov.important == true)
 	end
 
-	-- Stacking declutters clustered cooldowns, recomputed at refresh cadence (~10 Hz); membership
-	-- shifts slowly since icons crawl <4 px between refreshes. GROUPED packs overlaps into
-	-- perpendicular rows (_stackOff); SPREAD pushes them apart along the lane (_spreadShift).
-	local stacking = cfg.stackEnabled and count > 1
-		and (cfg.stackStyle == "GROUPED" or cfg.stackStyle == "SPREAD")
-	if stacking then
-		local laneDim = cfg.vertical and (cfg.height or 400) or (cfg.width or 400)
-		local usable  = math.max(1, laneDim - iconSize)
-
-		wipe(stackOrder)
-		for idx = 1, count do
-			local btn = laneFrame.iconPool[idx]
-			local remaining = (btn._endTime or now) - now
-			if remaining < 0 then remaining = 0 end
-			local p = ModeProgress(cfg, remaining, btn._duration)
-			-- Mirror the render path's ready-edge floor so stacking decides from where
-			-- icons actually draw, not up to 2% of lane short of it.
-			if btn._isActive and p < ICON_READY_FLOOR then p = ICON_READY_FLOOR end
-			btn._stackCoord = p * usable
-			stackOrder[idx] = btn
-		end
-		table.sort(stackOrder, ByStackCoord)
-
-		if cfg.stackStyle == "SPREAD" then
-			-- Walk nearest-ready first; nudge each less-ready icon out so it sits at least
-			-- one icon-width past the previous one. Keeps icons on the lane line (no row
-			-- offset), trading exact cooldown position for non-overlap.
-			local placedPrev
-			for i = 1, count do
-				local btn = stackOrder[i]
-				local nat = btn._stackCoord
-				local placed = nat
-				if placedPrev and placed < placedPrev + iconSize then
-					placed = placedPrev + iconSize
-				end
-				if placed > usable then placed = usable end
-				btn._spreadShift = placed - nat
-				btn._stackOff    = 0
-				placedPrev = placed
-			end
-		else
-			local rowStep = iconSize
-			local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
-			local dirSign
-			if cfg.vertical then
-				dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
-			else
-				dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
-			end
-
-			wipe(stackRowEnd)
-			for i = 1, count do
-				local btn  = stackOrder[i]
-				local left = btn._stackCoord
-				local row
-				for r = 1, maxRows do
-					if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
-				end
-				if not row then
-					-- All rows full within the height budget: drop into the one that frees
-					-- soonest (smallest right edge) and accept the partial overlap.
-					row = 1
-					for r = 2, maxRows do
-						if stackRowEnd[r] < stackRowEnd[row] then row = r end
-					end
-				end
-				stackRowEnd[row] = left + iconSize
-				btn._stackOff    = (row - 1) * rowStep * dirSign
-				btn._spreadShift = 0
-			end
-		end
-	else
-		for idx = 1, count do
-			local btn = laneFrame.iconPool[idx]
-			btn._stackOff    = 0
-			btn._spreadShift = 0
-		end
-	end
+	-- Stacking declutters clustered cooldowns. GROUPED here at refresh cadence (~10 Hz) is fine
+	-- (its offset is on the stable cross axis); SPREAD is also re-run live at 60 Hz by the lane
+	-- OnUpdate so passing icons stay glued instead of drift-and-snapping (see ApplyStacking).
+	ApplyStacking(laneFrame, cfg, count, iconSize, now)
 
 	-- A slot that changed occupants (resort/re-anchor/reuse) still sits at its previous
 	-- anchor and would render one ghost frame there before its OnUpdate runs; position it

@@ -42,6 +42,9 @@ local function lane(frameName, y)
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
 		swipeAlpha     = 0,   -- cooldown-swipe darkness; 0 = no tint (spell art fully visible)
+		iconBorder      = false,
+		iconBorderSize  = 1,
+		iconBorderColor = { r = 0, g = 0, b = 0, a = 1 },
 		iconText       = {
 			{ enabled = true,  text = "[cd.stacks]" },
 			{ enabled = true,  text = "[cd.time]"   },
@@ -52,7 +55,7 @@ local function lane(frameName, y)
 		iconFontFlags  = "OUTLINE",
 		iconFontColor  = { r = 1, g = 1, b = 1, a = 1 },
 
-		highlight      = { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.6 } },
+		highlight      = { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.8 } },
 
 		laneText = {
 			{ enabled = true, text = "Ready", pos = 0    },
@@ -87,13 +90,16 @@ local function readyFrame(frameName, x, y, enabled)
 		-- "Important" spells (per-spell override) use these instead of the normal hold/sound.
 		highlightDuration = 10,
 		highlightSound    = "None",
-		highlight = { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.6 } },
+		highlight = { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.8 } },
 
 		iconSize       = 40,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
 		xPadding       = 0,
 		yPadding       = 4,
+		iconBorder      = false,
+		iconBorderSize  = 1,
+		iconBorderColor = { r = 0, g = 0, b = 0, a = 1 },
 
 		bgTexture      = "CDM Smooth",
 		bgColor        = { r = 0.1, g = 0.1, b = 0.1, a = 0.85 },

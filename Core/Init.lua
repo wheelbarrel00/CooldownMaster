@@ -179,6 +179,7 @@ function CDM:OnPlayerLogin()
 		self.db.profile.global.firstRun = false
 	end
 	self.db.profile.global.previousVersion = self.version
+	if ns.WhatsNew_OnLogin then ns.WhatsNew_OnLogin() end
 	self:ApplySpecProfile()
 end
 
@@ -258,6 +259,9 @@ function CDM:OnSlash(input)
 
 	elseif input == "version" then
 		self:Print("Version " .. self.version .. " on " .. ns.Compat.FlavorLabel())
+
+	elseif input == "whatsnew" or input == "news" then
+		if ns.WhatsNew_Show then ns.WhatsNew_Show() end
 
 	elseif input == "api" then
 		if ns.Engine and ns.Engine.RunAPIDiagnostic then
@@ -410,7 +414,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | anchor | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | anchor | spells | haste | tracking")
 	end
 end
 

@@ -127,6 +127,14 @@ function ns.Options_Toggle()
 end
 
 
+-- Show (never toggle) the panel on a given tab; used by the What's New popup's Open Options button.
+function ns.Options_Open(tabID)
+	if not panel then BuildPanel() end
+	if not panel:IsShown() then panel:Show() end
+	ns.Options_SelectTab(tabID or currentTabID or "global")
+end
+
+
 local function BuildGlobalTab(content)
 	local CDM = ns.CDM
 	local pad = Theme.PANEL.CONTENT_PAD
@@ -134,7 +142,22 @@ local function BuildGlobalTab(content)
 	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
 	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
-	local function MakeCheck(label, key, anchor, xOff, tooltip)
+	-- Extend the checkbox hit rect over its label so hovering the row shows the tip. hitExtend
+	-- defaults to a wide -180 for the vertical column; the horizontal Always/Group/Instance row
+	-- passes a narrower value so a tip doesn't bleed onto the next checkbox.
+	local function AttachTip(cb, label, tooltip, hitExtend)
+		if not tooltip then return end
+		cb:SetHitRectInsets(0, hitExtend or -180, 0, 0)
+		cb:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(label)
+			GameTooltip:AddLine(tooltip, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	end
+
+	local function MakeCheck(label, key, anchor, xOff, tooltip, hitExtend)
 		local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 		cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", xOff or 0, -4)
 		cb:SetSize(24, 24)
@@ -148,26 +171,20 @@ local function BuildGlobalTab(content)
 			if key == "unlockFrames" then
 				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end
 				if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(CDM) end
-			elseif (key == "enabledAlways" or key == "autohide")
-				and ns.Lanes_RefreshVisibility then
-				ns.Lanes_RefreshVisibility()
+			elseif key == "enabledAlways" or key == "autohide" then
+				if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
+				-- Ready boxes honor autohide too now, so re-evaluate them when it flips.
+				if key == "autohide" and ns.ReadyFrames_RefreshVisibility then
+					ns.ReadyFrames_RefreshVisibility(CDM)
+				end
 			end
 		end)
-		if tooltip then
-			-- Extend the hit rect over the label so hovering the whole row shows the tip.
-			cb:SetHitRectInsets(0, -180, 0, 0)
-			cb:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-				GameTooltip:AddLine(label)
-				GameTooltip:AddLine(tooltip, 1, 1, 1, true)
-				GameTooltip:Show()
-			end)
-			cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		end
+		AttachTip(cb, label, tooltip, hitExtend)
 		return cb
 	end
 
-	local cbAlways   = MakeCheck("Always",      "enabledAlways",   section, 0)
+	local cbAlways   = MakeCheck("Always",      "enabledAlways",   section, 0,
+		"Show your lanes at all times, no matter where you are. When on, the In Group and In Instance conditions do not matter.", -90)
 	local cbGroup    = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 	cbGroup:SetPoint("LEFT", cbAlways, "RIGHT", 120, 0)
 	cbGroup:SetSize(24, 24)
@@ -178,6 +195,8 @@ local function BuildGlobalTab(content)
 		CDM.db.profile.global.enabledGroup = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
+	AttachTip(cbGroup, "In Group",
+		"Show your lanes only while you are in a party or raid. Any ticked visibility box can show them, so this stacks with In Instance.", -90)
 
 	local cbInst = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 	cbInst:SetPoint("LEFT", cbGroup, "RIGHT", 120, 0)
@@ -189,15 +208,17 @@ local function BuildGlobalTab(content)
 		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
+	AttachTip(cbInst, "In Instance",
+		"Show your lanes only while you are inside a dungeon, raid, or other instance. Any ticked visibility box can show them.", -90)
 
 	local prev = cbAlways
 	local toggles = {
-		{ "Unlock Frames",         "unlockFrames"   },
+		{ "Unlock Frames",         "unlockFrames", "Unlock every lane and ready box so you can drag them into place. Backgrounds show while unlocked; lock again to hide the chrome and let clicks pass through." },
 		{ "Auto-hide Frames",      "autohide", "Out of combat, hides each lane's background, border, name, and markers, but your tracked cooldown icons stay visible. The chrome returns in combat. Tick a lane's Override Autohide (Lanes > General) to keep its chrome always shown." },
-		{ "Enable tooltips",       "enableTooltip"  },
-		{ "Detect Shared Spell Cooldowns", "detectSharedCD" },
-		{ "Tint Unusable Icons",   "notUsableTint"  },
-		{ "Desaturate Unusable Icons", "notUsableDesaturate" },
+		{ "Enable tooltips",       "enableTooltip", "Show the spell or item tooltip when you hover a cooldown icon on a lane. Icons take the mouse only while frames are locked, so this never blocks dragging." },
+		{ "Detect Shared Spell Cooldowns", "detectSharedCD", "When one ability is tracked under two spell IDs that share a cooldown (a base spell and its talent override, or the same spell in two categories), show one icon and one ready pop instead of duplicates." },
+		{ "Tint Unusable Icons",   "notUsableTint", "While a spell or item cannot be used right now (not enough resources, wrong stance, out of range), tint its icon with the Unusable Tint Color below." },
+		{ "Desaturate Unusable Icons", "notUsableDesaturate", "While a spell or item cannot be used right now, draw its icon in greyscale. Can be combined with Tint Unusable Icons." },
 	}
 	for _, t in ipairs(toggles) do
 		prev = MakeCheck(t[1], t[2], prev, 0, t[3])
@@ -235,6 +256,33 @@ local function BuildGlobalTab(content)
 		if ns.DataBroker_ToggleMinimap then ns.DataBroker_ToggleMinimap(CDM) end
 	end)
 	prev = cbMinimap
+
+	local secUpdates = W.CreateSectionHeader(content, "Updates")
+	secUpdates:SetWidth(320)
+	secUpdates:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 2, -14)
+	prev = secUpdates
+
+	-- Account-wide (db.global), not per-profile: the update notice is a per-account preference.
+	local ddWhatsNew = W.CreateDropdown(content, {
+		label = "After an update", width = 200,
+		value = CDM.db.global.whatsNewMode or "popup",
+		options = {
+			{ value = "popup", text = "Popup window" },
+			{ value = "chat",  text = "Chat link"    },
+			{ value = "none",  text = "Off"          },
+		},
+		tooltip = "How Cooldown Master tells you about a new version: a Popup window, a quiet clickable Chat link in your chat, or Off. Reopen the notes any time with /cm whatsnew.",
+		onChange = function(v) CDM.db.global.whatsNewMode = v end,
+	})
+	ddWhatsNew:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -6)
+	prev = ddWhatsNew
+
+	local wnBtn = Theme.CreateButton(content, "Show What's New", 150, 24)
+	wnBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
+	wnBtn:SetScript("OnClick", function()
+		if ns.WhatsNew_Show then ns.WhatsNew_Show() end
+	end)
+	prev = wnBtn
 
 	local testBtn = Theme.CreateButton(content, "Test", 110, 30)
 	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
@@ -409,7 +457,20 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 
 	place(W.CreateCheckbox(parent, {
 		label = "Vertical", checked = cfg.vertical,
-		onChange = function(v) cfg.vertical = v; RefreshLane(laneIndex) end,
+		tooltip = "Run this lane top-to-bottom instead of left-to-right. Toggling it swaps the lane's Width and Height (Appearance tab) so the bar keeps its shape, just rotated.",
+		onChange = function(v)
+			cfg.vertical = v
+			-- Flip the long/thin axes so a horizontal bar becomes a same-shaped vertical one
+			-- (travel axis is Width when horizontal, Height when vertical). Drop the cached
+			-- Appearance form so its Width/Height sliders rebuild with the swapped values.
+			cfg.width, cfg.height = cfg.height, cfg.width
+			local cached = lanesState.formFrames[laneIndex]
+			if cached and cached["appearance"] then
+				cached["appearance"]:Hide()
+				cached["appearance"] = nil
+			end
+			RefreshLane(laneIndex)
+		end,
 	}))
 
 	local secMode = W.CreateSectionHeader(parent, "Mode")
@@ -755,6 +816,35 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		onChange = function(v) cfg.swipeAlpha = v; RefreshLane(laneIndex) end,
 	}))
 
+	local secBorder = W.CreateSectionHeader(parent, "Icon Border")
+	secBorder:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBorder, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Icon Border",
+		checked = cfg.iconBorder,
+		tooltip = "Draw a clean solid border around every cooldown icon in this lane. Set per lane, so you can border one lane and leave another plain. Off by default.",
+		onChange = function(v) cfg.iconBorder = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Border Size", min = 1, max = 6, step = 1,
+		value = cfg.iconBorderSize or 1, width = 240,
+		onChange = function(v) cfg.iconBorderSize = v; RefreshLane(laneIndex) end,
+	}))
+
+	if type(cfg.iconBorderColor) ~= "table" then
+		cfg.iconBorderColor = { r = 0, g = 0, b = 0, a = 1 }
+	end
+	place(W.CreateColorPicker(parent, {
+		label = "Border Color", color = cfg.iconBorderColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.iconBorderColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+
 	cfg.highlight = cfg.highlight or { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.6 } }
 	if type(cfg.highlight.color) ~= "table" then
 		cfg.highlight.color = { r = 1, g = 0.82, b = 0, a = 0.6 }
@@ -779,24 +869,23 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		end,
 	}))
 
-	local secTxt = W.CreateSectionHeader(parent, "Icon Text")
+	local secTxt = W.CreateSectionHeader(parent, "Countdown Timer")
 	secTxt:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTxt, 18)
 
-	local slotLabels = { "Slot 1 (Charges)", "Slot 2 (Timer)", "Slot 3" }
-	for i = 1, 3 do
-		local slot = cfg.iconText and cfg.iconText[i]
-		place(W.CreateCheckbox(parent, {
-			label = slotLabels[i] .. " enabled",
-			checked = slot and slot.enabled or false,
-			onChange = function(v)
-				if cfg.iconText and cfg.iconText[i] then
-					cfg.iconText[i].enabled = v
-				end
-				RefreshLane(laneIndex)
-			end,
-		}))
-	end
+	-- Only the countdown timer (iconText[2]) renders; the old charges/spare text slots were
+	-- removed (charge count is unreadable in combat). Keep the iconText[2] key so the lane read matches.
+	place(W.CreateCheckbox(parent, {
+		label = "Show Timer",
+		checked = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled or false,
+		tooltip = "Show the remaining-time number on each cooldown icon in this lane (for example 1:16, then 45, 44...). Style it with the Timer Font options below.",
+		onChange = function(v)
+			if cfg.iconText and cfg.iconText[2] then
+				cfg.iconText[2].enabled = v
+			end
+			RefreshLane(laneIndex)
+		end,
+	}))
 
 	local secFont = W.CreateSectionHeader(parent, "Timer Font")
 	secFont:SetWidth(parent:GetWidth() - pad * 2)
@@ -1190,8 +1279,9 @@ local function BuildFiltersDefaultsForm(parent)
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Ignore Threshold (sec)", min = 5, max = 3600, step = 5,
+		label = "Ignore Threshold (sec)", min = 60, max = 3600, step = 5,
 		value = cfg.ignoreThreshold or 1800, width = 240,
+		tooltip = "Stop tracking any cooldown in this category whose full length is longer than this many seconds. Use it to hide very long cooldowns (like 30+ minute abilities) so they never show on a lane or pop ready. A spell you explicitly enable in the list below still shows. Unlike a lane's Max Time, this filters by the ability's total cooldown, not how much of the timeline is drawn.",
 		onChange = function(v) cfg.ignoreThreshold = v end,
 	}))
 
@@ -1330,6 +1420,24 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 end
 
 
+-- Column header aligned above the per-spell controls. The x offsets mirror BuildSpellRow's
+-- anchor chain so each label sits over its control: icon(20)+8, name(180)+8 -> Show at 216;
+-- checkbox(220)+90 -> Lane at 526; +dd(90)+12 -> Ready Box at 628; +rdd(90)+8 -> Flags at 726.
+local FILTER_COL_HEADERS = { { "Show", 216 }, { "Lane", 526 }, { "Ready Box", 628 }, { "Flags", 726 } }
+local function BuildFiltersColumnHeader(parent, yPos)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetSize(parent:GetWidth() - 24, 16)
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yPos)
+	local Y = ns.CONST.RGB.YELLOW
+	for _, c in ipairs(FILTER_COL_HEADERS) do
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		fs:SetPoint("LEFT", row, "LEFT", c[2], 0)
+		fs:SetText(c[1])
+		fs:SetTextColor(Y.r, Y.g, Y.b)
+	end
+end
+
+
 local function BuildFiltersSpellListForm(parent, categoryKey)
 	local pad = 12
 	local rowGap = 4
@@ -1377,10 +1485,12 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
-	header:SetText(string.format("%d spells tracked. Per spell: Show, then dropdowns for Lane, Ready Box, and Ready Flags (Important/Pinned).", #matches))
+	header:SetText(string.format("%d spells tracked. \"Default\" follows this category's Defaults tab; the last column flags a spell Important or Pinned.", #matches))
 	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
-	local y = -pad - 22
+	BuildFiltersColumnHeader(parent, -pad - 20)
+
+	local y = -pad - 40
 	for _, item in ipairs(matches) do
 		local _, h = BuildSpellRow(parent, item.spellID, item.info, y)
 		y = y - h - rowGap
@@ -1907,6 +2017,7 @@ local ABOUT_COMMANDS = {
 	{ cmd = "/cm test",    desc = "Toggle sample cooldowns in Lane 1" },
 	{ cmd = "/cm reset",   desc = "Reset the current profile to defaults" },
 	{ cmd = "/cm version", desc = "Print the version and game flavor" },
+	{ cmd = "/cm whatsnew", desc = "Reopen the What's New window" },
 }
 
 local ABOUT_OTHER_ADDONS = {
@@ -2199,10 +2310,15 @@ local function BuildReadyGeneralForm(parent, i)
 		label = "Max Ready Icons", min = 1, max = 10, step = 1, value = cfg.maxIcons or 10, width = 240,
 		onChange = function(v) cfg.maxIcons = v end,
 	}))
-	place(W.CreateDropdown(parent, {
+	local sndDD = place(W.CreateDropdown(parent, {
 		label = "Ready Sound", value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
 		onChange = function(v) cfg.normalSound = v end,
 	}))
+	local sndPlay = Theme.CreateButton(parent, "Play", 46, 22)
+	sndPlay:SetPoint("TOPLEFT", sndDD, "TOPRIGHT", 6, -18)
+	sndPlay:SetScript("OnClick", function()
+		if ns.ReadyFrames_PreviewSound then ns.ReadyFrames_PreviewSound(cfg.normalSound) end
+	end)
 
 	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	hint:SetText("Tip: enable Unlock Frames on the Global tab, then drag this box into position.")
@@ -2309,6 +2425,32 @@ local function BuildReadyIconsForm(parent, i)
 		onChange = function(v) cfg.yPadding = v; ReadyApply(i) end,
 	}))
 
+	local secBorder = W.CreateSectionHeader(parent, "Icon Border")
+	secBorder:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBorder, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Icon Border",
+		checked = cfg.iconBorder,
+		tooltip = "Draw a clean solid border around each ready icon in this box. Set per box. Off by default.",
+		onChange = function(v) cfg.iconBorder = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Size", min = 1, max = 6, step = 1, value = cfg.iconBorderSize or 1, width = 240,
+		onChange = function(v) cfg.iconBorderSize = v; ReadyApply(i) end,
+	}))
+	if type(cfg.iconBorderColor) ~= "table" then
+		cfg.iconBorderColor = { r = 0, g = 0, b = 0, a = 1 }
+	end
+	place(W.CreateColorPicker(parent, {
+		label = "Border Color", color = cfg.iconBorderColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.iconBorderColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			ReadyApply(i)
+		end,
+	}))
+
 	parent:SetHeight(math.abs(y) + pad)
 end
 
@@ -2347,10 +2489,15 @@ local function BuildReadyHighlightForm(parent, i)
 		label = "Highlight Duration (sec)", min = 1, max = 30, step = 1, value = cfg.highlightDuration or 10, width = 240,
 		onChange = function(v) cfg.highlightDuration = v end,
 	}))
-	place(W.CreateDropdown(parent, {
+	local hsDD = place(W.CreateDropdown(parent, {
 		label = "Highlight Sound", value = cfg.highlightSound or "None", options = ReadySoundOptions(), width = 240,
 		onChange = function(v) cfg.highlightSound = v end,
 	}))
+	local hsPlay = Theme.CreateButton(parent, "Play", 46, 22)
+	hsPlay:SetPoint("TOPLEFT", hsDD, "TOPRIGHT", 6, -18)
+	hsPlay:SetScript("OnClick", function()
+		if ns.ReadyFrames_PreviewSound then ns.ReadyFrames_PreviewSound(cfg.highlightSound) end
+	end)
 
 	parent:SetHeight(math.abs(y) + pad)
 end
