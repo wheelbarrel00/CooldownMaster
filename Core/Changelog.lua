@@ -2,6 +2,23 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.18.1",
+		date = "2026-07-04",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Fixed a Lua error that could fire repeatedly in dungeons and instances and quietly interrupt cooldown tracking (a combat-protected value was being read at the wrong moment).",
+				"Fixed cooldown icons sometimes appearing at the front of the lane already counting down, instead of traveling from the start. This was most noticeable on charge and builder abilities such as Blade of Justice and Templar Strike during fast rotations; the lane now anchors each cooldown to when it actually started.",
+				"Fixed a brief one-frame flash an icon could show at the wrong spot when cooldowns started or reordered.",
+				"Newly talented abilities are now picked up without a /reload.",
+			} },
+			{ head = "Improvements", items = {
+				"Smoother lane travel: trimmed redundant per-frame work and spread the periodic background scan across frames, removing a faint recurring stutter as icons move.",
+				"Steadier countdown text: the number on each icon now holds to the pixel grid, so it stays crisp while the icon glides.",
+				"Learned cooldown durations now self-heal: stale or GCD-length values saved by older versions are cleaned up on load, and learned durations reload correctly when you switch profiles.",
+			} },
+		},
+	},
+	{
 		version = "0.18.0",
 		date = "2026-07-04",
 		sections = {

@@ -138,6 +138,11 @@ function CDM:ApplyProfile()
 		end
 	end
 	self:MigrateV030()
+	-- Learned durations are per-profile; without this a manual profile switch keeps running
+	-- on the old profile's values until the next zoning.
+	if ns.Engine and ns.Engine.LoadPersistedDurations then
+		ns.Engine:LoadPersistedDurations()
+	end
 	for i = 1, 3 do
 		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
 		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
@@ -275,6 +280,50 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "anchor" then
+		if ns.Engine and ns.Engine.RunAnchorProbe then
+			ns.Engine:RunAnchorProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "anchor arm" then
+		if not ns.Compat.HAS_BLIZZ_CDM then
+			-- The tracer lives in the retail ScanSpells loop; Classic dispatch never reaches it,
+			-- so arming here would print the banner and then nothing, forever.
+			self:Print("anchor trace is retail-only (Classic scans real cooldown numbers directly).")
+		elseif ns.Engine then
+			ns.Engine._traceUntil = GetTime() + 12
+			wipe(ns.Engine._traceState)
+			self:Print("anchor trace armed 12s -- legend: A/a=isActive G/g=onGCD V/v=active E/e=entry M/m=multiCharge")
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "text" then
+		if ns.Lanes_TextProbe then
+			ns.Lanes_TextProbe()
+		else
+			self:Print("Lanes not loaded.")
+		end
+
+	elseif input == "snap" then
+		if ns.Lanes_ToggleSnapIcons then
+			local on = ns.Lanes_ToggleSnapIcons()
+			local pw, ph = GetPhysicalScreenSize()
+			local lane = self.lanes and self.lanes[1]
+			self:Print(string.format(
+				"icon pixel-snap: %s | screen=%dx%d uiParent=%.4f lane=%.4f 768/h=%.4f pixelUtil=%s",
+				on and "ON" or "OFF", pw, ph,
+				UIParent:GetEffectiveScale(),
+				lane and lane:GetEffectiveScale() or -1,
+				768 / ph,
+				(PixelUtil and PixelUtil.GetPixelToUIUnitFactor
+					and string.format("%.4f", PixelUtil.GetPixelToUIUnitFactor())) or "n/a"))
+		else
+			self:Print("Lanes not loaded.")
+		end
+
 	elseif input == "spells" then
 		self:OnSlashSpells()
 
@@ -361,7 +410,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | debug | api | curvetest | seedtest | anchor | spells | haste | tracking")
 	end
 end
 

@@ -1,5 +1,18 @@
 # Cooldown Master Changelog
 
+## 0.18.1 (2026-07-04) — Cooldown fixes & smoother lane travel
+
+### Bug Fixes
+- Fixed a Lua error that could fire repeatedly in dungeons and instances and quietly interrupt cooldown tracking (a combat-protected value was being read at the wrong moment).
+- Fixed cooldown icons sometimes appearing at the **front** of the lane already counting down, instead of traveling from the start — most noticeable on charge and builder abilities (e.g. Blade of Justice, Templar Strike) during fast rotations. The lane now anchors each cooldown to when it actually started.
+- Fixed a brief one-frame "ghost" an icon could flash at the wrong spot when cooldowns started or reordered.
+- Newly talented abilities are now picked up without a `/reload`.
+
+### Improvements
+- **Smoother lane travel.** Trimmed redundant per-frame work and spread the periodic background scan across frames, removing a faint recurring stutter as icons move.
+- **Steadier countdown text.** The number on each icon now holds to the pixel grid, so it stays crisp while the icon glides.
+- **Self-healing learned durations.** Stale or GCD-length cooldown values saved by older versions are cleaned up on load, and learned durations reload correctly when you switch profiles.
+
 ## 0.18.0 (2026-07-04) — GCD/Swing tracking, ready-icon cap, Classic fixes
 
 ### New Features

@@ -6,6 +6,33 @@ local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 local STANDARD_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
 
+-- Smallest lane fraction an isActive (retail, extrapolated) icon may sit at. Its remaining time is
+-- secret in combat, so if our extrapolation undershoots the real cooldown the icon would otherwise
+-- snap to the exact ready edge with the widget still counting down; this holds it a hair short.
+local ICON_READY_FLOOR = 0.02
+
+-- UI units per physical pixel numerator (768/screen height); a coordinate divided by
+-- (PIXEL_FACTOR / effectiveScale) is in physical pixels. Verified against Blizzard's
+-- PixelUtil.GetPixelToUIUnitFactor on a live 4K/0.5-scale setup.
+local PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
+local pxWatch = CreateFrame("Frame")
+pxWatch:RegisterEvent("DISPLAY_SIZE_CHANGED")
+pxWatch:RegisterEvent("UI_SCALE_CHANGED")
+pxWatch:SetScript("OnEvent", function()
+	PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
+end)
+
+-- /cm snap diagnostic: quantize icon travel itself to whole physical pixels. Ships OFF --
+-- the live A/B verdict was gliding icons + snapped cooldown carrier (see AcquireIcon);
+-- kept as a support tool for exotic scale setups.
+local snapIcons = false
+
+function ns.Lanes_ToggleSnapIcons()
+	snapIcons = not snapIcons
+	PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
+	return snapIcons
+end
+
 -- Register the built-in names so saved "CDM Smooth"/"CDM Shadow" resolve and list
 -- alongside the user's LSM media; WHITE8x8 keeps the default flat look unchanged.
 if LSM then
@@ -303,6 +330,67 @@ local function UpdateTracking(f)
 end
 
 
+-- /cm text: can the native countdown widget's displayed STRING be mirrored onto our own
+-- FontString? The widget converts the secret duration to text C-side; if that string is
+-- readable (or displayable even while secret), we can render the countdown on a plain
+-- gliding FontString -- which WoW moves smoothly (CDTL2/FCT-proven) -- instead of the
+-- widget's internal text, whose C-side layout shimmers/hops in motion.
+function ns.Lanes_TextProbe()
+	local cdm = ns.CDM
+	if not cdm then return end
+	local iss = _G.issecretvalue
+	local found
+	for i = 1, 3 do
+		local lane = cdm.lanes and cdm.lanes[i]
+		for j = 1, (lane and lane.activeIcons) or 0 do
+			local btn = lane.iconPool[j]
+			if btn and btn:IsShown() and btn.cd then found = btn; break end
+		end
+		if found then break end
+	end
+	if not found then
+		cdm:Print("text probe: no live lane icon -- start Test Mode or put something on cooldown.")
+		return
+	end
+	local fs
+	for i = 1, found.cd:GetNumRegions() do
+		local r = select(i, found.cd:GetRegions())
+		if r and r.GetObjectType and r:GetObjectType() == "FontString" then fs = r; break end
+	end
+	if not fs then
+		cdm:Print("text probe: native countdown FontString NOT reachable from Lua.")
+		return
+	end
+	local okG, txt = pcall(fs.GetText, fs)
+	local secret = (okG and iss and iss(txt)) or false
+	cdm:Print(string.format("text probe: inCombat=%s GetText ok=%s secret=%s type=%s value=%s",
+		tostring(InCombatLockdown()), tostring(okG), tostring(secret),
+		okG and type(txt) or "?",
+		(okG and not secret) and tostring(txt) or "?"))
+	ns._probeFS = ns._probeFS or UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	local okS, sErr = pcall(ns._probeFS.SetText, ns._probeFS, txt)
+	-- Everything downstream can be secret (width, even the error object); never tostring
+	-- a value before issecretvalue clears it -- that throw is what ate this print in v1.
+	local okW, w = pcall(ns._probeFS.GetStringWidth, ns._probeFS)
+	local wSecret = (okW and iss and iss(w)) or false
+	local errShow = "-"
+	if not okS then
+		local okT, es = pcall(tostring, sErr)
+		errShow = (okT and es) or "<untostringable>"
+	end
+	cdm:Print(string.format("text probe: SetText-on-own-FS ok=%s widthSecret=%s width=%s err=%s",
+		tostring(okS), tostring(wSecret),
+		(okW and not wSecret) and tostring(w) or "?", errShow))
+	-- Accepting a secret string is not the same as DRAWING it: park the scratch FS mid-screen
+	-- so the user can see whether a digit actually renders.
+	ns._probeFS:ClearAllPoints()
+	ns._probeFS:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+	ns._probeFS:Show()
+	C_Timer.After(5, function() ns._probeFS:Hide() end)
+	cdm:Print("text probe: look ABOVE SCREEN CENTER for ~5s -- is a number visible there?")
+end
+
+
 local trackMon
 function ns.Lanes_TrackingReport()
 	local addon = ns.CDM
@@ -548,11 +636,19 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn.tex:SetAllPoints(btn)
 	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim default icon border
 
+	-- Carrier for the cooldown widget: the icon glides sub-pixel (smooth texture), but the
+	-- countdown text is laid out C-side on the physical pixel grid, so gliding it shimmers
+	-- the digits (A/B-verified). The widget rides this frame, which the OnUpdate holds on
+	-- whole screen pixels -- it trails the texture by at most half a pixel.
+	btn.cdAnchor = CreateFrame("Frame", nil, btn)
+	btn.cdAnchor:SetSize(iconSize, iconSize)
+	btn.cdAnchor:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
+
 	-- In combat the remaining time is a secret value we cannot read (see
 	-- docs/EXPERIMENTS.md), so we feed this widget the opaque DurationObject via
 	-- SetCooldownFromDurationObject; items / test use SetCooldown.
 	btn.cd = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
-	btn.cd:SetAllPoints(btn)
+	btn.cd:SetAllPoints(btn.cdAnchor)
 	btn.cd:SetDrawEdge(false)
 	btn.cd:SetDrawBling(false)
 	btn.cd:SetHideCountdownNumbers(false)
@@ -621,6 +717,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		local off      = (cfg.iconOffset or 0) + (self._stackOff or 0)
 		local iconSize = self._iconSize or 40
 		local progress = ModeProgress(cfg, remaining, self._duration)
+		if self._isActive and progress < ICON_READY_FLOOR then progress = ICON_READY_FLOOR end
 
 		-- SPREAD stacking nudges icons apart along the lane axis; 0 for every other mode.
 		local shift = self._spreadShift or 0
@@ -637,6 +734,25 @@ local function AcquireIcon(laneFrame, i, iconSize)
 			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
 		end
 
+		-- /cm snap diagnostic: quantize travel to whole physical pixels (see header note).
+		-- Snapped in SCREEN space: the lane's own origin sits on a fractional pixel at most
+		-- UI scales, so lane-local snapping reproduces that fraction in every icon position
+		-- and can park the text layout on a rounding boundary (verified on a 4K/0.5 setup).
+		if snapIcons then
+			local psize  = PIXEL_FACTOR / self:GetEffectiveScale()
+			local parent = self:GetParent()
+			local base
+			if point == "LEFT" then base = parent:GetLeft()
+			elseif point == "RIGHT" then base = parent:GetRight()
+			elseif point == "BOTTOM" then base = parent:GetBottom()
+			elseif point == "TOP" then base = parent:GetTop() end
+			if base then
+				coord = math.floor((base + coord) / psize + 0.5) * psize - base
+			else
+				coord = math.floor(coord / psize + 0.5) * psize
+			end
+		end
+
 		-- Float coord, not pixel-rounded: SetPoint renders sub-pixel so the icon glides; rounding reintroduces stair-stepping.
 		if self._anchPoint ~= point or self._anchCoord ~= coord or self._anchOff ~= off then
 			self._anchPoint, self._anchCoord, self._anchOff = point, coord, off
@@ -645,6 +761,24 @@ local function AcquireIcon(laneFrame, i, iconSize)
 				self:SetPoint(point, self:GetParent(), point, off, coord)
 			else
 				self:SetPoint(point, self:GetParent(), point, coord, off)
+			end
+		end
+
+		-- Hold the cooldown carrier (swipe + countdown digits) on whole physical pixels while
+		-- the icon texture glides sub-pixel: the C-side text layout shimmers when its frame
+		-- sits between pixels (A/B-verified at 4K). Offset is at most half a pixel. Runs after
+		-- the SetPoint above so the rect read reflects THIS frame's position.
+		local ca = self.cdAnchor
+		if ca then
+			local l, b = self:GetLeft(), self:GetBottom()
+			if l and b then
+				local psize = PIXEL_FACTOR / self:GetEffectiveScale()
+				local dx = math.floor(l / psize + 0.5) * psize - l
+				local dy = math.floor(b / psize + 0.5) * psize - b
+				if dx ~= self._cdDx or dy ~= self._cdDy then
+					self._cdDx, self._cdDy = dx, dy
+					ca:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", dx, dy)
+				end
 			end
 		end
 	end)
@@ -662,6 +796,7 @@ local function ClearLaneIcon(btn)
 	btn._cdStart     = nil
 	btn._stackOff    = nil
 	btn._spreadShift = nil
+	btn._isActive    = nil
 	if btn._tinted and btn.tex then
 		btn._tinted = nil
 		btn.tex:SetVertexColor(1, 1, 1)
@@ -1058,11 +1193,15 @@ local function RefreshBody(laneIndex)
 	for idx = 1, count do
 		local e = visible[idx]
 		local btn = AcquireIcon(laneFrame, idx, iconSize)
-		btn:SetSize(iconSize, iconSize)
-		if e.icon then
+		-- Steady-state guards: these setters ran with identical values 10x/sec per icon;
+		-- the wasted layout/texture work landed on render frames and read as a travel hitch.
+		if btn._iconSize ~= iconSize then
+			btn:SetSize(iconSize, iconSize)
+			btn.cdAnchor:SetSize(iconSize, iconSize)
+		end
+		if btn._texIcon ~= e.icon then
+			btn._texIcon = e.icon
 			btn.tex:SetTexture(e.icon)
-		else
-			btn.tex:SetTexture(nil)
 		end
 		-- Feed the native cooldown once per instance, keyed on spellID+startTime so a
 		-- reused pool slot re-feeds when it switches spells.
@@ -1070,6 +1209,7 @@ local function RefreshBody(laneIndex)
 			btn._cdSpellID = e.spellID
 			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
 			btn._cdStart   = e.startTime
+			btn._justFed   = true   -- position synchronously below, before this frame renders
 			-- Prefer the opaque DurationObject, but the privileged setter can throw on
 			-- a stale/secret handle and leave the widget with no cooldown, so fall back
 			-- to extrapolated numbers when it's missing or pcall fails.
@@ -1088,16 +1228,27 @@ local function RefreshBody(laneIndex)
 			if btn.cd.SetCountdownFont and laneFrame._countFontName then
 				btn.cd:SetCountdownFont(laneFrame._countFontName)
 			end
+			-- Feeding can also reset swipe color / number visibility; drop the memos so the
+			-- guarded setters below re-apply on this pass.
+			btn._hideNums, btn._swipeA = nil, nil
 		end
 
 		-- The native widget owns the countdown text; this toggle only controls
-		-- whether its number is drawn.
-		local showTime = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled
-		btn.cd:SetHideCountdownNumbers(not showTime)
+		-- whether its number is drawn. Guarded: re-running these with identical values
+		-- 10x/sec per icon put avoidable widget work on render frames.
+		local showTime = (cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled)
+			and true or false
+		if btn._hideNums ~= showTime then
+			btn._hideNums = showTime
+			btn.cd:SetHideCountdownNumbers(not showTime)
+		end
 
-		-- Cooldown-swipe darkness (0 = no tint). Re-applied each refresh since feeding
-		-- the cooldown can reset the swipe color.
-		btn.cd:SetSwipeColor(0, 0, 0, cfg.swipeAlpha or 0.8)
+		-- Cooldown-swipe darkness (0 = no tint).
+		local swipeA = cfg.swipeAlpha or 0.8
+		if btn._swipeA ~= swipeA then
+			btn._swipeA = swipeA
+			btn.cd:SetSwipeColor(0, 0, 0, swipeA)
+		end
 
 		ns.StyleIcon(btn, e.spellID, e.itemID, g)
 
@@ -1111,6 +1262,7 @@ local function RefreshBody(laneIndex)
 		btn._duration = e.duration
 		btn._cfg      = cfg
 		btn._iconSize = iconSize
+		btn._isActive = e._source == "isactive"   -- gates the ready-edge floor (extrapolated position only)
 
 		local ov = overrides and overrides[e.spellID]
 		ApplyLaneHighlight(btn, cfg, ov and ov.important == true)
@@ -1130,7 +1282,11 @@ local function RefreshBody(laneIndex)
 			local btn = laneFrame.iconPool[idx]
 			local remaining = (btn._endTime or now) - now
 			if remaining < 0 then remaining = 0 end
-			btn._stackCoord = ModeProgress(cfg, remaining, btn._duration) * usable
+			local p = ModeProgress(cfg, remaining, btn._duration)
+			-- Mirror the render path's ready-edge floor so stacking decides from where
+			-- icons actually draw, not up to 2% of lane short of it.
+			if btn._isActive and p < ICON_READY_FLOOR then p = ICON_READY_FLOOR end
+			btn._stackCoord = p * usable
 			stackOrder[idx] = btn
 		end
 		table.sort(stackOrder, ByStackCoord)
@@ -1188,6 +1344,18 @@ local function RefreshBody(laneIndex)
 			local btn = laneFrame.iconPool[idx]
 			btn._stackOff    = 0
 			btn._spreadShift = 0
+		end
+	end
+
+	-- A slot that changed occupants (resort/re-anchor/reuse) still sits at its previous
+	-- anchor and would render one ghost frame there before its OnUpdate runs; position it
+	-- synchronously now. Runs after stacking so _stackOff/_spreadShift are current.
+	for idx = 1, count do
+		local btn = laneFrame.iconPool[idx]
+		if btn._justFed then
+			btn._justFed = nil
+			local h = btn:GetScript("OnUpdate")
+			if h then h(btn, 0) end
 		end
 	end
 

@@ -20,6 +20,9 @@ Engine.testSpellIDs    = { 184575, 853, 633, 642 }
 -- Gate ready-popup suppression during the loading-screen cooldown blackout (ScanSpells).
 Engine._loadingScreen      = false
 Engine._readyBlackoutUntil = 0
+-- Cast->re-anchor pipeline counters for the /cm anchor probe (numbers only; no per-cast allocs).
+Engine._probe = { seen = 0, matched = 0, anchored = 0, aliasHit = 0 }
+Engine._traceState = {}   -- per-spell last state string for the /cm anchor arm tracer
 
 -- C_CooldownViewer enumerates spells only, so potion itemIDs are listed here as a
 -- baseline and read via C_Container.GetItemCooldown; BuildTrackedItems also bag-scans.
@@ -34,6 +37,10 @@ local TRINKET_SLOTS = { 13, 14 }
 Engine.readyCurve      = nil
 Engine.progressCurve   = nil
 local MAX_DURATION = 600
+-- A persisted/learned duration at or below this is a GCD-length mis-read, not a real cooldown.
+-- Both the load filter and the trust check (KNOWN_TRUST_MIN) reject it so the spell falls back to
+-- its baseline instead of extrapolating from ~1.5s and snapping to the ready edge with time left.
+local MIN_TRUSTED_DURATION = 2.5
 
 local READY_BLACKOUT_GRACE = 3      -- grace (s) after a loading screen; cooldowns re-sync late
 local READY_MAX_POPS_PER_SCAN = 3   -- more ready edges than this in one scan = a blackout, not real
@@ -208,20 +215,37 @@ end
 function Engine:LoadPersistedDurations()
 	local addon = ns.CDM
 	if not (addon and addon.db) then return end
+	-- Start from the active profile alone: every learn is persisted the moment it happens, so
+	-- nothing is lost, and a previously active profile's knowns can no longer skew BestDuration
+	-- or mis-trigger the observed-duration purge below after a manual profile switch.
+	wipe(self.knownDurations)
+	wipe(self.observedDurations)
 	addon.db.profile.knownDurations = addon.db.profile.knownDurations or {}
 
 	for spellID, duration in pairs(addon.db.profile.knownDurations) do
 		if type(spellID) == "number" and type(duration) == "number"
-			and duration > 1.5 then
+			and duration >= MIN_TRUSTED_DURATION then
 			self.knownDurations[spellID] = duration
+		elseif type(spellID) == "number" then
+			-- Purge GCD-length garbage a pre-floor build persisted (e.g. Divine Shield stored as
+			-- 1.5s): it made the icon undershoot and park at the ready edge. Dropping it self-heals
+			-- the saved file so the spell re-learns cleanly or falls back to baseline.
+			addon.db.profile.knownDurations[spellID] = nil
 		end
 	end
 
 	addon.db.profile.observedDurations = addon.db.profile.observedDurations or {}
 	for spellID, duration in pairs(addon.db.profile.observedDurations) do
+		local known = type(spellID) == "number" and self.knownDurations[spellID]
 		if type(spellID) == "number" and type(duration) == "number"
-			and duration > 1.5 then
+			and duration >= MIN_TRUSTED_DURATION
+			-- A span several times the precise out-of-combat read is a spam artifact from
+			-- before charge recasts re-anchored the entry (one entry lived across many casts);
+			-- keep observed only when it's plausibly a single real cooldown.
+			and not (known and duration > known * 3) then
 			self.observedDurations[spellID] = duration
+		elseif type(spellID) == "number" then
+			addon.db.profile.observedDurations[spellID] = nil
 		end
 	end
 
@@ -688,21 +712,29 @@ end
 -- allocate two closures per call (runs every scan for each unlearned active spell).
 local function ReadTotalDuration(dObj)
 	if dObj.GetTotalDuration then
-		return dObj:GetTotalDuration()
+		local v = dObj:GetTotalDuration()
+		-- Can come back secret even out of combat lockdown (instances, or a scan landing on
+		-- the combat-end boundary); returning it would let the caller's compare taint-throw.
+		local issecret = _G.issecretvalue
+		if issecret and issecret(v) then return nil end
+		return v
 	end
 	return nil
 end
 
 local function ReadRemainingDuration(dObj)
 	if dObj.GetRemainingDuration then
-		return dObj:GetRemainingDuration()
+		local v = dObj:GetRemainingDuration()
+		local issecret = _G.issecretvalue
+		if issecret and issecret(v) then return nil end
+		return v
 	end
 	return nil
 end
 
 
 -- A learned (known) duration this short is indistinguishable from a GCD-length mis-read.
-local KNOWN_TRUST_MIN = 2.5
+local KNOWN_TRUST_MIN = MIN_TRUSTED_DURATION
 
 -- A multi-charge spell blips isActive for ~1 GCD on a partial-charge use (and isOnGCD comes
 -- back nil for these, so it can't gate the blip). Only track once the on-cooldown state has
@@ -754,19 +786,81 @@ end
 
 -- A successful cast restarts the cooldown NOW: re-anchor the start so a spell recast before
 -- a scan caught its ready gap keeps extrapolating from this cast, not the run's first (which
--- pinned the icon at the ready edge). Charge spells skipped (a charge use isn't a full start);
--- a cast ID that differs from the tracked ID just won't re-anchor.
+-- pinned the icon at the ready edge).
 function Engine:OnTrackedCast(spellID)
 	if not spellID then return end
+	local p = self._probe
 	local tracked = self.trackedSpells and self.trackedSpells[spellID]
-	if not tracked or tracked.hasCharges then return end
+	if not tracked and C_Spell and C_Spell.GetBaseSpell then
+		-- Override casts (Templar Slash firing for tracked Templar Strike) arrive under their
+		-- own ID; map back to the tracked base so the shared cooldown still re-anchors.
+		-- C_Spell.GetBaseSpell is the Midnight API (Skiron/ToxiUI use it; FindBaseSpellByID is dead).
+		local base = C_Spell.GetBaseSpell(spellID)
+		if base and base ~= spellID and self.trackedSpells[base] then
+			spellID, tracked = base, self.trackedSpells[base]
+			p.aliasHit = p.aliasHit + 1
+		end
+	end
+	if not tracked then return end
+	p.matched = p.matched + 1
 	local now = GetTime()
-	self._activeSince[spellID] = now
 	local e = self.entries[spellID]
+	if tracked.hasCharges then
+		-- A depleted charge spell can't be cast at 0 charges, so a cast landing while its
+		-- entry is live proves a charge just recharged and was spell-queue-consumed before
+		-- any scan saw isActive drop. Without this the entry extrapolates from a start many
+		-- casts old and parks at the ready edge; restart the next-charge wait from this cast.
+		if e and e._source == "isactive" then
+			self._activeSince[spellID] = now
+			e.startTime = now
+			e.endTime   = now + (e.duration or 0)
+			e._fresh    = true
+			p.anchored, p.lastAnchorAt, p.lastAnchorID = p.anchored + 1, now, spellID
+			if self._traceUntil and ns.CDM then
+				ns.CDM:Print(string.format("[trace] %s ANCHORED (charge cast)", tostring(tracked.name)))
+			end
+		end
+		return
+	end
+	self._activeSince[spellID] = now
 	if e and e._source == "isactive" then
 		e.startTime = now
 		e.endTime   = now + (e.duration or 0)
 		e._fresh    = true
+		p.anchored, p.lastAnchorAt, p.lastAnchorID = p.anchored + 1, now, spellID
+		if self._traceUntil and ns.CDM then
+			ns.CDM:Print(string.format("[trace] %s ANCHORED (cast)", tostring(tracked.name)))
+		end
+	end
+end
+
+
+-- /cm anchor: one-shot report of the cast->re-anchor pipeline plus live entry ages, to
+-- pin down why a parked icon isn't re-anchoring (event dead / secret spellID / gate miss).
+function Engine:RunAnchorProbe()
+	local cdm = ns.CDM
+	if not cdm then return end
+	local p = self._probe
+	local now = GetTime()
+	cdm:Print(string.format("anchor probe: castSeen=%d matched=%d anchored=%d aliasHit=%d",
+		p.seen, p.matched, p.anchored, p.aliasHit))
+	local okID, lastID = pcall(tostring, p.lastID)
+	cdm:Print(string.format("last cast: id=%s secret=%s ago=%s | last anchor: id=%s ago=%s",
+		okID and lastID or "?", tostring(p.lastSecret),
+		p.lastSeenAt and string.format("%.1fs", now - p.lastSeenAt) or "never",
+		tostring(p.lastAnchorID),
+		p.lastAnchorAt and string.format("%.1fs", now - p.lastAnchorAt) or "never"))
+	for id, e in pairs(self.entries) do
+		if e._source == "isactive" then
+			local tracked = self.trackedSpells[id]
+			cdm:Print(string.format(
+				"  %s (id=%d): startAge=%.1f dur=%.1f extRemain=%.1f hasCharges=%s activeSince=%s",
+				tostring(e.name), id,
+				now - (e.startTime or now), e.duration or 0, (e.endTime or now) - now,
+				tostring(tracked and tracked.hasCharges),
+				self._activeSince[id]
+					and string.format("%.1fs ago", now - self._activeSince[id]) or "nil"))
+		end
 	end
 end
 
@@ -821,30 +915,39 @@ function Engine:ScanSpells()
 		-- SECRET in combat (reading or comparing it taints and throws) but maxCharges is, so
 		-- maxCharges > 1 plus the isActive gate below means fully depleted; then feed the
 		-- charge-duration object (blank for charge spells). 1-charge spells use the normal path.
-		local multiCharge = false
-		if C_Spell.GetSpellCharges then
-			local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
-			if cok and type(ci) == "table" and ci.maxCharges and ci.maxCharges > 1 then
-				multiCharge = true
+		-- Probed once per tracked-set build and cached (per-scan probing allocated a table per
+		-- spell per scan; gating on the CooldownViewer charges flag missed stale flags), so the
+		-- cache refreshes on the TRAIT_CONFIG_UPDATED / spec-change rebuilds.
+		local multiCharge = tracked.multiCharge
+		if multiCharge == nil then
+			multiCharge = false
+			if C_Spell.GetSpellCharges then
+				local cok, ci = pcall(C_Spell.GetSpellCharges, spellID)
+				if cok and type(ci) == "table" and ci.maxCharges and ci.maxCharges > 1 then
+					multiCharge = true
+				end
 			end
+			tracked.multiCharge = multiCharge
 		end
 
 		---@diagnostic disable-next-line: undefined-field
 		local rawActive = ok and info and info.isActive
-		if rawActive then
-			-- Record when the cooldown began -- the spell is isActive during the post-cast
-			-- GCD, before the entry is created below, so this start is ~1 GCD earlier than
-			-- "now" at entry time and keeps the learned span from being short by a GCD.
-			if not self._activeSince[spellID] then self._activeSince[spellID] = now end
-		elseif ok and info then
-			-- Off its own cooldown (charges may remain): forget the start, and remember we
-			-- saw it ready so a later depletion's observed span is trusted as a full cooldown.
-			self._activeSince[spellID] = nil
-			self._seenReady[spellID] = true
-		end
-
 		---@diagnostic disable-next-line: undefined-field
 		local active = rawActive and not info.isOnGCD
+
+		-- Anchor bookkeeping must use the GCD-FILTERED state: the GCD blips EVERY ready spell
+		-- isActive+isOnGCD for its duration (verified via /cm anchor trace), and under chained-GCD
+		-- rotation spam the 0.1s-debounced scans land inside successive blips, so a stamp taken
+		-- from bare isActive survives for many seconds; a charge entry born later inherited that
+		-- ancient stamp and spawned already parked at the ready edge.
+		if active then
+			if not self._activeSince[spellID] then self._activeSince[spellID] = now end
+		elseif ok and info then
+			self._activeSince[spellID] = nil
+			-- Genuinely off its own cooldown (not just GCD-blipped; charges may remain): a
+			-- later depletion's observed span can be trusted as a full cooldown.
+			if not rawActive then self._seenReady[spellID] = true end
+		end
 
 		-- Multi-charge blip filter: a partial use blips isActive for ~1 GCD (isOnGCD is nil here
 		-- so it can't gate it, and IsSpellUsable ignores charge count), while full depletion holds
@@ -858,6 +961,32 @@ function Engine:ScanSpells()
 				end
 			else
 				self._chargeOnCdSince[spellID] = nil
+			end
+		end
+
+		-- /cm anchor arm: 12s state tracer. Prints only on transitions, so chat stays readable;
+		-- one nil-check per spell per scan when disarmed.
+		if self._traceUntil then
+			if now > self._traceUntil then
+				self._traceUntil = nil
+				if ns.CDM then ns.CDM:Print("anchor trace done.") end
+			elseif rawActive or self.entries[spellID] or self._traceState[spellID] then
+				local st = (rawActive and "A" or "a")
+					.. ((ok and info and info.isOnGCD) and "G" or "g")
+					.. (active and "V" or "v")
+					.. (self.entries[spellID] and "E" or "e")
+					.. (multiCharge and "M" or "m")
+				if st ~= self._traceState[spellID] then
+					self._traceState[spellID] = st
+					local e2 = self.entries[spellID]
+					if ns.CDM then
+						ns.CDM:Print(string.format("[trace] %s %s startAge=%s activeSince=%s",
+							tostring(tracked.name or spellID), st,
+							e2 and string.format("%.1f", now - (e2.startTime or now)) or "-",
+							self._activeSince[spellID]
+								and string.format("%.1f", now - self._activeSince[spellID]) or "-"))
+					end
+				end
 			end
 		end
 
@@ -892,6 +1021,10 @@ function Engine:ScanSpells()
 					or self.baselineDurations[spellID]
 					or 30
 				local startTime = self._activeSince[spellID] or now
+				-- An anchor so old the extrapolated cooldown would already be over renders the
+				-- icon parked at the ready edge from birth; it carries no information, so
+				-- anchor at discovery instead and let the icon make one full travel.
+				if startTime + duration <= now then startTime = now end
 				self.entries[spellID] = {
 					spellID   = spellID,
 					name      = tracked.name,
@@ -906,6 +1039,10 @@ function Engine:ScanSpells()
 					_fresh    = self._seenReady[spellID] or false,
 					_source   = "isactive",
 				}
+				if self._traceUntil and ns.CDM then
+					ns.CDM:Print(string.format("[trace] %s ENTRY CREATED start=%.1fs-ago dur=%.1f",
+						tostring(tracked.name), now - startTime, duration))
+				end
 			else
 				-- Still running: keep the extrapolated position (don't reset
 				-- startTime), just refresh the handle.
@@ -993,6 +1130,10 @@ function Engine:ScanSpells()
 				if ns.ReadyFrames_OnReadyTransition then
 					ns.ReadyFrames_OnReadyTransition(spellID, e)
 				end
+			end
+			if self._traceUntil and self._traceState[spellID] and ns.CDM then
+				ns.CDM:Print(string.format("[trace] %s ENTRY REMOVED (ready edge, popped=%s)",
+					tostring(spellID), tostring(not massVanish)))
 			end
 			self.entries[spellID] = nil
 		end
@@ -1189,12 +1330,14 @@ function Engine:Tick()
 	else
 		-- Safety-net sweep every 10th tick (1 Hz): covers cooldown edges the event paths miss
 		-- (e.g. dropped across a loading screen). Scanning every tick allocated ~400 tables/sec
-		-- at 40 tracked spells, for data that rarely changed between ticks.
+		-- at 40 tracked spells, for data that rarely changed between ticks. Item poll staggered
+		-- to a different tick so no single frame carries both sweeps (read as a travel hitch).
 		self._scanCounter = (self._scanCounter or 0) + 1
-		if self._scanCounter >= 10 then
+		if self._scanCounter == 5 then
+			self:PollAllItems()
+		elseif self._scanCounter >= 10 then
 			self._scanCounter = 0
 			self:ScanSpells()
-			self:PollAllItems()
 		end
 	end
 
@@ -1252,6 +1395,25 @@ function Engine:Start(addon)
 		self.specEventFrame = f
 	end
 
+	-- Retail talent changes within a spec alter the tracked set and charge counts but fire no
+	-- PLAYER_SPECIALIZATION_CHANGED; rebuild on trait commits (debounced -- login fires a burst).
+	if ns.Compat.HAS_BLIZZ_CDM and not self.traitFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("TRAIT_CONFIG_UPDATED")
+		f:SetScript("OnEvent", function()
+			if self._traitRebuildPending then return end
+			self._traitRebuildPending = true
+			C_Timer.After(1, function()
+				self._traitRebuildPending = false
+				self:BuildTrackedSpells()
+				if ns.Options_InvalidateFilterLists then
+					ns.Options_InvalidateFilterLists()
+				end
+			end)
+		end)
+		self.traitFrame = f
+	end
+
 	-- Classic's tracked set comes from a spellbook scan, so rebuild it when the spellbook
 	-- changes (learning spells, MoP talent swaps). SPELLS_CHANGED fires in bursts, so debounce.
 	if not ns.Compat.HAS_BLIZZ_CDM and not self.spellsChangedFrame then
@@ -1299,6 +1461,10 @@ function Engine:Start(addon)
 		f:SetScript("OnEvent", function(_, _, unit, _, spellID)
 			if Engine.testActive then return end
 			if unit ~= "player" then return end
+			local p = Engine._probe
+			p.seen, p.lastSeenAt, p.lastID = p.seen + 1, GetTime(), spellID
+			local iss = _G.issecretvalue
+			p.lastSecret = (iss and iss(spellID)) or false
 			Engine:OnTrackedCast(spellID)
 			ScheduleDeferredScan()
 		end)
