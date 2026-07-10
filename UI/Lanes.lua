@@ -41,49 +41,6 @@ if LSM then
 end
 
 
--- Prebuilt countdown-text tables avoid ~450 string.format allocs/sec from the
--- 60 Hz OnUpdate and 10 Hz x 3-lane refresh. INTEGER_STRINGS 0..600 (10 min);
--- DECIMAL_STRINGS 0..100 = "0.0".."10.0" in 0.1 steps (sub-10s precision).
-local INTEGER_STRINGS = {}
-for i = 0, 600 do
-	INTEGER_STRINGS[i] = tostring(i)
-end
-
-local DECIMAL_STRINGS = {}
-for i = 0, 100 do
-	DECIMAL_STRINGS[i] = string.format("%.1f", i / 10)
-end
-
--- MINSEC_STRINGS 60..600 as "m:ss", but whole minutes collapse to a bare count
--- (120 -> "2", then "1:59", "1:58", ...) rather than "2:00".
-local MINSEC_STRINGS = {}
-for i = 60, 600 do
-	local m = math.floor(i / 60)
-	local s = i % 60
-	if s == 0 then
-		MINSEC_STRINGS[i] = tostring(m)
-	else
-		MINSEC_STRINGS[i] = string.format("%d:%02d", m, s)
-	end
-end
-
-
-local function FormatTime(remaining)
-	if remaining <= 10 then
-		local idx = math.floor(remaining * 10 + 0.5)
-		return DECIMAL_STRINGS[idx] or string.format("%.1f", remaining)
-	end
-	local idx = math.floor(remaining + 0.5)
-	if idx < 60 then
-		return INTEGER_STRINGS[idx] or string.format("%d", idx)
-	end
-	local s = idx % 60
-	return MINSEC_STRINGS[idx]
-		or (s == 0 and string.format("%d", idx / 60))
-		or string.format("%d:%02d", math.floor(idx / 60), s)
-end
-
-
 local function VisibilityGatePasses(g)
 	if g.enabledAlways then return true end
 	local pass = false
@@ -276,7 +233,7 @@ local function PositionSecondary(f, cfg, v)
 	st:ClearAllPoints()
 	local rev = (cfg.secondaryReverse and true or false) ~= (cfg.reversed and true or false)
 	if cfg.vertical then
-		local usable = math.max(1, (cfg.height or 17) - (cfg.stHeight or 24))
+		local usable = math.max(1, (cfg.height or 17) - (cfg.stWidth or 7))
 		local y = v * usable
 		if rev then st:SetPoint("TOP", f, "TOP", 0, -y)
 		else st:SetPoint("BOTTOM", f, "BOTTOM", 0, y) end
@@ -294,7 +251,12 @@ local function ApplyTrackingConfig(f, cfg)
 	local tex = (LSM and LSM:Fetch("statusbar", cfg.stTexture, true)) or WHITE8X8
 	f.st:SetTexture(tex)
 	f.st:SetVertexColor(col.r, col.g, col.b, col.a or 1)
-	f.st:SetSize(cfg.stWidth or 7, cfg.stHeight or 24)
+	-- Vertical lane: the tick crosses on X and stays thin on the Y travel axis, so swap its dims (PositionSecondary mirrors this).
+	if cfg.vertical then
+		f.st:SetSize(cfg.stHeight or 24, cfg.stWidth or 7)
+	else
+		f.st:SetSize(cfg.stWidth or 7, cfg.stHeight or 24)
+	end
 	f.primaryFill:SetTexture(tex)
 	f.primaryFill:SetVertexColor(col.r, col.g, col.b, col.a or 1)
 	-- Gate the per-frame UpdateTracking so idle NONE/NONE lanes (the default) do no work.
@@ -1129,6 +1091,9 @@ function ns.Lanes_RebuildOne(laneIndex)
 	else
 		if pooled then pooled:Hide() end
 		addon.lanes[laneIndex] = nil
+		-- Re-evaluate swing tracking: a disabled lane that used SWING must release the
+		-- combat-log hook, which the enabled/ApplyConfig path handles but this branch skipped.
+		RecomputeTrackingNeeds()
 	end
 end
 
@@ -1161,21 +1126,32 @@ local function ByStackCoord(a, b)
 end
 
 
--- Stacking placement. GROUPED packs overlaps into perpendicular rows (_stackOff); SPREAD pushes
--- them apart along the lane (_spreadShift). Extracted so the 60 Hz lane OnUpdate can re-run SPREAD
--- live: the shift is relative to each icon's natural position, which the per-icon OnUpdate keeps
+local function ResetStackLevel(btn, base)
+	if btn._stackLevel then
+		btn._stackLevel = nil
+		btn:SetFrameLevel(base)
+	end
+end
+
+-- Stacking placement. GROUPED packs overlaps into perpendicular rows and OFFSET fans every icon
+-- across stackHeight (both write _stackOff, the stable cross-axis offset); SPREAD pushes icons
+-- apart along the lane (_spreadShift). Extracted so the 60 Hz lane OnUpdate can re-run SPREAD
+-- live: its shift is relative to each icon's natural position, which the per-icon OnUpdate keeps
 -- moving, so a shift computed only at the ~10 Hz refresh makes a blocked icon drift off its slot
--- then snap back each refresh -- a visible sawtooth as two icons pass. GROUPED's offset is on the
--- stable cross axis, so it needs no live re-run.
+-- then snap back each refresh -- a visible sawtooth as two icons pass. The cross-axis offsets are
+-- stable between refreshes, so they need no live re-run.
 local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
+	local style = cfg.stackStyle
+	local base  = laneFrame:GetFrameLevel() + 1
 	local stacking = cfg.stackEnabled and count > 1
-		and (cfg.stackStyle == "GROUPED" or cfg.stackStyle == "SPREAD")
+		and (style == "GROUPED" or style == "SPREAD" or style == "OFFSET")
 	if not stacking then
 		for idx = 1, count do
 			local btn = laneFrame.iconPool[idx]
 			if btn then
 				btn._stackOff    = 0
 				btn._spreadShift = 0
+				ResetStackLevel(btn, base)
 			end
 		end
 		return
@@ -1202,12 +1178,12 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 	end
 	if n < 2 then
 		local btn = stackOrder[1]
-		if btn then btn._stackOff = 0; btn._spreadShift = 0 end
+		if btn then btn._stackOff = 0; btn._spreadShift = 0; ResetStackLevel(btn, base) end
 		return
 	end
 	table.sort(stackOrder, ByStackCoord)
 
-	if cfg.stackStyle == "SPREAD" then
+	if style == "SPREAD" then
 		-- Walk nearest-ready first; nudge each less-ready icon out so it sits at least one
 		-- icon-width past the previous one. Keeps icons on the lane line (no row offset).
 		local placedPrev
@@ -1221,38 +1197,63 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 			if placed > usable then placed = usable end
 			btn._spreadShift = placed - nat
 			btn._stackOff    = 0
+			ResetStackLevel(btn, base)
 			placedPrev = placed
 		end
-	else
-		local rowStep = iconSize
-		local maxRows = math.max(1, math.floor((cfg.stackHeight or 0) / rowStep))
-		local dirSign
-		if cfg.vertical then
-			dirSign = (cfg.stackGrowDirection == "LEFT") and -1 or 1
-		else
-			dirSign = (cfg.stackGrowDirection == "DOWN") and -1 or 1
-		end
+		return
+	end
 
-		wipe(stackRowEnd)
+	-- GROUPED and OFFSET share the cross-axis grow rules: UP/RIGHT positive, DOWN/LEFT negative,
+	-- CENTER straddles the lane line. Icons overlap once the pile exceeds stackHeight, so give each
+	-- a rising frame level by sort position (a stable layer order; last in sort draws on top).
+	local grow    = cfg.stackGrowDirection
+	local center  = grow == "CENTER"
+	local dirSign = (grow == "DOWN" or grow == "LEFT") and -1 or 1
+	local height  = cfg.stackHeight or 0
+
+	if style == "OFFSET" then
+		local step = height / (n - 1)
 		for i = 1, n do
-			local btn  = stackOrder[i]
-			local left = btn._stackCoord
-			local row
-			for r = 1, maxRows do
-				if not stackRowEnd[r] or left >= stackRowEnd[r] then row = r; break end
-			end
-			if not row then
-				-- All rows full within the height budget: drop into the one that frees
-				-- soonest (smallest right edge) and accept the partial overlap.
-				row = 1
-				for r = 2, maxRows do
-					if stackRowEnd[r] < stackRowEnd[row] then row = r end
-				end
-			end
-			stackRowEnd[row] = left + iconSize
-			btn._stackOff    = (row - 1) * rowStep * dirSign
+			local btn = stackOrder[i]
+			local o   = step * (i - 1)
+			if center then o = o - height / 2 else o = o * dirSign end
+			btn._stackOff    = o
 			btn._spreadShift = 0
+			local lvl = base + i
+			if btn._stackLevel ~= lvl then btn._stackLevel = lvl; btn:SetFrameLevel(lvl) end
 		end
+		return
+	end
+
+	-- GROUPED: first-fit icons that overlap along the lane into rows, then size the row step so the
+	-- whole band fits within stackHeight -- rows compress and overlap instead of the pile growing
+	-- off the lane. maxRow (the deepest column) sets the compression.
+	wipe(stackRowEnd)
+	local maxRow = 1
+	for i = 1, n do
+		local btn  = stackOrder[i]
+		local left = btn._stackCoord
+		local r = 1
+		while stackRowEnd[r] and left < stackRowEnd[r] do r = r + 1 end
+		stackRowEnd[r] = left + iconSize
+		btn._stackRow  = r
+		if r > maxRow then maxRow = r end
+	end
+
+	local step = iconSize
+	if maxRow > 1 and iconSize * maxRow > height then
+		step = math.max(0, (height - iconSize) / (maxRow - 1))
+	end
+	local centerShift = center and ((maxRow - 1) * step) / 2 or 0
+
+	for i = 1, n do
+		local btn    = stackOrder[i]
+		local rowOff = (btn._stackRow - 1) * step
+		if center then btn._stackOff = rowOff - centerShift
+		else btn._stackOff = rowOff * dirSign end
+		btn._spreadShift = 0
+		local lvl = base + i
+		if btn._stackLevel ~= lvl then btn._stackLevel = lvl; btn:SetFrameLevel(lvl) end
 	end
 end
 
@@ -1433,9 +1434,9 @@ local function RefreshBody(laneIndex)
 		ApplyLaneHighlight(btn, cfg, ov and ov.important == true)
 	end
 
-	-- Stacking declutters clustered cooldowns. GROUPED here at refresh cadence (~10 Hz) is fine
-	-- (its offset is on the stable cross axis); SPREAD is also re-run live at 60 Hz by the lane
-	-- OnUpdate so passing icons stay glued instead of drift-and-snapping (see ApplyStacking).
+	-- Stacking declutters clustered cooldowns. GROUPED and OFFSET here at refresh cadence (~10 Hz)
+	-- is fine (their offset is on the stable cross axis); SPREAD is also re-run live at 60 Hz by the
+	-- lane OnUpdate so passing icons stay glued instead of drift-and-snapping (see ApplyStacking).
 	ApplyStacking(laneFrame, cfg, count, iconSize, now)
 
 	-- A slot that changed occupants (resort/re-anchor/reuse) still sits at its previous

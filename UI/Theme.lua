@@ -21,13 +21,16 @@ Theme.FONT = {
 }
 
 
+-- Invariant descriptor shared across every themed frame; SetBackdrop reads it at call time.
+local BACKDROP = {
+	bgFile   = "Interface\\Buttons\\WHITE8x8",
+	edgeFile = "Interface\\Buttons\\WHITE8x8",
+	edgeSize = 1,
+	insets   = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+
 function Theme.ApplyBackdrop(frame, fillColor, borderColor)
-	frame:SetBackdrop({
-		bgFile   = "Interface\\Buttons\\WHITE8x8",
-		edgeFile = "Interface\\Buttons\\WHITE8x8",
-		edgeSize = 1,
-		insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-	})
+	frame:SetBackdrop(BACKDROP)
 	local bg = fillColor or ns.CONST.RGB.PANEL_BG
 	local bd = borderColor or ns.CONST.RGB.PANEL_BORDER
 	frame:SetBackdropColor(bg.r, bg.g, bg.b, bg.a)
@@ -49,19 +52,24 @@ function Theme.CreateButton(parent, label, width, height)
 	text:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	b.text = text
 
+	-- A selected tab (CreateTab sets _selected) keeps its yellow highlight through hover/press;
+	-- otherwise these repaint it red under the selected red text. Inert for ordinary buttons.
 	b:SetScript("OnEnter", function(self)
+		if self._selected then return end
 		local c = ns.CONST.RGB.RED_HOVER
 		self:SetBackdropColor(c.r, c.g, c.b, c.a)
 	end)
 	b:SetScript("OnLeave", function(self)
-		local c = ns.CONST.RGB.RED
+		local c = self._selected and ns.CONST.RGB.YELLOW or ns.CONST.RGB.RED
 		self:SetBackdropColor(c.r, c.g, c.b, c.a)
 	end)
 	b:SetScript("OnMouseDown", function(self)
+		if self._selected then return end
 		local c = ns.CONST.RGB.RED_DIM
 		self:SetBackdropColor(c.r, c.g, c.b, c.a)
 	end)
 	b:SetScript("OnMouseUp", function(self)
+		if self._selected then return end
 		local c = ns.CONST.RGB.RED_HOVER
 		self:SetBackdropColor(c.r, c.g, c.b, c.a)
 	end)
@@ -74,6 +82,7 @@ function Theme.CreateTab(parent, label, width)
 	local b = Theme.CreateButton(parent, label, width or 110, Theme.PANEL.TAB_H)
 
 	function b:SetSelected(isSel)
+		self._selected = isSel and true or false
 		local c = isSel and ns.CONST.RGB.YELLOW or ns.CONST.RGB.RED
 		self:SetBackdropColor(c.r, c.g, c.b, c.a)
 		if isSel then

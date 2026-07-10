@@ -105,6 +105,20 @@ function CDM:MigrateV030()
 
 	if p.barFrames   ~= nil then p.barFrames   = nil end
 
+	-- Dead diagnostic key: /cm curvetest writes db.profile._curveProbe for same-session
+	-- inspection; clear it on load so it never ships permanently in saved variables.
+	if p._curveProbe ~= nil then p._curveProbe = nil end
+
+	-- Prune empty per-spell override tables a prior build persisted just from viewing the
+	-- Filters list; they carry no settings (GetSpellOverride no longer creates them).
+	if type(p.spellOverrides) == "table" then
+		for id, ov in pairs(p.spellOverrides) do
+			if type(ov) == "table" and next(ov) == nil then
+				p.spellOverrides[id] = nil
+			end
+		end
+	end
+
 	if type(p.filters) == "table" then
 		for _, f in pairs(p.filters) do
 			if type(f) == "table" then
@@ -173,12 +187,16 @@ end
 
 
 function CDM:OnPlayerLogin()
+	-- Runs once per session, driven from whichever of PLAYER_LOGIN / first PLAYER_ENTERING_WORLD
+	-- reaches us first (PLAYER_LOGIN can be missed -- see OnEnteringWorld).
+	if self._loginHandled then return end
+	self._loginHandled = true
+
 	if self.db.profile.global.firstRun then
 		self:Print(ns.Colorize(ns.CONST.HEX.YELLOW,
 			"Welcome! Type /cdmaster to open the options panel."))
 		self.db.profile.global.firstRun = false
 	end
-	self.db.profile.global.previousVersion = self.version
 	if ns.WhatsNew_OnLogin then ns.WhatsNew_OnLogin() end
 	self:ApplySpecProfile()
 end
@@ -229,6 +247,11 @@ function CDM:OnEnteringWorld()
 	if ns.Engine and ns.Engine.Start then
 		ns.Engine:Start(self)
 	end
+
+	-- AceAddon enables us mid-PLAYER_LOGIN dispatch on a fresh login, so the PLAYER_LOGIN
+	-- handler registered in OnEnable can miss its own event. This fires reliably, so run the
+	-- once-per-session login work here too (self-guarded, so a real PLAYER_LOGIN is harmless).
+	self:OnPlayerLogin()
 end
 
 
@@ -469,10 +492,6 @@ end
 
 function CDM:OnSlashHaste()
 	local engine = ns.Engine
-	self:Print(string.format(
-		"Cached haste: %s",
-		tostring(engine and engine.cachedHaste or "nil")))
-
 	local ok, live = pcall(GetHaste)
 	if ok then
 		self:Print(string.format("Live haste: %s", tostring(live)))

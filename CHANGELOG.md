@@ -1,5 +1,30 @@
 # Cooldown Master Changelog
 
+## 0.20.0 (2026-07-09) — Stacking: Center, Overlap, and Offset styles, plus fixes
+
+### New Features
+- **Center-stacked cooldowns.** A new **Center** grow direction makes stacked icons straddle the lane line and grow both ways (Up / Down / Center on horizontal lanes, Left / Right / Center on vertical lanes), so a busy lane stays balanced instead of piling in one direction.
+- **Offset stacking style.** A new **Offset** style fans every stacked icon evenly across the stack Height, as an alternative to Grouped (rows) and Spread (along the lane).
+
+### Bug Fixes
+- **Reliable login.** The What's New popup, the first-run welcome message, and automatic profile switching by specialization now run reliably on a fresh login instead of only after a `/reload`.
+- **Color-picker opacity on 12.0.** A color's transparency was inverted on modern clients; it now matches what you set, and Cancel restores the correct alpha.
+- **Filters options no longer leak.** Every spec, talent, or spellbook change rebuilt the Filters options even while the window was closed, orphaning UI frames for the rest of the session. The rebuild now happens only while the panel is open.
+- **Blank Filters tab.** After a profile change or options rebuild, the Filters tab could come up empty; it now rebuilds cleanly.
+- **No stray override tables.** Merely viewing a spell in Filters no longer saves an empty per-spell override into your settings.
+- **Vertical secondary tracking.** The GCD / Swing secondary bar was sized and oriented for a horizontal lane; it now travels correctly along the full length of vertical lanes.
+- **Ready-box flicker.** A ready box holding a pinned icon no longer flickers after combat and no longer relayouts every frame; pinned icons stay shown while unpinned ones clear.
+- **Selected-tab highlight.** The selected Options tab keeps its yellow highlight when you hover or click it instead of briefly flashing red.
+- **Classic spec tracking.** Classic Era and Burning Crusade (Anniversary) no longer set up specialization-change tracking that does not apply on those flavors.
+
+### Improvements
+- **Stacking overlaps to fit.** Grouped stacking now compresses its rows to keep the whole pile within the configured Height, so stacked icons overlap instead of spilling off the lane. Raise Height to reduce the overlap.
+- **Taller default stack.** The default stacking Height is now 150, giving stacked icons more room before they overlap.
+- **Consistent stack layering.** Overlapping stacked icons now draw in a stable front-to-back order.
+- **Clearer stacking tooltips.** New hover tooltips explain the Grouped, Offset, and Spread styles, the Center grow direction, and how Height controls overlap.
+- **Smoother Classic / MoP combat.** On Classic and Mists of Pandaria, buff tracking batches rapid aura changes into a single scan instead of scanning on every change, cutting allocation churn.
+- **Current Classic clients.** Updated the interface versions for Classic Era, Burning Crusade (Anniversary), and Mists of Pandaria so Cooldown Master loads cleanly and is no longer flagged out of date.
+
 ## 0.19.0 (2026-07-05) — What's New popup, icon borders, vertical lanes
 
 ### New Features

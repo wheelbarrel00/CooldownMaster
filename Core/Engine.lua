@@ -12,7 +12,6 @@ Engine._seenReady      = {}   -- spellIDs seen off their own cooldown this sessi
 Engine._activeSince    = {}   -- when each spell's cooldown began (first isActive, during GCD) = its real start
 Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed; used only when nothing learned
 Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began; debounces the partial-use isActive blip
-Engine.cdTimingCache   = {}
 Engine.entries         = {}
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
@@ -171,18 +170,34 @@ local function ScheduleDeferredScan()
 end
 
 
+-- UNIT_AURA fires in bursts in combat and each ScanBuffs allocates a table per aura, so
+-- debounce it the same way (hoisted body + one pending flag) instead of scanning per fire.
+local function DeferredBuffPoll()
+	Engine._buffScanPending = nil
+	Engine:ScanBuffs()
+end
+
+local function ScheduleBuffScan()
+	if Engine._buffScanPending then return end
+	Engine._buffScanPending = true
+	C_Timer.After(SCAN_DEBOUNCE, DeferredBuffPoll)
+end
+
+
 -- Bags/equipment change far more often than the tracked-item set actually does, so
 -- collapse a burst (looting, swapping) into one rescan + filter-list refresh.
+local function DeferredItemRebuild()
+	Engine._itemRebuildPending = nil
+	if Engine.testActive then return end
+	Engine:BuildTrackedItems()
+	Engine:PollAllItems()
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
+end
+
 local function ScheduleItemRebuild()
 	if Engine._itemRebuildPending then return end
 	Engine._itemRebuildPending = true
-	C_Timer.After(0.5, function()
-		Engine._itemRebuildPending = nil
-		if Engine.testActive then return end
-		Engine:BuildTrackedItems()
-		Engine:PollAllItems()
-		if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
-	end)
+	C_Timer.After(0.5, DeferredItemRebuild)
 end
 
 
@@ -717,23 +732,13 @@ function Engine:ResolveLaneIndex(spellID, category)
 end
 
 
--- Hoisted to module scope so LearnDuration's pcalls reuse these rather than
--- allocate two closures per call (runs every scan for each unlearned active spell).
+-- Hoisted to module scope so LearnDuration's pcall reuses it rather than
+-- allocate a closure per call (runs every scan for each unlearned active spell).
 local function ReadTotalDuration(dObj)
 	if dObj.GetTotalDuration then
 		local v = dObj:GetTotalDuration()
 		-- Can come back secret even out of combat lockdown (instances, or a scan landing on
 		-- the combat-end boundary); returning it would let the caller's compare taint-throw.
-		local issecret = _G.issecretvalue
-		if issecret and issecret(v) then return nil end
-		return v
-	end
-	return nil
-end
-
-local function ReadRemainingDuration(dObj)
-	if dObj.GetRemainingDuration then
-		local v = dObj:GetRemainingDuration()
 		local issecret = _G.issecretvalue
 		if issecret and issecret(v) then return nil end
 		return v
@@ -765,13 +770,6 @@ function Engine:LearnDuration(spellID, dObj)
 		if cur and math.abs(cur - total) < 0.05 then return end
 		self.knownDurations[spellID] = total
 		self:SavePersistedDuration(spellID, total)
-		local rOk, remaining = pcall(ReadRemainingDuration, dObj)
-		if rOk and type(remaining) == "number" and remaining > 0 then
-			self.cdTimingCache[spellID] = {
-				cdStart    = GetTime() - (total - remaining),
-				cdDuration = total,
-			}
-		end
 	end
 end
 
@@ -1376,7 +1374,8 @@ function Engine:Start(addon)
 		end)
 	end
 
-	if not self.specEventFrame then
+	-- Specs (and this event) exist on retail + MoP only; skip on spec-less Era/TBC.
+	if ns.Compat.GetNumSpecs() and not self.specEventFrame then
 		local f = CreateFrame("Frame")
 		-- Unit-filter to "player": the unfiltered event also fires for party
 		-- members' spec changes, which would needlessly wipe learned durations.
@@ -1384,7 +1383,6 @@ function Engine:Start(addon)
 		f:SetScript("OnEvent", function(_, event)
 			if event == "PLAYER_SPECIALIZATION_CHANGED" then
 				wipe(self.knownDurations)
-				wipe(self.cdTimingCache)
 				-- In-memory only (not persisted): a new spec must re-observe a spell going
 				-- ready before its span is trusted, so a shared spell mid-cooldown across the
 				-- swap isn't learned short.
@@ -1446,7 +1444,7 @@ function Engine:Start(addon)
 	if not ns.Compat.HAS_BLIZZ_CDM and not self.auraEventFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterUnitEvent("UNIT_AURA", "player")
-		f:SetScript("OnEvent", function() self:ScanBuffs() end)
+		f:SetScript("OnEvent", ScheduleBuffScan)
 		self.auraEventFrame = f
 	end
 

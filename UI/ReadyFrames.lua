@@ -155,6 +155,9 @@ local function ReadyBoxKeepShown(g)
 	return false
 end
 
+-- Shared across all ready boxes so a relayout (per pop / per expiry) allocates no scratch;
+-- fully consumed within the call and Lua is single-threaded, so one table is safe.
+local relayoutScratch = {}
 local function RelayoutReadyFrame(f)
 	local cfg      = f.cfg
 	local iconSize = cfg.iconSize or ICON_SIZE
@@ -169,7 +172,8 @@ local function RelayoutReadyFrame(f)
 	local borderIns = borderOn and ((cfg.borderSize or 0) + (cfg.borderPadding or 0)) or 0
 	local margin    = borderIns + xPad
 
-	local active = {}
+	local active = relayoutScratch
+	wipe(active)
 	for i = 1, #f.iconPool do
 		local btn = f.iconPool[i]
 		if btn and btn:IsShown() then
@@ -296,11 +300,9 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -250)
 	f:SetClampedToScreen(true)
 	f:EnableMouse(true)
-	f.laneIndex = index  -- kept for parity; used in drag save
 	f.index     = index
 	f.cfg       = cfg
 	f.iconPool  = {}
-	f.activeIcons = 0
 
 	f:SetScript("OnMouseDown", function(self, button)
 		if button ~= "LeftButton" then return end
@@ -390,23 +392,33 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 
 		-- Post-combat linger: out of combat, force a clear once pTime elapses since the
 		-- last pop. Reset to 0 while in combat so the clock starts when combat ends.
+		-- Runs once per linger (_lingerDone): a surviving pinned icon keeps visible > 0, so without
+		-- the guard this re-fires every frame (relayout alloc + backdrop flicker). Recount the pinned
+		-- survivors into `visible` so an all-pinned box stays shown and an empty one still fades out.
 		local pTime = (cfg and cfg.pTime) or 0
-		if visible > 0 and pTime > 0 then
+		if pTime > 0 then
 			if InCombatLockdown() then
 				self._combatTimer = 0
-			else
+				self._lingerDone  = nil
+			elseif visible > 0 and not self._lingerDone then
 				self._combatTimer = (self._combatTimer or 0) + elapsed
 				if self._combatTimer >= pTime then
+					local stillShown = 0
 					for i = 1, #self.iconPool do
 						local btn = self.iconPool[i]
-						if btn and btn:IsShown() and not btn._pinned then
-							ClearIconHighlight(btn)
-							btn:Hide()
-							btn:SetAlpha(1)
+						if btn and btn:IsShown() then
+							if btn._pinned then
+								stillShown = stillShown + 1
+							else
+								ClearIconHighlight(btn)
+								btn:Hide()
+								btn:SetAlpha(1)
+							end
 						end
 					end
-					needRelayout = true
-					visible = 0
+					needRelayout     = true
+					visible          = stillShown
+					self._lingerDone = true
 				end
 			end
 		end
@@ -488,6 +500,7 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	if not (target and rcfg and rcfg.enabled) then return end
 
 	target._combatTimer = 0   -- a fresh pop restarts the post-combat linger clock
+	target._lingerDone  = nil
 
 	local cfg = target.cfg
 

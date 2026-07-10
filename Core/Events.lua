@@ -16,7 +16,4 @@ function ns.Events.Register(addon)
 	addon:RegisterEvent("GROUP_ROSTER_UPDATE", function()
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
-	addon:RegisterEvent("ZONE_CHANGED_NEW_AREA", function()
-		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
-	end)
 end

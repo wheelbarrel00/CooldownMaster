@@ -69,7 +69,7 @@ local function lane(frameName, y)
 		stackRaiseHover    = false,
 		stackStyle         = "GROUPED",
 		stackGrowDirection = "UP",
-		stackHeight        = 80,
+		stackHeight        = 150,
 	}
 end
 
@@ -120,7 +120,6 @@ end
 ns.DEFAULTS = {
 	global = {
 		firstRun         = true,
-		previousVersion  = "0.0.0",
 		enabledAlways    = true,
 		enabledGroup     = false,
 		enabledInstance  = false,
@@ -132,7 +131,6 @@ ns.DEFAULTS = {
 		notUsableTint    = false,
 		notUsableDesaturate = false,
 		notUsableColor   = { r = 0.75, g = 0.1, b = 0.1, a = 1 },
-		hideIgnored      = true,
 	},
 
 	classColors = {},  -- populated from CONST.CLASS_COLORS at first run

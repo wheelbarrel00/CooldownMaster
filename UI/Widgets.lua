@@ -12,14 +12,17 @@ local PANEL_BG     = RGB.PANEL_BG
 local PANEL_BORDER = RGB.PANEL_BORDER
 
 
+-- Invariant descriptor; SetBackdrop reads it at call time, so one shared table is safe.
+local WIDGET_BACKDROP = {
+	bgFile   = "Interface\\Buttons\\WHITE8x8",
+	edgeFile = "Interface\\Buttons\\WHITE8x8",
+	edgeSize = 1,
+	insets   = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+
 -- Duplicates Theme.ApplyBackdrop to avoid a load-time circular file dependency.
 local function applyBackdrop(frame, fillColor, borderColor)
-	frame:SetBackdrop({
-		bgFile   = "Interface\\Buttons\\WHITE8x8",
-		edgeFile = "Interface\\Buttons\\WHITE8x8",
-		edgeSize = 1,
-		insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-	})
+	frame:SetBackdrop(WIDGET_BACKDROP)
 	local bg = fillColor   or PANEL_BG
 	local bd = borderColor or PANEL_BORDER
 	frame:SetBackdropColor(bg.r, bg.g, bg.b, bg.a)
@@ -410,9 +413,12 @@ function Widgets.CreateColorPicker(parent, cfg)
 	local function buildPickerInfo()
 		local startR, startG, startB, startA =
 			root._color.r, root._color.g, root._color.b, root._color.a
+		-- Modern ColorPickerFrame (12.0 / DF 10.2.5+) treats `opacity` as alpha directly, matching
+		-- GetColorAlpha in opacityFunc; the legacy OpenColorPicker path used transparency (1 - alpha).
+		local modern = (ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) and true or false
 		local info = {
 			r = startR, g = startG, b = startB,
-			opacity = 1 - (startA or 1),
+			opacity = modern and startA or (1 - (startA or 1)),
 			hasOpacity = hasAlpha,
 			swatchFunc = function()
 				local r, g, b
@@ -442,7 +448,7 @@ function Widgets.CreateColorPicker(parent, cfg)
 					root._color.g = prev.g
 					root._color.b = prev.b
 					if hasAlpha and prev.opacity ~= nil then
-						root._color.a = 1 - prev.opacity
+						root._color.a = modern and prev.opacity or (1 - prev.opacity)
 					end
 					applySwatchColor(root._color)
 					fire()

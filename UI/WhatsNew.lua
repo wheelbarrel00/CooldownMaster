@@ -100,8 +100,9 @@ end
 
 -- Custom chat hyperlink (|Haddon:CooldownMaster:whatsnew|h); the client ignores the unknown
 -- link type, so we open the popup ourselves when ours is clicked.
+local WHATSNEW_LINK = "addon:" .. ns.CONST.ADDON_NAME .. ":whatsnew"
 hooksecurefunc("SetItemRef", function(link)
-	if link == "addon:" .. ns.CONST.ADDON_NAME .. ":whatsnew" then
+	if link == WHATSNEW_LINK then
 		ns.WhatsNew_Show()
 	end
 end)

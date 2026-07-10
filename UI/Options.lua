@@ -707,18 +707,21 @@ end
 
 
 local STACK_STYLE_OPTIONS = {
-	{ value = "GROUPED", text = "Grouped"         },
-	{ value = "SPREAD",  text = "Spread" },
+	{ value = "GROUPED", text = "Grouped" },
+	{ value = "SPREAD",  text = "Spread"  },
+	{ value = "OFFSET",  text = "Offset"  },
 }
 
 local GROW_DIR_H = {
-	{ value = "UP",   text = "Up"   },
-	{ value = "DOWN", text = "Down" },
+	{ value = "UP",     text = "Up"     },
+	{ value = "DOWN",   text = "Down"   },
+	{ value = "CENTER", text = "Center" },
 }
 
 local GROW_DIR_V = {
-	{ value = "LEFT",  text = "Left"  },
-	{ value = "RIGHT", text = "Right" },
+	{ value = "LEFT",   text = "Left"   },
+	{ value = "RIGHT",  text = "Right"  },
+	{ value = "CENTER", text = "Center" },
 }
 
 local function BuildLaneStackingForm(parent, laneIndex)
@@ -757,7 +760,7 @@ local function BuildLaneStackingForm(parent, laneIndex)
 	place(W.CreateDropdown(parent, {
 		label = "Stack Style", value = cfg.stackStyle, options = STACK_STYLE_OPTIONS,
 		width = 200,
-		tooltip = "How cooldowns that land on the same spot are arranged. Grouped stacks them in one pile with a count; Spread fans them apart so each icon stays visible.",
+		tooltip = "How cooldowns that pile on the same spot are arranged. Grouped packs them into rows and overlaps them to stay within Height; Offset fans every icon evenly across Height; Spread pushes them apart along the lane so each stays visible.",
 		onChange = function(v) cfg.stackStyle = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -766,12 +769,14 @@ local function BuildLaneStackingForm(parent, laneIndex)
 	place(W.CreateDropdown(parent, {
 		label = "Grow Direction", value = cfg.stackGrowDirection,
 		options = growOpts, width = 200,
+		tooltip = "Which way a Grouped or Offset stack grows from the lane line. Center straddles the line and grows both ways.",
 		onChange = function(v) cfg.stackGrowDirection = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
 		label = "Height", min = 0, max = 300, step = 5,
 		value = cfg.stackHeight, width = 240,
+		tooltip = "How much room across the lane the stack may use. When the icons do not all fit, they overlap to stay within it, so raise Height to reduce overlap.",
 		onChange = function(v) cfg.stackHeight = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -1151,11 +1156,29 @@ local function GetFilterCfg(key)
 	return ns.CDM.db.profile.filters[key]
 end
 
+-- Read-only: returns the stored override or nil. Merely viewing a spell must NOT persist an
+-- empty {} into spellOverrides (a SavedVariable); materialization is deferred to SetSpellOverride.
 local function GetSpellOverride(spellID)
+	local so = ns.CDM.db.profile.spellOverrides
+	return so and so[spellID]
+end
+
+-- Write one override field, creating the table on the first real value and pruning it back to
+-- nil once it holds nothing, so choosing "Default" everywhere leaves no empty table behind.
+local function SetSpellOverride(spellID, field, value)
 	local p = ns.CDM.db.profile
+	if value == nil then
+		local so = p.spellOverrides
+		local ov = so and so[spellID]
+		if not ov then return end
+		ov[field] = nil
+		if next(ov) == nil then so[spellID] = nil end
+		return
+	end
 	p.spellOverrides = p.spellOverrides or {}
-	p.spellOverrides[spellID] = p.spellOverrides[spellID] or {}
-	return p.spellOverrides[spellID]
+	local ov = p.spellOverrides[spellID]
+	if not ov then ov = {}; p.spellOverrides[spellID] = ov end
+	ov[field] = value
 end
 
 local FILTER_LANE_OPTIONS = {
@@ -1322,7 +1345,10 @@ function ns.Options_InvalidateFilterLists()
 		end
 	end
 	if filtersState.itemRows then wipe(filtersState.itemRows) end
-	if filtersState._refresh then filtersState._refresh() end
+	-- Only rebuild while the panel is actually open: a closed-panel rebuild just orphans the old
+	-- surface's frames (WoW never GCs them) on every spec/talent/spellbook change all session. The
+	-- caches cleared above rebuild lazily the next time the Filters tab is shown.
+	if panel and panel:IsShown() and filtersState._refresh then filtersState._refresh() end
 end
 
 
@@ -1351,7 +1377,7 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	local categoryKey = ns.Engine and ns.Engine:GetCategoryFilterKey(info.category)
 	local fcfg = categoryKey and GetFilterCfg(categoryKey)
 	local effectiveVisible
-	if override.visible ~= nil then
+	if override and override.visible ~= nil then
 		effectiveVisible = override.visible
 	else
 		effectiveVisible = fcfg and fcfg.showByDefault ~= false
@@ -1360,27 +1386,23 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	local cb = W.CreateCheckbox(row, {
 		label = "Show",
 		checked = effectiveVisible,
-		onChange = function(v) override.visible = v end,
+		onChange = function(v) SetSpellOverride(spellID, "visible", v) end,
 	})
 	cb:SetPoint("LEFT", name, "RIGHT", 8, 0)
 
-	local laneVal = override.lane or 0  -- 0 sentinel for "Default"
+	local laneVal = (override and override.lane) or 0  -- 0 sentinel for "Default"
 	local dd = W.CreateDropdown(row, {
 		label = "",
 		value = laneVal,
 		options = FILTER_LANE_OPTIONS,
 		width = 90,
 		onChange = function(v)
-			if v == 0 then
-				override.lane = nil
-			else
-				override.lane = v
-			end
+			SetSpellOverride(spellID, "lane", v ~= 0 and v or nil)
 		end,
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
 
-	local rbVal = override.readyBox
+	local rbVal = override and override.readyBox
 	if rbVal == nil then rbVal = -1 end  -- -1 sentinel for "Default"
 	local rdd = W.CreateDropdown(row, {
 		label = "",
@@ -1388,24 +1410,20 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		options = FILTER_READYBOX_OPTIONS,
 		width = 90,
 		onChange = function(v)
-			if v == -1 then
-				override.readyBox = nil
-			else
-				override.readyBox = v
-			end
+			SetSpellOverride(spellID, "readyBox", v ~= -1 and v or nil)
 		end,
 	})
 	rdd:SetPoint("LEFT", dd, "RIGHT", 12, 0)
 
-	local flagVal = (override.important and 1 or 0) + (override.pinned and 2 or 0)
+	local flagVal = ((override and override.important) and 1 or 0) + ((override and override.pinned) and 2 or 0)
 	local fdd = W.CreateDropdown(row, {
 		label = "",
 		value = flagVal,
 		options = FILTER_READYFLAG_OPTIONS,
 		width = 80,
 		onChange = function(v)
-			override.important = (v % 2) == 1 or nil
-			override.pinned    = v >= 2 or nil
+			SetSpellOverride(spellID, "important", (v % 2) == 1 or nil)
+			SetSpellOverride(spellID, "pinned",    v >= 2 or nil)
 		end,
 	})
 	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
@@ -1570,6 +1588,8 @@ local function BuildFiltersTab(content)
 	formArea:SetPoint("TOPLEFT",     rail, "TOPRIGHT",    12, 0)
 	formArea:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
 
+	-- Rebuild recreates formArea; drop cached surfaces parented to the old one (mirrors BuildReadyTab).
+	wipe(filtersState.formFrames)
 	wipe(filtersState.railRows)
 
 	local railEntries = {
@@ -1996,6 +2016,9 @@ function ns.Options_Rebuild()
 	end
 	wipe(lanesState.formFrames)
 	wipe(filtersState.formFrames)
+	-- Drop the stale closure: it captured the now-orphaned formArea, and
+	-- Options_InvalidateFilterLists would otherwise fire it into a dead frame (blank Filters tab).
+	filtersState._refresh = nil
 	filtersState.itemRows = nil
 	ns.Options_SelectTab(currentTabID or "global")
 end

@@ -2,6 +2,35 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.20.0",
+		date = "2026-07-09",
+		sections = {
+			{ head = "New Features", items = {
+				"Center stacking: a new Center grow direction makes stacked cooldowns straddle the lane line and grow both ways (Up/Down/Center on horizontal lanes, Left/Right/Center on vertical lanes), so a busy lane stays balanced instead of piling in one direction.",
+				"Offset stacking style: a new style that fans every stacked icon evenly across the stack Height, alongside Grouped (rows) and Spread (along the lane).",
+			} },
+			{ head = "Bug Fixes", items = {
+				"The What's New popup, the first-run welcome, and automatic profile switching by specialization now run reliably on a fresh login instead of only after a /reload.",
+				"Fixed the color picker's opacity being inverted on modern (12.0) clients, so a color's transparency now matches what you set and Cancel restores the correct alpha.",
+				"The Filters options no longer rebuild and leak interface frames on every spec, talent, or spellbook change while the options window is closed; the rebuild now happens only while the panel is open.",
+				"Fixed the Filters tab sometimes coming up blank after a profile change or options rebuild.",
+				"Merely viewing a spell in Filters no longer saves an empty per-spell override into your settings.",
+				"Fixed the secondary tracking bar (GCD and Swing) on vertical lanes, which was sized and oriented for a horizontal lane; it now travels correctly along the full length of vertical lanes.",
+				"Fixed a post-combat flicker on ready boxes holding a pinned icon; pinned icons stay shown while unpinned ones clear, and the box no longer relayouts every frame.",
+				"The selected Options tab now keeps its yellow highlight when you hover or click it instead of briefly flashing red.",
+				"Classic Era and Burning Crusade (Anniversary) no longer set up specialization-change tracking that does not apply on those flavors.",
+			} },
+			{ head = "Improvements", items = {
+				"Grouped stacking now compresses its rows to keep the whole pile within the configured Height, so stacked icons overlap instead of spilling off the lane. Raise Height to reduce the overlap.",
+				"Raised the default lane stacking Height to 150 so stacked icons have more room before they overlap.",
+				"Overlapping stacked icons now draw in a stable front-to-back order.",
+				"Added hover tooltips explaining the Grouped, Offset, and Spread stacking styles, the Center grow direction, and how raising Height reduces overlap.",
+				"On Classic and Mists of Pandaria, buff tracking batches rapid aura changes into a single scan instead of scanning on every change, cutting allocation churn and smoothing combat.",
+				"Updated the interface versions for the current Classic clients (Classic Era, Burning Crusade/Anniversary, and Mists of Pandaria) so Cooldown Master loads cleanly and is no longer flagged out of date.",
+			} },
+		},
+	},
+	{
 		version = "0.19.0",
 		date = "2026-07-05",
 		sections = {

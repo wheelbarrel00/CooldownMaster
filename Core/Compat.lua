@@ -33,7 +33,9 @@ end
 -- them nil, which blanked the Profiles tab -- so prefer the namespace, fall back to the
 -- globals. GetNumSpecializations stays a native global on all flavors (0 on Era/TBC).
 function ns.Compat.GetNumSpecs()
-	if GetNumSpecializations then return GetNumSpecializations() end
+	-- Return nil (not a truthy 0) on spec-less flavors so bare `if GetNumSpecs()` gates skip them.
+	local n = GetNumSpecializations and GetNumSpecializations()
+	if n and n > 0 then return n end
 end
 
 function ns.Compat.GetSpecIndex()
