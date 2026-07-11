@@ -47,6 +47,14 @@ local READY_MAX_POPS_PER_SCAN = 3   -- more ready edges than this in one scan = 
 -- window; mirrors the lane dedupe (UI/Lanes.lua) so ready pops collapse the same way.
 local SHARED_CD_TOL = 0.5
 
+-- Same start+end alone is NOT a shared cooldown: two independent same-duration abilities fired
+-- together (e.g. Arcane Power + Icy Veins) must not merge. Items match on itemID, spells on name.
+function ns.IsSameSharedCD(a, b)
+	if a.itemID and b.itemID then return true end
+	if a.itemID or b.itemID then return false end
+	return a.name ~= nil and a.name == b.name
+end
+
 -- Baseline (no haste/talent) cooldowns; a learned read overrides these because
 -- it accounts for talent modifications. Covers Paladin (Ret) and Mage (all specs).
 local FALLBACK_DURATIONS = {
@@ -1105,7 +1113,8 @@ function Engine:ScanSpells()
 					for k = w, 1, -1 do
 						local kept = self.entries[edges[k]]
 						if not kept or kept.startTime ~= e.startTime then break end
-						if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL then
+						if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL
+							and ns.IsSameSharedCD(e, kept) then
 							dup = true
 							break
 						end

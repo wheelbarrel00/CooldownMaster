@@ -22,17 +22,6 @@ pxWatch:SetScript("OnEvent", function()
 	PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
 end)
 
--- /cm snap diagnostic: quantize icon travel itself to whole physical pixels. Ships OFF --
--- the live A/B verdict was gliding icons + snapped cooldown carrier (see AcquireIcon);
--- kept as a support tool for exotic scale setups.
-local snapIcons = false
-
-function ns.Lanes_ToggleSnapIcons()
-	snapIcons = not snapIcons
-	PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
-	return snapIcons
-end
-
 -- Register the built-in names so saved "CDM Smooth"/"CDM Shadow" resolve and list
 -- alongside the user's LSM media; WHITE8x8 keeps the default flat look unchanged.
 if LSM then
@@ -57,11 +46,11 @@ end
 
 
 -- Autohide hides only the chrome (bg/border/name/markers), never the icon children, so
--- cooldowns stay visible out of combat. Unlock force-shows chrome so it can be dragged.
+-- cooldowns stay visible out of combat. Unlock no longer forces chrome on -- a drag handle
+-- (ns.CreateDragHandle) keeps an autohidden frame findable, so autohide works while unlocked.
 local function ChromeShown(addon, cfg)
 	local g = addon.db.profile.global
 	if ns.Engine and ns.Engine.testActive then return true end
-	if g.unlockFrames then return true end
 	if not g.autohide then return true end
 	if addon.combat then return true end
 	return cfg.overrideAutohide and true or false
@@ -107,17 +96,23 @@ end
 local function ApplyVisibility(addon)
 	if not (addon and addon.db and addon.lanes) then return end
 	local unlocked = addon.db.profile.global.unlockFrames
+	local gate = LaneGatePasses(addon)
 	for i = 1, 3 do
 		local f = addon.lanes[i]
 		if f and f.cfg then
-			if LaneGatePasses(addon) then
+			local chrome = gate and ChromeShown(addon, f.cfg)
+			if gate then
 				f:Show()
-				SetLaneChrome(addon, f, f.cfg, ChromeShown(addon, f.cfg))
+				SetLaneChrome(addon, f, f.cfg, chrome)
 			else
 				f:Hide()
 			end
-			-- Drag-only mouse: a shown-but-chrome-hidden lane must not swallow clicks.
-			f:EnableMouse(unlocked)
+			-- Grab the strip only while it is actually visible. An invisible autohidden strip
+			-- would silently eat clicks, so the drag handle takes over when the chrome is hidden.
+			f:EnableMouse(unlocked and chrome and true or false)
+			if f.dragHandle then
+				ns.RefreshDragHandle(f.dragHandle, f.cfg.frameName, unlocked and gate and not chrome)
+			end
 		end
 	end
 end
@@ -292,65 +287,6 @@ local function UpdateTracking(f)
 end
 
 
--- /cm text: can the native countdown widget's displayed STRING be mirrored onto our own
--- FontString? The widget converts the secret duration to text C-side; if that string is
--- readable (or displayable even while secret), we can render the countdown on a plain
--- gliding FontString -- which WoW moves smoothly (CDTL2/FCT-proven) -- instead of the
--- widget's internal text, whose C-side layout shimmers/hops in motion.
-function ns.Lanes_TextProbe()
-	local cdm = ns.CDM
-	if not cdm then return end
-	local iss = _G.issecretvalue
-	local found
-	for i = 1, 3 do
-		local lane = cdm.lanes and cdm.lanes[i]
-		for j = 1, (lane and lane.activeIcons) or 0 do
-			local btn = lane.iconPool[j]
-			if btn and btn:IsShown() and btn.cd then found = btn; break end
-		end
-		if found then break end
-	end
-	if not found then
-		cdm:Print("text probe: no live lane icon -- start Test Mode or put something on cooldown.")
-		return
-	end
-	local fs
-	for i = 1, found.cd:GetNumRegions() do
-		local r = select(i, found.cd:GetRegions())
-		if r and r.GetObjectType and r:GetObjectType() == "FontString" then fs = r; break end
-	end
-	if not fs then
-		cdm:Print("text probe: native countdown FontString NOT reachable from Lua.")
-		return
-	end
-	local okG, txt = pcall(fs.GetText, fs)
-	local secret = (okG and iss and iss(txt)) or false
-	cdm:Print(string.format("text probe: inCombat=%s GetText ok=%s secret=%s type=%s value=%s",
-		tostring(InCombatLockdown()), tostring(okG), tostring(secret),
-		okG and type(txt) or "?",
-		(okG and not secret) and tostring(txt) or "?"))
-	ns._probeFS = ns._probeFS or UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	local okS, sErr = pcall(ns._probeFS.SetText, ns._probeFS, txt)
-	-- Everything downstream can be secret (width, even the error object); never tostring
-	-- a value before issecretvalue clears it -- that throw is what ate this print in v1.
-	local okW, w = pcall(ns._probeFS.GetStringWidth, ns._probeFS)
-	local wSecret = (okW and iss and iss(w)) or false
-	local errShow = "-"
-	if not okS then
-		local okT, es = pcall(tostring, sErr)
-		errShow = (okT and es) or "<untostringable>"
-	end
-	cdm:Print(string.format("text probe: SetText-on-own-FS ok=%s widthSecret=%s width=%s err=%s",
-		tostring(okS), tostring(wSecret),
-		(okW and not wSecret) and tostring(w) or "?", errShow))
-	-- Accepting a secret string is not the same as DRAWING it: park the scratch FS mid-screen
-	-- so the user can see whether a digit actually renders.
-	ns._probeFS:ClearAllPoints()
-	ns._probeFS:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
-	ns._probeFS:Show()
-	C_Timer.After(5, function() ns._probeFS:Hide() end)
-	cdm:Print("text probe: look ABOVE SCREEN CENTER for ~5s -- is a number visible there?")
-end
 
 
 local trackMon
@@ -393,6 +329,72 @@ function ns.Lanes_Build(addon)
 			ns.Lanes_CreateLane(addon, i, cfg)
 		end
 	end
+end
+
+
+-- Draggable name-tag pinned to a frame's center, shown only while unlocked AND the frame's
+-- chrome is autohidden -- so an otherwise-invisible lane or ready box stays findable and movable.
+function ns.CreateDragHandle(target, fallback, onMoved)
+	local h = CreateFrame("Frame", nil, UIParent,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	h:SetFrameStrata("HIGH")
+	h:SetPoint("CENTER", target, "CENTER", 0, 0)
+	h:SetSize(60, 20)
+	h:EnableMouse(true)
+	h:Hide()
+	h.fallback = fallback
+	if ns.Theme then
+		ns.Theme.ApplyBackdrop(h, { r = 0, g = 0, b = 0, a = 0.85 }, ns.CONST.RGB.RED)
+	end
+	local txt = h:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	txt:SetPoint("CENTER")
+	txt:SetText(fallback or "")
+	txt:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+	h.text = txt
+
+	h:SetScript("OnMouseDown", function(self, button)
+		if button ~= "LeftButton" then return end
+		local cursorX, cursorY = GetCursorPosition()
+		local scale = target:GetEffectiveScale()
+		self._sx, self._sy = cursorX / scale, cursorY / scale
+		local point, _, _, x, y = target:GetPoint()
+		self._fx, self._fy, self._fp = x, y, point or "CENTER"
+		self._dragging = true
+	end)
+	h:SetScript("OnMouseUp", function(self, button)
+		if not self._dragging then return end
+		self._dragging = false
+		local point, _, _, x, y = target:GetPoint()
+		if onMoved then onMoved(point or "CENTER", math.floor(x + 0.5), math.floor(y + 0.5)) end
+	end)
+	-- A mid-drag hide (box pop, combat start, gate flip) would strand _dragging=true and make the
+	-- frame chase the cursor when it re-shows, so finalize the drag here the same as OnMouseUp.
+	h:SetScript("OnHide", function(self)
+		if not self._dragging then return end
+		self._dragging = false
+		local point, _, _, x, y = target:GetPoint()
+		if onMoved then onMoved(point or "CENTER", math.floor(x + 0.5), math.floor(y + 0.5)) end
+	end)
+	h:SetScript("OnUpdate", function(self)
+		if not self._dragging then return end
+		local cursorX, cursorY = GetCursorPosition()
+		local scale = target:GetEffectiveScale()
+		target:ClearAllPoints()
+		target:SetPoint(self._fp, UIParent, self._fp,
+			self._fx + (cursorX / scale - self._sx),
+			self._fy + (cursorY / scale - self._sy))
+	end)
+
+	return h
+end
+
+function ns.RefreshDragHandle(h, name, shown)
+	if not h then return end
+	if not shown then h:Hide() return end
+	if not name or name == "" then name = h.fallback or "" end
+	h.text:SetText(name)
+	h:SetWidth(math.max(60, (h.text:GetStringWidth() or 0) + 16))
+	h:Show()
 end
 
 
@@ -496,6 +498,16 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.activeIcons = 0
 	f.cfg = cfg
 	f.index = index
+
+	f.dragHandle = ns.CreateDragHandle(f, "Lane "..index, function(point, x, y)
+		local laneCfg = addon.db.profile.lanes[index]
+		if laneCfg then
+			laneCfg.anchor = point
+			laneCfg.x = x
+			laneCfg.y = y
+		end
+		if ns.Lanes_Refresh then ns.Lanes_Refresh(index) end
+	end)
 
 	addon.lanes[index] = f
 	addon.lanePool[index] = f   -- free-list entry; reused across profile/enable changes
@@ -711,25 +723,6 @@ local function AcquireIcon(laneFrame, i, iconSize)
 			local x = progress * usable + shift
 			if x < 0 then x = 0 elseif x > usable then x = usable end
 			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
-		end
-
-		-- /cm snap diagnostic: quantize travel to whole physical pixels (see header note).
-		-- Snapped in SCREEN space: the lane's own origin sits on a fractional pixel at most
-		-- UI scales, so lane-local snapping reproduces that fraction in every icon position
-		-- and can park the text layout on a rounding boundary (verified on a 4K/0.5 setup).
-		if snapIcons then
-			local psize  = PIXEL_FACTOR / self:GetEffectiveScale()
-			local parent = self:GetParent()
-			local base
-			if point == "LEFT" then base = parent:GetLeft()
-			elseif point == "RIGHT" then base = parent:GetRight()
-			elseif point == "BOTTOM" then base = parent:GetBottom()
-			elseif point == "TOP" then base = parent:GetTop() end
-			if base then
-				coord = math.floor((base + coord) / psize + 0.5) * psize - base
-			else
-				coord = math.floor(coord / psize + 0.5) * psize
-			end
 		end
 
 		-- Float coord, not pixel-rounded: SetPoint renders sub-pixel so the icon glides; rounding reintroduces stair-stepping.
@@ -1048,7 +1041,13 @@ local function ApplyConfigBody(laneIndex)
 	RecomputeTrackingNeeds()
 
 	-- This path restored chrome to full; re-apply the current show/hide state.
-	SetLaneChrome(addon, laneFrame, cfg, ChromeShown(addon, cfg))
+	local chrome = ChromeShown(addon, cfg)
+	SetLaneChrome(addon, laneFrame, cfg, chrome)
+	if laneFrame.dragHandle then
+		local g = addon.db.profile.global
+		ns.RefreshDragHandle(laneFrame.dragHandle, cfg.frameName,
+			g.unlockFrames and LaneGatePasses(addon) and not chrome)
+	end
 end
 
 
@@ -1089,7 +1088,10 @@ function ns.Lanes_RebuildOne(laneIndex)
 			ns.Lanes_CreateLane(addon, laneIndex, cfg)   -- applies config itself
 		end
 	else
-		if pooled then pooled:Hide() end
+		if pooled then
+			pooled:Hide()
+			if pooled.dragHandle then pooled.dragHandle:Hide() end   -- UIParent child, won't hide with the frame
+		end
 		addon.lanes[laneIndex] = nil
 		-- Re-evaluate swing tracking: a disabled lane that used SWING must release the
 		-- combat-log hook, which the enabled/ApplyConfig path handles but this branch skipped.
@@ -1340,7 +1342,8 @@ local function RefreshBody(laneIndex)
 			for k = w, 1, -1 do
 				local kept = visible[k]
 				if kept.startTime ~= e.startTime then break end
-				if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL then
+				if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL
+					and ns.IsSameSharedCD(e, kept) then
 					dup = true
 					break
 				end

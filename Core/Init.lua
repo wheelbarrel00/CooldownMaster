@@ -327,30 +327,6 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
-	elseif input == "text" then
-		if ns.Lanes_TextProbe then
-			ns.Lanes_TextProbe()
-		else
-			self:Print("Lanes not loaded.")
-		end
-
-	elseif input == "snap" then
-		if ns.Lanes_ToggleSnapIcons then
-			local on = ns.Lanes_ToggleSnapIcons()
-			local pw, ph = GetPhysicalScreenSize()
-			local lane = self.lanes and self.lanes[1]
-			self:Print(string.format(
-				"icon pixel-snap: %s | screen=%dx%d uiParent=%.4f lane=%.4f 768/h=%.4f pixelUtil=%s",
-				on and "ON" or "OFF", pw, ph,
-				UIParent:GetEffectiveScale(),
-				lane and lane:GetEffectiveScale() or -1,
-				768 / ph,
-				(PixelUtil and PixelUtil.GetPixelToUIUnitFactor
-					and string.format("%.4f", PixelUtil.GetPixelToUIUnitFactor())) or "n/a"))
-		else
-			self:Print("Lanes not loaded.")
-		end
-
 	elseif input == "spells" then
 		self:OnSlashSpells()
 

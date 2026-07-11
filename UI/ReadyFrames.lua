@@ -143,16 +143,34 @@ local function ApplyIconHighlight(btn, cfg, important)
 	end
 end
 
--- A ready box normally hides once it goes empty and locked. Keep it up anyway while test mode
--- or unlock is on (for positioning), or when global autohide is OFF -- mirroring the lanes,
--- where autohide-off means the frame is always shown. With autohide ON the empty box keeps its
--- fade-out behavior.
+-- A ready box normally hides once it goes empty. Keep it up while test mode runs or when global
+-- autohide is OFF (autohide-off means always shown, mirroring the lanes). Unlock no longer keeps
+-- it up -- an empty box autohides while unlocked too, and its drag handle keeps it movable.
 local function ReadyBoxKeepShown(g)
 	if not g then return false end
 	if ns.Engine and ns.Engine.testActive then return true end
-	if g.unlockFrames then return true end
 	if not g.autohide then return true end
 	return false
+end
+
+local function BoxHasContent(f)
+	for i = 1, #f.iconPool do
+		local b = f.iconPool[i]
+		if b and b:IsShown() then return true end
+	end
+	return false
+end
+
+-- Show a box's drag handle only while unlocked, out of combat, AND the box is (or is fading)
+-- hidden -- so it never clutters a visible box, the default autohide-off layout, or a fight (the
+-- tag is a positioning aid, matching the lane tags which hide in combat when chrome returns).
+local function UpdateReadyHandle(f)
+	if not f.dragHandle then return end
+	local addon = ns.CDM
+	local g = addon and addon.db and addon.db.profile.global
+	local shown = g and g.unlockFrames and not addon.combat
+		and not (BoxHasContent(f) or ReadyBoxKeepShown(g))
+	ns.RefreshDragHandle(f.dragHandle, f.cfg and f.cfg.frameName, shown)
 end
 
 -- Shared across all ready boxes so a relayout (per pop / per expiry) allocates no scratch;
@@ -223,6 +241,7 @@ local function RelayoutReadyFrame(f)
 		f:SetAlpha(cfg.alpha or 1)
 		f:Show()
 	end
+	UpdateReadyHandle(f)
 end
 
 
@@ -442,6 +461,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 				self:SetAlpha(boxAlpha)
 				self._boxFade = nil
 				self:Hide()
+				UpdateReadyHandle(self)
 			else
 				self:SetAlpha(boxAlpha * (1 - self._boxFade / BOX_FADE_DUR))
 			end
@@ -455,6 +475,15 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 	f.label = label
+
+	f.dragHandle = ns.CreateDragHandle(f, "Ready "..index, function(point, x, y)
+		local rfCfg = addon.db.profile.readyFrames[index]
+		if rfCfg then
+			rfCfg.anchor = point
+			rfCfg.x = x
+			rfCfg.y = y
+		end
+	end)
 
 	addon.readyFrames[index] = f
 	addon.readyFramePool[index] = f   -- free-list entry; reused across profile/enable changes
@@ -670,7 +699,10 @@ function ns.ReadyFrames_RebuildOne(index)
 			ns.ReadyFrames_ApplyConfig(index)
 		end
 	else
-		if pooled then pooled:Hide() end
+		if pooled then
+			pooled:Hide()
+			if pooled.dragHandle then pooled.dragHandle:Hide() end   -- UIParent child, won't hide with the frame
+		end
 		addon.readyFrames[index] = nil
 	end
 end

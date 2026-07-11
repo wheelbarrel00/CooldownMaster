@@ -2,6 +2,23 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "0.21.0",
+		date = "2026-07-11",
+		sections = {
+			{ head = "New Features", items = {
+				"Auto-hide now works while your frames are unlocked. Previously it only took effect once you locked your frames. With Auto-hide on, empty lanes and ready boxes now hide out of combat even while unlocked, and each hidden frame shows a small labeled tag you can grab to drag it into place. Lock your frames and the tags disappear, as before.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Detect Shared Cooldowns no longer hides a different ability. Two unrelated abilities that happened to share a cooldown length and were used together (for example Arcane Power and Icy Veins from one macro) were merged into a single icon, hiding one of them. Abilities now merge only when they are genuinely the same cooldown, so every ability shows.",
+				"A repositioning tag hidden in the middle of a drag (for example when a cooldown popped into the box you were moving) could keep chasing the cursor afterward. The drag now finalizes cleanly.",
+				"Ready-box repositioning tags now hide in combat, matching the lane tags.",
+			} },
+			{ head = "Thanks", items = {
+				"Thanks to Agaman for knocking this one out for me.",
+			} },
+		},
+	},
+	{
 		version = "0.20.0",
 		date = "2026-07-09",
 		sections = {
