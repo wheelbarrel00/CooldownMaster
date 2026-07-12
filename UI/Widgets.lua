@@ -413,42 +413,42 @@ function Widgets.CreateColorPicker(parent, cfg)
 	local function buildPickerInfo()
 		local startR, startG, startB, startA =
 			root._color.r, root._color.g, root._color.b, root._color.a
-		-- Modern ColorPickerFrame (12.0 / DF 10.2.5+) treats `opacity` as alpha directly, matching
-		-- GetColorAlpha in opacityFunc; the legacy OpenColorPicker path used transparency (1 - alpha).
-		local modern = (ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) and true or false
+		-- Color picker `opacity` is TRANSPARENCY (1 - alpha) on both the legacy slider and 12.0's
+		-- GetColorAlpha, so invert it going in and coming back out. Both callbacks re-read the whole
+		-- color because the modern frame does not reliably fire opacityFunc on an opacity-only drag.
+		local function readColor()
+			local r, g, b
+			if ColorPickerFrame.GetColorRGB then
+				r, g, b = ColorPickerFrame:GetColorRGB()
+			else
+				r, g, b = _G.ColorPickerFrame:GetColorRGB()
+			end
+			if r then root._color.r, root._color.g, root._color.b = r, g, b end
+			if hasAlpha then
+				local t
+				if ColorPickerFrame.GetColorAlpha then
+					t = ColorPickerFrame:GetColorAlpha()
+				elseif _G.OpacitySliderFrame and _G.OpacitySliderFrame.GetValue then
+					t = _G.OpacitySliderFrame:GetValue()
+				end
+				if t ~= nil then root._color.a = 1 - t end
+			end
+			applySwatchColor(root._color)
+			fire()
+		end
 		local info = {
 			r = startR, g = startG, b = startB,
-			opacity = modern and startA or (1 - (startA or 1)),
+			opacity = 1 - (startA or 1),
 			hasOpacity = hasAlpha,
-			swatchFunc = function()
-				local r, g, b
-				if ColorPickerFrame.GetColorRGB then
-					r, g, b = ColorPickerFrame:GetColorRGB()
-				else
-					r, g, b = _G.ColorPickerFrame:GetColorRGB()
-				end
-				root._color.r, root._color.g, root._color.b = r, g, b
-				applySwatchColor(root._color)
-				fire()
-			end,
-			opacityFunc = function()
-				local a
-				if ColorPickerFrame.GetColorAlpha then
-					a = ColorPickerFrame:GetColorAlpha()
-				elseif _G.OpacitySliderFrame and _G.OpacitySliderFrame:GetValue() then
-					a = 1 - _G.OpacitySliderFrame:GetValue()
-				end
-				root._color.a = a or 1
-				applySwatchColor(root._color)
-				fire()
-			end,
+			swatchFunc = readColor,
+			opacityFunc = readColor,
 			cancelFunc = function(prev)
 				if prev then
 					root._color.r = prev.r
 					root._color.g = prev.g
 					root._color.b = prev.b
 					if hasAlpha and prev.opacity ~= nil then
-						root._color.a = modern and prev.opacity or (1 - prev.opacity)
+						root._color.a = 1 - prev.opacity
 					end
 					applySwatchColor(root._color)
 					fire()
@@ -497,6 +497,7 @@ function Widgets.CreateEditBox(parent, cfg)
 	label:SetPoint("TOP", root, "TOP", 0, 0)
 	label:SetText(cfg.label or "")
 	label:SetTextColor(1, 1, 1)
+	attachLabelTooltip(root, label, cfg)
 
 	local edit = CreateFrame("EditBox", nil, root,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -506,6 +507,7 @@ function Widgets.CreateEditBox(parent, cfg)
 	edit:SetFontObject("GameFontHighlight")
 	edit:SetTextInsets(4, 4, 1, 1)
 	edit:SetMaxLetters(cfg.maxLetters or 64)
+	if cfg.numeric then edit:SetNumeric(true) end
 	applyBackdrop(edit, { r = 0.05, g = 0.05, b = 0.05, a = 1 }, PANEL_BORDER)
 
 	if cfg.value then edit:SetText(cfg.value) end
@@ -522,13 +524,61 @@ function Widgets.CreateEditBox(parent, cfg)
 		if root._onChange then root._onChange(self:GetText()) end
 	end)
 	edit:SetScript("OnTextChanged", function(self, userInput)
-		if userInput and root._onChange then
+		if userInput and not cfg.commitOnly and root._onChange then
 			root._onChange(self:GetText())
 		end
 	end)
 
 	function root:GetValue() return edit:GetText() end
 	function root:SetValue(t) edit:SetText(t or "") end
+
+	return root
+end
+
+
+function Widgets.CreateButton(parent, cfg)
+	cfg = cfg or {}
+	local root = CreateFrame("Button", nil, parent,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	root:SetSize(cfg.width or 100, cfg.height or 22)
+	applyBackdrop(root, RED, PANEL_BORDER)
+
+	local text = root:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	text:SetPoint("CENTER")
+	text:SetText(cfg.label or "")
+	text:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+
+	root:SetScript("OnEnter", function(self)
+		if self:IsEnabled() then
+			self:SetBackdropColor(YELLOW.r, YELLOW.g, YELLOW.b, 1)
+			text:SetTextColor(RED.r, RED.g, RED.b)
+		end
+		if cfg.tooltip then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(cfg.label or "")
+			GameTooltip:AddLine(cfg.tooltip, 1, 1, 1, true)
+			GameTooltip:Show()
+		end
+	end)
+	root:SetScript("OnLeave", function(self)
+		self:SetBackdropColor(RED.r, RED.g, RED.b, 1)
+		text:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+		GameTooltip:Hide()
+	end)
+	root:SetScript("OnClick", function(self)
+		if cfg.onClick then cfg.onClick(self) end
+	end)
+
+	function root:SetEnabled(enabled)
+		if enabled then
+			self:Enable()
+			self:SetAlpha(1)
+		else
+			self:Disable()
+			self:SetAlpha(0.5)
+		end
+	end
+	function root:SetLabel(t) text:SetText(t or "") end
 
 	return root
 end

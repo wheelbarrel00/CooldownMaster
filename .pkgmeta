@@ -36,5 +36,6 @@ ignore:
     - CHANGELOG.md
     - .vscode
     - screenshots
+    - tools
     - LICENSE
     - .release_changelog.md

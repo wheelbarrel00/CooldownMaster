@@ -6,9 +6,12 @@ A **timeline-style lane** cooldown tracker for World of Warcraft. Its signature
 display is a horizontal (or vertical) lane where each tracked spell's icon
 travels toward the "ready" end at a speed proportional to its own cooldown, so
 your abilities visually fan out by urgency — the one view Blizzard's built-in
-Cooldown Manager does not provide. On top of the lane it adds its own
-ready-notification popups, per-category filtering, icon stacking, and per-spec
-profiles.
+Cooldown Manager does not provide.
+
+Around that it gives you **three display surfaces you can mix freely** — the
+traveling **lanes**, depleting **bar frames**, and **ready-notification boxes**
+that a cooldown pops into the moment it comes up. Every cooldown can be routed to
+any combination of the three, per category or per individual spell.
 
 Supports **Midnight (retail 12.0+)**, **Classic Era**, **Burning Crusade
 Classic**, and **Mists of Pandaria Classic**, and registers a LibDataBroker
@@ -50,22 +53,64 @@ secret too; see `docs/EXPERIMENTS.md`.)
 
 ## Features
 
+### Displays
+
 - **Timeline lanes** (up to 3), horizontal or vertical, with linear,
-  shared-timeline, or logarithmic spacing; smooth 60 Hz icon motion.
-- **Ready-notification popups** (up to 3 boxes) with per-spell "important"
-  highlight, pinning, sounds, and a post-combat linger.
-- **Icon stacking** — grouped rows or spread-apart — so clustered cooldowns stay
-  readable.
-- **Per-category filters** (spells, utility, buffs, debuffs, potions, trinkets)
-  and per-spell overrides for visibility, lane, ready box, important, and pinned.
+  shared-timeline, logarithmic, or split spacing; smooth 60 Hz icon motion.
+- **Bar frames** (up to 3) — horizontal status bars that deplete as the cooldown
+  runs, with an optional icon, spell name, and live countdown. A conventional
+  cooldown-bar list, sitting alongside the lanes rather than replacing them.
+- **Ready-notification boxes** (up to 3) with per-spell "important" highlight,
+  pinning, sounds, a post-combat linger, and a per-box icon cap.
+- **Icon stacking** — grouped rows, spread-apart, offset fan, or emergent overlap
+  — so clustered cooldowns stay readable.
+- **Secondary tracking** (Classic) — per-lane GCD and swing-timer indicators, as a
+  lane fill plus a sliding bar.
+
+### Tracking
+
+- **Custom cooldowns** — define your own tracked cooldown from a fixed duration
+  plus a trigger (a spell you cast, or a buff you gain). Runs on a purely local
+  timer, so it works for anything the cooldown API doesn't expose. Aura triggers
+  have a **Detect** button that captures the next buff you gain, so you never have
+  to go hunting for an aura ID.
+- **Per-category filters** (spells, utility, buffs, debuffs, potions, trinkets,
+  custom) with per-spell overrides for visibility, lane, bar, ready box, important,
+  and pinned — plus **Set All** buttons to bulk-apply a category's routing to every
+  cooldown in it at once.
 - **Consumables and trinkets** — potions/flasks are auto-discovered from your
   bags and equipped on-use trinkets (slots 13/14) are tracked.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
-- **Appearance** — icon zoom, unusable-icon tint/desaturate, configurable
-  countdown font, and a cooldown-swipe tint control.
+
+### Appearance and setup
+
+- **Test Mode** — preview your layout with sample cooldowns: pick the type, the
+  count (1-20), the duration range they span, and whether they loop. Settings apply
+  live, and the samples route through your real Filters config, so what you see is
+  what you'll get in combat.
+- **Full media control** — every bar, background, border, and font is fed by
+  LibSharedMedia, so your own SharedMedia packs work throughout. Ships with a few
+  original CDM textures (Gradient, Glass, Soft Edge).
+- **Appearance** — per-lane icon borders, icon zoom, unusable-icon tint/desaturate,
+  cooldown-swipe tint, and configurable fonts/colors for countdowns, lane markers,
+  and frame name tags.
 - **Profiles** — per-spec auto-switch, import/export to a copy-paste string, and
   standard AceDB profile management.
+- **What's New popup** — a short digest after an update, with a quiet chat-link
+  mode or off entirely.
+
+## Planned
+
+- **Offensives** and **Pet Spells** filter categories. Both appear greyed out in the
+  Filters list today. They need real data-model work rather than a UI toggle — on
+  retail they have to be mapped onto the `C_CooldownViewer` category sets (or the
+  combat log, for offensives), and on Classic pet spells need their own spellbook
+  scan. They're next up after 1.0.
+- **Masque** support for icon skinning.
+- A richer text/tag system for lane and bar labels, scoped to the tags that stay
+  readable in combat (see the secret-value section above — `[cd.time]` and
+  `[cd.stacks]` can't be templated on retail).
 
 ## Getting it running locally
 
@@ -97,14 +142,15 @@ directory and `/reload`.
 
 ## Slash commands
 
-| Command       | Action                                       |
-| ------------- | -------------------------------------------- |
-| `/cm`         | Open / close the options panel               |
-| `/cm lock`    | Lock all frames                              |
-| `/cm unlock`  | Unlock all frames for repositioning          |
-| `/cm test`    | Toggle test mode (fake cooldowns for layout) |
-| `/cm reset`   | Reset all settings (requires `/reload`)      |
-| `/cm version` | Print version + flavor                       |
+| Command        | Action                                                 |
+| -------------- | ------------------------------------------------------ |
+| `/cm`          | Open / close the options panel                         |
+| `/cm lock`     | Lock all frames                                        |
+| `/cm unlock`   | Unlock all frames for repositioning                    |
+| `/cm test`     | Toggle test mode (configure it in Global > Test Mode)  |
+| `/cm whatsnew` | Show the What's New popup                              |
+| `/cm reset`    | Reset all settings (requires `/reload`)                |
+| `/cm version`  | Print version + flavor                                 |
 
 `/cdmaster` and `/cooldownmaster` are the long forms of `/cm` — each works with
 every subcommand above (e.g. `/cdmaster lock`). A handful of diagnostic

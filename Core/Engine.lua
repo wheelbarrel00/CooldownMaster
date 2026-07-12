@@ -50,6 +50,8 @@ local SHARED_CD_TOL = 0.5
 -- Same start+end alone is NOT a shared cooldown: two independent same-duration abilities fired
 -- together (e.g. Arcane Power + Icy Veins) must not merge. Items match on itemID, spells on name.
 function ns.IsSameSharedCD(a, b)
+	-- Test entries are seeded together and recycle donor names, so they would merge into one icon.
+	if a._source == "test" or b._source == "test" then return false end
 	if a.itemID and b.itemID then return true end
 	if a.itemID or b.itemID then return false end
 	return a.name ~= nil and a.name == b.name
@@ -189,6 +191,18 @@ local function ScheduleBuffScan()
 	if Engine._buffScanPending then return end
 	Engine._buffScanPending = true
 	C_Timer.After(SCAN_DEBOUNCE, DeferredBuffPoll)
+end
+
+
+local function DeferredCustomAuraScan()
+	Engine._customAuraScanPending = nil
+	if not Engine.testActive then Engine:ScanCustomAuras() end
+end
+
+local function ScheduleCustomAuraScan()
+	if Engine._customAuraScanPending then return end
+	Engine._customAuraScanPending = true
+	C_Timer.After(SCAN_DEBOUNCE, DeferredCustomAuraScan)
 end
 
 
@@ -368,12 +382,35 @@ function Engine:SeedBaselineDurations()
 end
 
 
+-- Blizzard's own Cooldown Manager drops HideByDefault rows. They are modifier passives (Undisputed
+-- Ruling) that carry their parent ability's art, so ingesting one shows a bar wearing Judgment's
+-- icon, named for the passive, timing the passive's internal proc cooldown.
+local HIDE_BY_DEFAULT = (Enum and Enum.CooldownSetSpellFlags and Enum.CooldownSetSpellFlags.HideByDefault) or 2
+
+local function IsHiddenRow(info)
+	if type(info.flags) ~= "number" then return false end
+	return bit.band(info.flags, HIDE_BY_DEFAULT) ~= 0
+end
+
+-- The viewer's overrideSpellID is not always the live replacement, so take it only when the game agrees.
+local function ResolveEffectiveID(info)
+	local overrideID = info.overrideSpellID
+	if not overrideID or overrideID == 0 or overrideID == info.spellID then return info.spellID end
+	if C_Spell and C_Spell.GetOverrideSpell then
+		local ok, live = pcall(C_Spell.GetOverrideSpell, info.spellID)
+		if ok and live ~= overrideID then return info.spellID end
+	end
+	return overrideID
+end
+
+
 function Engine:BuildTrackedSpells()
 	wipe(self.trackedSpells)
 	wipe(self.cdIDToSpellID)
 
 	if not ns.Compat.HAS_BLIZZ_CDM then
 		self:BuildTrackedSpellsClassic()
+		self:ResyncEntryDisplay()
 		return
 	end
 
@@ -388,13 +425,8 @@ function Engine:BuildTrackedSpells()
 		if ok and ids then
 			for _, cooldownID in ipairs(ids) do
 				local infoOk, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
-				if infoOk and info and info.isKnown then
-					local effectiveID = info.spellID
-					if info.overrideSpellID
-						and info.overrideSpellID ~= 0
-						and info.overrideSpellID ~= info.spellID then
-						effectiveID = info.overrideSpellID
-					end
+				if infoOk and info and info.isKnown and not IsHiddenRow(info) then
+					local effectiveID = ResolveEffectiveID(info)
 
 					-- A spell can appear in multiple Cooldown Viewer categories;
 					-- the ascending scan keeps the first (lowest) as its primary
@@ -416,6 +448,27 @@ function Engine:BuildTrackedSpells()
 	end
 
 	self:SeedBaselineDurations()
+	self:ResyncEntryDisplay()
+end
+
+
+-- An entry copies its name and icon at birth, so a spell still on cooldown across a talent or spec
+-- swap would keep the pre-swap label until it expires. Untracked now means it was dropped, so it goes.
+function Engine:ResyncEntryDisplay()
+	for id, e in pairs(self.entries) do
+		if e._source == "isactive" or e._source == "classic" then
+			local tracked = self.trackedSpells[id]
+			if tracked then
+				e.name      = tracked.name
+				e.icon      = tracked.icon
+				e.category  = tracked.category or e.category
+				e.laneIndex = self:ResolveLaneIndex(id, e.category)
+				e.barIndex  = self:ResolveBarIndex(id, e.category)
+			else
+				self.entries[id] = nil
+			end
+		end
+	end
 end
 
 
@@ -497,6 +550,7 @@ function Engine:ScanSpellsClassic()
 					duration  = duration,
 					endTime   = endTime,
 					laneIndex = self:ResolveLaneIndex(spellID, cat),
+					barIndex  = self:ResolveBarIndex(spellID, cat),
 					category  = cat,
 					_source   = "classic",
 				}
@@ -564,6 +618,7 @@ function Engine:ScanBuffs()
 							duration  = duration,
 							endTime   = expiration,
 							laneIndex = self:ResolveLaneIndex(spellID, 2),
+							barIndex  = self:ResolveBarIndex(spellID, 2),
 							category  = 2,
 							_source   = "buff",
 						}
@@ -737,6 +792,35 @@ function Engine:ResolveLaneIndex(spellID, category)
 		end
 	end
 	return self:DefaultLaneForCategory(category)
+end
+
+
+function Engine:ResolveBarIndex(spellID, category)
+	local addon = ns.CDM
+	if addon and addon.db then
+		local profile = addon.db.profile
+
+		local override = profile.spellOverrides and profile.spellOverrides[spellID]
+		if override and override.bar ~= nil then
+			return override.bar
+		end
+
+		local key = self:GetCategoryFilterKey(category)
+		local fcfg = key and profile.filters and profile.filters[key]
+		if fcfg and fcfg.defaultBar ~= nil then
+			return fcfg.defaultBar
+		end
+	end
+	return 0
+end
+
+
+-- Routing is resolved once at entry creation, so a settings change would otherwise not reach live entries.
+function Engine:ReapplyRouting()
+	for id, e in pairs(self.entries) do
+		e.laneIndex = self:ResolveLaneIndex(id, e.category)
+		e.barIndex  = self:ResolveBarIndex(id, e.category)
+	end
 end
 
 
@@ -1048,6 +1132,7 @@ function Engine:ScanSpells()
 					duration  = duration,
 					endTime   = startTime + duration,
 					laneIndex = self:ResolveLaneIndex(spellID, cat),
+					barIndex  = self:ResolveBarIndex(spellID, cat),
 					category  = cat,
 					dObj      = dObj,
 					-- Trust the span for learning only if we saw this spell ready first.
@@ -1082,7 +1167,7 @@ function Engine:ScanSpells()
 	local edges = self._readyEdges
 	wipe(edges)
 	for spellID, entry in pairs(self.entries) do
-		if entry._source ~= "test" and entry.kind ~= "item" and not seen[spellID] then
+		if entry._source ~= "test" and entry._source ~= "custom" and entry.kind ~= "item" and not seen[spellID] then
 			-- Hidden spells stay out of the ready sweep + shared-cd dedupe (else a hidden sibling can
 			-- suppress a visible one); clear the finished entry instead of popping it.
 			if not blackout and not self:IsSpellVisible(spellID, entry.category) then
@@ -1221,6 +1306,7 @@ function Engine:PollAllItems()
 					duration   = duration,
 					endTime    = endTime,
 					laneIndex  = self:ResolveLaneIndex(itemID, cat),
+					barIndex   = self:ResolveBarIndex(itemID, cat),
 					category   = cat,
 					kind       = "item",
 					_source    = "item-cooldown",
@@ -1242,72 +1328,121 @@ function Engine:PollAllItems()
 end
 
 
-local TEST_DURATIONS = { 6, 11, 18, 28, 42, 60 }
+local MIXED_ORDER = { 0, 2, 1, 3 }   -- spells, buffs, utility, debuffs
+local UNKNOWN_ICON = 134400
 
--- Sourced from the player's tracked set so the demo is flavor-correct and honors their routing.
-function Engine:CollectTestPicks(maxN)
-	local byCat = {}
-	for spellID, tracked in pairs(self.trackedSpells) do
-		if tracked.name and tracked.name ~= "?" then
-			local c = tracked.category or 0
-			byCat[c] = byCat[c] or {}
-			byCat[c][#byCat[c] + 1] = spellID
+-- Pooled across seeds: testDonorCount is the live length, not #testDonors (stale entries linger past it).
+local testDonors, testDonorCount = {}, 0
+
+local function AddDonor(name, icon, category)
+	testDonorCount = testDonorCount + 1
+	local d = testDonors[testDonorCount]
+	if not d then d = {}; testDonors[testDonorCount] = d end
+	d.name, d.icon, d.category = name, icon, category
+end
+
+function Engine:CollectTestDonors(category)
+	testDonorCount = 0
+
+	if category == ns.CONST.POTION_CATEGORY or category == ns.CONST.TRINKET_CATEGORY then
+		for _, tracked in pairs(self.trackedItems) do
+			if tracked.category == category and tracked.name and tracked.name ~= "?" then
+				AddDonor(tracked.name, tracked.icon, category)
+			end
 		end
-	end
 
-	local picks = {}
-	local order = { 0, 2, 1, 3 }   -- spells, buffs, utility, debuffs
-	local cursor = {}
-	local added = true
-	while #picks < maxN and added do
-		added = false
-		for _, c in ipairs(order) do
-			local list = byCat[c]
-			local pos = (cursor[c] or 0) + 1
-			if list and list[pos] then
-				cursor[c] = pos
-				picks[#picks + 1] = { spellID = list[pos], category = c }
-				added = true
-				if #picks >= maxN then break end
+	elseif category then
+		for _, tracked in pairs(self.trackedSpells) do
+			if tracked.category == category and tracked.name and tracked.name ~= "?" then
+				AddDonor(tracked.name, tracked.icon, category)
+			end
+		end
+
+	else
+		local byCat = {}
+		for _, tracked in pairs(self.trackedSpells) do
+			if tracked.name and tracked.name ~= "?" then
+				local c = tracked.category or 0
+				byCat[c] = byCat[c] or {}
+				byCat[c][#byCat[c] + 1] = tracked
+			end
+		end
+		local cursor, added = {}, true
+		while added do
+			added = false
+			for _, c in ipairs(MIXED_ORDER) do
+				local list = byCat[c]
+				local pos = (cursor[c] or 0) + 1
+				if list and list[pos] then
+					cursor[c] = pos
+					AddDonor(list[pos].name, list[pos].icon, c)
+					added = true
+				end
 			end
 		end
 	end
 
-	if #picks == 0 then
+	if testDonorCount == 0 then
 		for _, spellID in ipairs(self.testSpellIDs) do
-			picks[#picks + 1] = { spellID = spellID, category = 0 }
+			local name, icon = GetSpellNameIcon(spellID)
+			if name then AddDonor(name, icon, category or 0) end
 		end
 	end
-	return picks
+	return testDonorCount
 end
 
 
 function Engine:StartTestMode()
-	self.testActive = true
-	wipe(self.entries)
-	local now = GetTime()
+	local g = ns.CDM.db.profile.global
+	local count = math.floor(math.max(1, math.min(20, g.testCount or 6)))
+	local first = math.max(1, math.min(600, g.testFirst or 5))
+	local last  = math.max(1, math.min(600, g.testLast or 120))
 
-	local picks = self:CollectTestPicks(#TEST_DURATIONS)
-	for i, pick in ipairs(picks) do
-		local spellID = pick.spellID
-		local tracked = self.trackedSpells[spellID]
-		local name, icon
-		if tracked then name, icon = tracked.name, tracked.icon end
-		if not name then name, icon = GetSpellNameIcon(spellID) end
-		local dur = TEST_DURATIONS[i] or TEST_DURATIONS[#TEST_DURATIONS]
-		self.entries[spellID] = {
-			spellID   = spellID,
-			name      = name,
-			icon      = icon,
+	local typeDef = ns.CONST.TEST_TYPES[1]
+	for _, def in ipairs(ns.CONST.TEST_TYPES) do
+		if def.value == g.testType then typeDef = def; break end
+	end
+
+	if ns.ReadyFrames_ClearAll then ns.ReadyFrames_ClearAll() end
+	self.testActive = true
+	-- Never wipe() the whole table here: customs have no live source to re-read, so they would be lost for good.
+	for id, entry in pairs(self.entries) do
+		if entry._source ~= "custom" then self.entries[id] = nil end
+	end
+
+	local n    = self:CollectTestDonors(typeDef.category)
+	local now  = GetTime()
+	local span = (count > 1) and ((last - first) / (count - 1)) or 0
+	local visible = 0
+
+	for i = 1, count do
+		local id    = ns.CONST.TEST_ID_BASE + i
+		local dur   = first + span * (i - 1)
+		local donor = (n > 0) and testDonors[((i - 1) % n) + 1] or nil
+		local cat   = typeDef.category or (donor and donor.category) or MIXED_ORDER[((i - 1) % 4) + 1]
+
+		-- No dObj and no itemID keeps test entries off the secret-value path, so the demo renders the same on every flavor.
+		self.entries[id] = {
+			spellID   = id,
+			name      = (donor and donor.name) or ("Test " .. typeDef.text .. " " .. i),
+			icon      = (donor and donor.icon) or UNKNOWN_ICON,
 			startTime = now,
 			duration  = dur,
 			endTime   = now + dur,
-			laneIndex = self:ResolveLaneIndex(spellID, pick.category),
-			category  = pick.category,
+			laneIndex = self:ResolveLaneIndex(id, cat),
+			barIndex  = self:ResolveBarIndex(id, cat),
+			category  = cat,
 			_source   = "test",
 			_testDur  = dur,
 		}
+		if self:IsSpellVisible(id, cat) then visible = visible + 1 end
 	end
+
+	-- Only on the edge: a slider drag re-seeds repeatedly and would otherwise spam the warning.
+	if visible == 0 and not self._testHiddenWarned then
+		ns.CDM:Print("Test mode: this category is hidden in Filters, so nothing will show.")
+	end
+	self._testHiddenWarned = visible == 0
 end
 
 
@@ -1326,22 +1461,192 @@ function Engine:StopTestMode()
 end
 
 
+-- Fabricated from the user's duration, so no dObj: the render path stays clear of the secret-value pipeline.
+function Engine:FireCustomCooldown(def, now)
+	if not (def and def.id) then return end
+	local dur = (def.durationMs or 0) / 1000
+	if dur <= 0 then return end
+	now = now or GetTime()
+	local cat = ns.CONST.CUSTOM_CATEGORY
+	local e = self.entries[def.id]
+	if not e then
+		e = {}
+		self.entries[def.id] = e
+	end
+	e.spellID   = def.id
+	e.name      = def.name
+	e.icon      = def.icon
+	e.startTime = now
+	e.duration  = dur
+	e.endTime   = now + dur
+	e.category  = cat
+	e.laneIndex = self:ResolveLaneIndex(def.id, cat)
+	e.barIndex  = self:ResolveBarIndex(def.id, cat)
+	e._source   = "custom"
+end
+
+
+-- Holds def refs, not ids, so a live duration edit is honored at fire time.
+local customSpellTriggers = {}
+local customAuraTriggers  = {}
+
+function Engine:RebuildCustomTriggers()
+	wipe(customSpellTriggers)
+	wipe(customAuraTriggers)
+	local addon = ns.CDM
+	local store = addon and addon.db and addon.db.profile.customCooldowns
+	if not (store and store.defs) then return end
+	for _, def in pairs(store.defs) do
+		if def.enabled ~= false and def.triggerID and def.durationMs then
+			local tbl = (def.triggerType == "aura") and customAuraTriggers or customSpellTriggers
+			local list = tbl[def.triggerID]
+			if not list then list = {}; tbl[def.triggerID] = list end
+			list[#list + 1] = def
+		end
+	end
+end
+
+
+function Engine:HasCustomAuraTriggers()
+	return next(customAuraTriggers) ~= nil
+end
+
+
+-- The ScanSpells prune skips customs, so a profile switch has to clear the live ones by hand.
+-- Clearing the aura prev set makes the next scan re-seed instead of false-firing on buffs already up.
+function Engine:ClearCustomEntries()
+	for id, entry in pairs(self.entries) do
+		if entry._source == "custom" then self.entries[id] = nil end
+	end
+	self._customAuraPrev = nil
+end
+
+
+function Engine:FireCustomSpellTrigger(spellID)
+	local defs = customSpellTriggers[spellID]
+	if not defs then return end
+	local now = GetTime()
+	for i = 1, #defs do
+		self:FireCustomCooldown(defs[i], now)
+	end
+end
+
+
+-- A nil prev set means the first scan only seeds, so a buff already up at login is not a false gained-edge.
+function Engine:ScanCustomAuras()
+	if not next(customAuraTriggers) then return end
+	-- Loading screens briefly report no auras. Skip WITHOUT touching prev, so a buff that survived
+	-- the zone is not seen as a fresh gained-edge when it reappears.
+	if self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0) then return end
+	local prev = self._customAuraPrev
+	local seen = self._customAuraSeen or {}
+	self._customAuraSeen = seen
+	for k in pairs(seen) do seen[k] = nil end
+	local now = GetTime()
+	local i = 1
+	while true do
+		local _, spellID = GetPlayerBuff(i)
+		if not spellID then break end
+		local defs = customAuraTriggers[spellID]
+		if defs then
+			seen[spellID] = true
+			if prev and not prev[spellID] then
+				for k = 1, #defs do self:FireCustomCooldown(defs[k], now) end
+			end
+		end
+		i = i + 1
+	end
+	prev = prev or {}
+	self._customAuraPrev = prev
+	for k in pairs(prev) do prev[k] = nil end
+	for k in pairs(seen) do prev[k] = true end
+end
+
+
+function Engine:ArmAuraCapture(onCapture)
+	local snap = self._auraCaptureSnap or {}
+	self._auraCaptureSnap = snap
+	for k in pairs(snap) do snap[k] = nil end
+	local i = 1
+	while true do
+		local _, spellID = GetPlayerBuff(i)
+		if not spellID then break end
+		snap[spellID] = true
+		i = i + 1
+	end
+	self._auraCaptureCb = onCapture
+	self._auraCaptureArmed = true
+end
+
+function Engine:CancelAuraCapture()
+	self._auraCaptureArmed = false
+	self._auraCaptureCb = nil
+end
+
+function Engine:PollAuraCapture()
+	if not self._auraCaptureArmed then return end
+	local snap = self._auraCaptureSnap
+	local i = 1
+	while true do
+		local name, spellID, _, icon = GetPlayerBuff(i)
+		if not spellID then break end
+		if not (snap and snap[spellID]) then
+			local cb = self._auraCaptureCb
+			self:CancelAuraCapture()
+			if cb then cb(spellID, name, icon) end
+			return
+		end
+		i = i + 1
+	end
+end
+
+
 function Engine:Tick()
 	self._tickCount = self._tickCount + 1
 
-	if self.testActive then
-		-- Finish: pop to the ready frame like a real cooldown, then re-seed so the demo loops.
-		local now = GetTime()
-		for spellID, entry in pairs(self.entries) do
-			if entry._source == "test" and entry.endTime and now >= entry.endTime then
+	-- Customs have no cooldown-API edge, so Tick owns their ready pop. It sits outside the testActive
+	-- branch below because customs survive the demo and would otherwise pop stale the moment it ends.
+	local cnow = GetTime()
+	local cblackout = self._loadingScreen or cnow < (self._readyBlackoutUntil or 0)
+	if not cblackout then
+		for id, entry in pairs(self.entries) do
+			if entry._source == "custom" and entry.endTime and cnow >= entry.endTime then
 				if ns.ReadyFrames_OnReadyTransition then
-					ns.ReadyFrames_OnReadyTransition(spellID, entry)
+					ns.ReadyFrames_OnReadyTransition(id, entry)
 				end
-				local dur = entry._testDur or entry.duration or 30
-				entry.startTime = now
-				entry.duration  = dur
-				entry.endTime   = now + dur
+				self.entries[id] = nil
 			end
+		end
+	end
+
+	if self.testActive then
+		local now = GetTime()
+		local loop = ns.CDM.db.profile.global.testLoop ~= false
+		local remaining = 0
+		for spellID, entry in pairs(self.entries) do
+			if entry._source == "test" then
+				if entry.endTime and now >= entry.endTime then
+					if ns.ReadyFrames_OnReadyTransition then
+						ns.ReadyFrames_OnReadyTransition(spellID, entry)
+					end
+					if loop then
+						local dur = entry._testDur or entry.duration or 30
+						entry.startTime = now
+						entry.duration  = dur
+						entry.endTime   = now + dur
+						remaining = remaining + 1
+					else
+						self.entries[spellID] = nil
+					end
+				else
+					remaining = remaining + 1
+				end
+			end
+		end
+		-- With looping off the demo drains, and leaving testActive set would suspend every real
+		-- data path (they all early-out on it). Toggle outside the loop - StopTestMode rescans.
+		if remaining == 0 then
+			ns.CDM:ToggleTestMode()
 		end
 	else
 		-- Safety-net sweep every 10th tick (1 Hz): covers cooldown edges the event paths miss
@@ -1360,6 +1665,9 @@ function Engine:Tick()
 	if ns.Lanes_Refresh then
 		for i = 1, 3 do ns.Lanes_Refresh(i) end
 	end
+	if ns.Bars_Refresh then
+		for i = 1, 3 do ns.Bars_Refresh(i) end
+	end
 end
 
 
@@ -1370,6 +1678,7 @@ function Engine:Start(addon)
 
 	-- Must run before any polling so the extrapolator has data to use.
 	self:LoadPersistedDurations()
+	self:RebuildCustomTriggers()
 
 	if not self._buildScheduled then
 		self._buildScheduled = true
@@ -1457,6 +1766,19 @@ function Engine:Start(addon)
 		self.auraEventFrame = f
 	end
 
+	-- The aura frame above is Classic-only, so custom aura triggers need their own always-on listener.
+	if not self.customAuraFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterUnitEvent("UNIT_AURA", "player")
+		f:SetScript("OnEvent", function()
+			if Engine._auraCaptureArmed then Engine:PollAuraCapture() end
+			if Engine.testActive then return end
+			if not Engine:HasCustomAuraTriggers() then return end
+			ScheduleCustomAuraScan()
+		end)
+		self.customAuraFrame = f
+	end
+
 	-- Debounced so a burst of cooldown changes collapses into a single scan.
 	if not self.spellUpdateFrame then
 		local f = CreateFrame("Frame")
@@ -1482,6 +1804,8 @@ function Engine:Start(addon)
 			local iss = _G.issecretvalue
 			p.lastSecret = (iss and iss(spellID)) or false
 			Engine:OnTrackedCast(spellID)
+			-- Never index a table with a secret spellID (Midnight) - it would not match a plain-number key anyway.
+			if not p.lastSecret then Engine:FireCustomSpellTrigger(spellID) end
 			ScheduleDeferredScan()
 		end)
 		self.castSucceededFrame = f

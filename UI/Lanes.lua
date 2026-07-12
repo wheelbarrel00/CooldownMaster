@@ -15,18 +15,68 @@ local ICON_READY_FLOOR = 0.02
 -- (PIXEL_FACTOR / effectiveScale) is in physical pixels. Verified against Blizzard's
 -- PixelUtil.GetPixelToUIUnitFactor on a live 4K/0.5-scale setup.
 local PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
+
+-- Frame edges landing between physical pixels smear a WHITE8x8 border across two rows, so two
+-- identical lanes can render different borders. The sub-pixel nudge leaves the saved offset alone.
+function ns.SnapFrameToPixelGrid(frame)
+	if not frame or frame._isDragging then return end
+	if frame.IsMoving and frame:IsMoving() then return end
+	local scale = frame:GetEffectiveScale()
+	if not scale or scale <= 0 then return end
+	local psize = PIXEL_FACTOR / scale
+	local point, relTo, relPoint, x, y = frame:GetPoint()
+	if not point then return end
+	local w, h = frame:GetWidth(), frame:GetHeight()
+	if w and h and w > 0 and h > 0 then
+		local sw = math.floor(w / psize + 0.5) * psize
+		local sh = math.floor(h / psize + 0.5) * psize
+		if math.abs(sw - w) > 0.01 or math.abs(sh - h) > 0.01 then frame:SetSize(sw, sh) end
+	end
+	local l, b = frame:GetLeft(), frame:GetBottom()
+	if not (l and b) then return end
+	local dx = math.floor(l / psize + 0.5) * psize - l
+	local dy = math.floor(b / psize + 0.5) * psize - b
+	if math.abs(dx) > 0.01 or math.abs(dy) > 0.01 then
+		frame:SetPoint(point, relTo, relPoint, x + dx, y + dy)
+	end
+end
+
+local function ReSnapAllFrames()
+	local addon = ns.CDM
+	if not addon then return end
+	for i = 1, 3 do
+		if addon.lanes and addon.lanes[i] then ns.SnapFrameToPixelGrid(addon.lanes[i]) end
+		if addon.readyFrames and addon.readyFrames[i] then ns.SnapFrameToPixelGrid(addon.readyFrames[i]) end
+		if addon.barFrames and addon.barFrames[i] then ns.SnapFrameToPixelGrid(addon.barFrames[i]) end
+	end
+end
+
 local pxWatch = CreateFrame("Frame")
 pxWatch:RegisterEvent("DISPLAY_SIZE_CHANGED")
 pxWatch:RegisterEvent("UI_SCALE_CHANGED")
 pxWatch:SetScript("OnEvent", function()
 	PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
+	ReSnapAllFrames()
 end)
 
 -- Register the built-in names so saved "CDM Smooth"/"CDM Shadow" resolve and list
 -- alongside the user's LSM media; WHITE8x8 keeps the default flat look unchanged.
+-- A border edgeFile is sliced into 8 square cells, so that art must be an 8-cell strip.
+local MEDIA = [[Interface\AddOns\CooldownMaster\media\]]
 if LSM then
 	pcall(LSM.Register, LSM, "statusbar", "CDM Smooth", WHITE8X8)
 	pcall(LSM.Register, LSM, "border",    "CDM Shadow", WHITE8X8)
+	pcall(LSM.Register, LSM, "statusbar", "CDM Gradient",  MEDIA .. "statusbar-gradient.tga")
+	pcall(LSM.Register, LSM, "statusbar", "CDM Glass",     MEDIA .. "statusbar-glass.tga")
+	pcall(LSM.Register, LSM, "border",    "CDM Soft Edge", MEDIA .. "border-soft.tga")
+end
+
+
+function ns.ResolveFont(fontName, size, flags)
+	local path = (LSM and LSM:Fetch("font", fontName, true)) or STANDARD_FONT
+	if flags == "NONE" then flags = "" end
+	if not size or size <= 0 then size = 12 end
+	return path, size, flags or ""
 end
 
 
@@ -72,14 +122,17 @@ local function SetLaneChrome(addon, f, cfg, show)
 	else
 		pcall(f.SetBackdropBorderColor, f, 0, 0, 0, 0)
 	end
+	-- A FontString's SetAlpha overrides the alpha passed to SetTextColor, so color-picker opacity is folded in here.
 	if f.label then
-		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) * a or 0)
+		local lta = (cfg.labelColor and cfg.labelColor.a) or 1
+		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) * a * lta or 0)
 	end
 	if f.markers and cfg.laneText then
+		local mta = (cfg.laneTextColor and cfg.laneTextColor.a) or 1
 		for i = 1, 5 do
 			local m, def = f.markers[i], cfg.laneText[i]
 			if m and def then
-				if show and def.enabled then m:SetAlpha(a); m:Show() else m:Hide() end
+				if show and def.enabled then m:SetAlpha(a * mta); m:Show() else m:Hide() end
 			end
 		end
 	end
@@ -479,9 +532,6 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.markers = {}
 	for i = 1, 5 do
 		local m = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		local mfp, _, mfl = m:GetFont()
-		if mfp then m:SetFont(mfp, 9, mfl) end
-		m:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 		m:Hide()
 		f.markers[i] = m
 	end
@@ -547,6 +597,7 @@ local function GetCountdownFormatter()
 	CDFormatter = f
 	return f
 end
+ns.GetCountdownFormatter = GetCountdownFormatter
 
 
 -- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis (maxTime);
@@ -678,6 +729,11 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if self._cdItemID then
 			GameTooltip:SetItemByID(self._cdItemID)
+		elseif self._cdCustom then
+			GameTooltip:SetText(self._cdName or "Cooldown", 1, 1, 1)
+			if self._cdSpellID < ns.CONST.TEST_ID_BASE then
+				GameTooltip:AddLine("Custom cooldown", 0.6, 0.6, 0.6)
+			end
 		else
 			GameTooltip:SetSpellByID(self._cdSpellID)
 		end
@@ -765,6 +821,8 @@ local function ClearLaneIcon(btn)
 	if not btn then return end
 	btn._endTime     = nil
 	btn._cdSpellID   = nil
+	btn._cdCustom    = nil
+	btn._cdName      = nil
 	btn._cdStart     = nil
 	btn._stackOff    = nil
 	btn._spreadShift = nil
@@ -851,7 +909,8 @@ function ns.StyleIcon(btn, spellID, itemID, g)
 	local usable = true
 	if itemID then
 		if C_Item and C_Item.IsUsableItem then usable = C_Item.IsUsableItem(itemID) end
-	elseif spellID and C_Spell and C_Spell.IsSpellUsable then
+	elseif spellID and spellID < ns.CONST.CUSTOM_ID_BASE and C_Spell and C_Spell.IsSpellUsable then
+		-- A custom cooldown's synthetic id is no real spell, so skip the usable check (always usable).
 		usable = C_Spell.IsSpellUsable(spellID)
 	end
 
@@ -990,18 +1049,26 @@ local function ApplyConfigBody(laneIndex)
 	end
 	-- Frame stays opaque so icons keep their own iconAlpha; cfg.alpha fades the bar chrome (SetLaneChrome).
 	laneFrame:SetAlpha(1)
+	ns.SnapFrameToPixelGrid(laneFrame)
 
 	if laneFrame.label then
+		local lc = cfg.labelColor or ns.CONST.RGB.YELLOW
+		laneFrame.label:SetFont(ns.ResolveFont(cfg.labelFont, cfg.labelSize, cfg.labelFlags))
+		laneFrame.label:SetTextColor(lc.r, lc.g, lc.b, 1)
 		laneFrame.label:SetText(cfg.frameName or "")
-		laneFrame.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
+		laneFrame.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
 	end
 
 	if laneFrame.markers and cfg.laneText then
+		local mPath, mSize, mFlags = ns.ResolveFont(cfg.laneTextFont, cfg.laneTextSize, cfg.laneTextFlags)
+		local mc = cfg.laneTextColor or ns.CONST.RGB.YELLOW
 		for i = 1, 5 do
 			local m = laneFrame.markers[i]
 			local def = cfg.laneText[i]
 			if m and def then
 				if def.enabled then
+					m:SetFont(mPath, mSize, mFlags)
+					m:SetTextColor(mc.r, mc.g, mc.b, 1)
 					m:SetText(def.text or "")
 					m:ClearAllPoints()
 					local pos = def.pos or 0
@@ -1376,6 +1443,8 @@ local function RefreshBody(laneIndex)
 		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
 			btn._cdSpellID = e.spellID
 			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
+			btn._cdCustom  = (e.spellID or 0) >= ns.CONST.CUSTOM_ID_BASE
+			btn._cdName    = e.name
 			btn._cdStart   = e.startTime
 			btn._justFed   = true   -- position synchronously below, before this frame renders
 			-- Prefer the opaque DurationObject, but the privileged setter can throw on

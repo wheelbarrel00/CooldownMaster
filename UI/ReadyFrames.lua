@@ -168,8 +168,10 @@ local function UpdateReadyHandle(f)
 	if not f.dragHandle then return end
 	local addon = ns.CDM
 	local g = addon and addon.db and addon.db.profile.global
+	-- A fading-out box is still IsShown, so gate the tag on that or it draws over the fading backdrop.
 	local shown = g and g.unlockFrames and not addon.combat
 		and not (BoxHasContent(f) or ReadyBoxKeepShown(g))
+		and not f:IsShown()
 	ns.RefreshDragHandle(f.dragHandle, f.cfg and f.cfg.frameName, shown)
 end
 
@@ -241,6 +243,7 @@ local function RelayoutReadyFrame(f)
 		f:SetAlpha(cfg.alpha or 1)
 		f:Show()
 	end
+	if ns.SnapFrameToPixelGrid then ns.SnapFrameToPixelGrid(f) end
 	UpdateReadyHandle(f)
 end
 
@@ -260,6 +263,7 @@ local function ClearReadyIcons(f)
 	end
 	f._boxFade     = nil
 	f._combatTimer = nil
+	RelayoutReadyFrame(f)
 end
 
 
@@ -602,7 +606,8 @@ function ns.ReadyFrames_RefreshUnlockState(addon)
 		if f then
 			if f.label then
 				local unlocked = addon.db.profile.global.unlockFrames
-				f.label:SetAlpha(unlocked and 0.6 or 0)
+				local lta = (f.cfg and f.cfg.labelColor and f.cfg.labelColor.a) or 1
+				f.label:SetAlpha((unlocked and 0.6 or 0) * lta)
 			end
 			RelayoutReadyFrame(f)
 		end
@@ -664,8 +669,12 @@ function ns.ReadyFrames_ApplyConfig(index)
 		f:SetAlpha(cfg.alpha or 1)
 
 		if f.label then
+			-- SetAlpha on a FontString overrides its SetTextColor alpha, so carry the tag's opacity on the region.
+			local lc = cfg.labelColor or ns.CONST.RGB.YELLOW
+			f.label:SetFont(ns.ResolveFont(cfg.labelFont, cfg.labelSize, cfg.labelFlags))
+			f.label:SetTextColor(lc.r, lc.g, lc.b, 1)
 			f.label:SetText(cfg.frameName or "")
-			f.label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
+			f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
 		end
 
 		RelayoutReadyFrame(f)

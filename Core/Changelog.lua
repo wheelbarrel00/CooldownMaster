@@ -2,6 +2,39 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.0.0",
+		date = "2026-07-12",
+		sections = {
+			{ head = "Out of Beta - Please Read", items = {
+				"Cooldown Master is officially out of beta. Thank you to everyone who tested, reported bugs, and asked for features along the way. This release earns the 1.0 by rebuilding the default look from scratch, and I owe you an apology up front, because that may change how the addon looks for you.",
+				"What happens to your settings: anything you personally changed is kept exactly as it is. Your saved settings are never overwritten. But any setting you never touched follows the default, so it picks up the new value. If you have customized things heavily, you will likely notice nothing. If you have been running the addon as it came, you will see a difference.",
+				"The most visible changes, if you never adjusted them: Lane 2 and Lane 3 now start turned off (they used to be on), lanes are thinner (height 10 instead of 17), lane and ready-box icons now have a thin border, backgrounds are a lighter grey and more transparent, borders are thinner and softer, and a Bars 1 frame is now on by default.",
+				"Why I did it: the beta defaults grew one piece at a time over about thirty releases, and nobody ever sat down and asked what a brand new user should actually see on their first login. Three lanes stacked up with heavy black borders was a lot to hand someone before they had changed a single setting. The 1.0 defaults are a deliberate pass at a clean, quiet starting point.",
+				"How to put it back the way it was: every one of these is a normal option. Lanes tab, pick Lane 2 or Lane 3, and tick Enabled to bring the extra lanes back. Lanes > Appearance sets Height back to 17 and Border Size back to 2. Lanes > Icons unticks Icon Border. Bars tab, pick Bars 1, and untick Enabled to remove the new bar frame. If you would rather start over completely, Profiles > Reset Profile gives you the new defaults from a clean slate.",
+			} },
+			{ head = "New Features", items = {
+				"Bar frames. A whole new way to see your cooldowns, sitting alongside the lanes rather than replacing them: up to 3 frames of depleting status bars, each with an icon, the spell name, and a live countdown, sorted by whichever is coming up next. Style the fill texture and color (or use your class color), choose which side the icon sits on, cap how many bars show at once, and give your Important spells an emphasis border. Route any category or any individual spell to a bar from the Filters tab.",
+				"Custom cooldowns. Track anything, including things the game will not tell you about. Give it a name, a duration, and a trigger (either a spell you cast or a buff you gain) and Cooldown Master runs the timer itself. Because entering an aura ID by hand is miserable, there is a Detect button: click it, gain the buff, and it fills in the ID, name, and icon for you. Custom cooldowns flow through the same lanes, bars, and ready boxes as everything else. Find them under Filters > Custom.",
+				"Test Mode is now properly configurable. Pick what kind of sample cooldowns to show, how many (1 to 20), the range of durations they span, and whether they loop. Settings apply live as you drag, and the samples obey your real Filters routing, so what you see while setting up is what you get in combat.",
+				"Set All. Each Filters category now has Set All buttons next to its Default Lane, Ready Box, and Default Bar, so you can apply a category's routing to every cooldown in it at once instead of one spell at a time.",
+				"Three original Cooldown Master textures are now bundled: CDM Gradient, CDM Glass, and CDM Soft Edge. They show up in every texture picker alongside any SharedMedia packs you already have.",
+				"Font, size, outline, and color controls for the lane markers (Ready, 25%, 50%, 75%, 100%), the frame name tags, and the countdown number on bars.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed a passive talent showing up as a tracked cooldown. Some talents (for example the Paladin talent Undisputed Ruling) are listed by the game as their own cooldown entry, flagged as hidden, and carry their parent ability's artwork. Blizzard's own Cooldown Manager skips those entries and Cooldown Master was not, so a passive could appear as a bar or lane icon wearing another spell's icon and showing the wrong name and timer. Those hidden entries are now skipped, which also fixes the wrong spell tooltip on hover and the wrong name in the Filters list.",
+				"A spell still on cooldown while you changed spec or talents kept its old name and icon until it finished. Cooldowns now refresh immediately.",
+				"Fixed color opacity never taking effect on text. Dragging a font's opacity slider changed the color but the text never faded. Two separate problems were behind it, and both are fixed, which also corrects background, border, and highlight opacity at the extremes.",
+				"Fixed lanes and frames showing a lighter or darker border than each other depending on where they sat on screen. Frames are now aligned to the pixel grid, so identically configured frames look identical.",
+				"Fixed a ready box briefly drawing as two boxes when two cooldowns became ready at the same time (visible only with Auto-hide on).",
+				"Changing a cooldown's lane or bar now moves it immediately, instead of waiting until the next time you use it.",
+				"The Unlock Frames and Auto-hide options now apply to bar frames, which previously ignored both.",
+			} },
+			{ head = "Thanks", items = {
+				"Thanks to everyone who ran the beta and sent feedback. Special thanks to cliffclive, whose CooldownTimeline2 is the reason this addon exists.",
+			} },
+		},
+	},
+	{
 		version = "0.21.0",
 		date = "2026-07-11",
 		sections = {

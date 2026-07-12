@@ -6,6 +6,7 @@ local TABS = {
 	{ id = "global",       label = "Global",        builder = nil },
 	{ id = "lanes",        label = "Lanes",         builder = nil },
 	{ id = "ready",        label = "Ready",         builder = nil },
+	{ id = "bars",         label = "Bars",          builder = nil },
 	{ id = "filters",      label = "Filters",       builder = nil },
 	{ id = "colors",       label = "Colors",        builder = nil },
 	{ id = "profiles",     label = "Profiles",      builder = nil },
@@ -135,6 +136,30 @@ function ns.Options_Open(tabID)
 end
 
 
+-- A slider fires onChange every drag step, so debounce the re-seed. The hoisted callback keeps the drag closure-free.
+local testReseedPending
+
+local function DoTestReseed()
+	testReseedPending = nil
+	if ns.Engine and ns.Engine.testActive then ns.Engine:StartTestMode() end
+end
+
+local function RequestTestReseed()
+	if testReseedPending then return end
+	if not (ns.Engine and ns.Engine.testActive) then return end
+	testReseedPending = true
+	C_Timer.After(0.15, DoTestReseed)
+end
+
+local function BuildTestTypeOptions()
+	local opts = {}
+	for _, def in ipairs(ns.CONST.TEST_TYPES) do
+		opts[#opts + 1] = { value = def.value, text = def.text }
+	end
+	return opts
+end
+
+
 local function BuildGlobalTab(content)
 	local CDM = ns.CDM
 	local pad = Theme.PANEL.CONTENT_PAD
@@ -171,11 +196,15 @@ local function BuildGlobalTab(content)
 			if key == "unlockFrames" then
 				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end
 				if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(CDM) end
+				if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(CDM) end
 			elseif key == "enabledAlways" or key == "autohide" then
 				if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
-				-- Ready boxes honor autohide too now, so re-evaluate them when it flips.
+
 				if key == "autohide" and ns.ReadyFrames_RefreshVisibility then
 					ns.ReadyFrames_RefreshVisibility(CDM)
+				end
+				if key == "autohide" and ns.Bars_RefreshVisibility then
+					ns.Bars_RefreshVisibility()
 				end
 			end
 		end)
@@ -282,10 +311,57 @@ local function BuildGlobalTab(content)
 	wnBtn:SetScript("OnClick", function()
 		if ns.WhatsNew_Show then ns.WhatsNew_Show() end
 	end)
-	prev = wnBtn
+
+	local g = CDM.db.profile.global
+
+	local testHeader = W.CreateSectionHeader(content, "Test Mode")
+	testHeader:SetWidth(320)
+	testHeader:SetPoint("TOPLEFT", content, "TOPLEFT", 420, -pad)
+	local tprev = testHeader
+
+	local function placeTest(widget, gap)
+		widget:SetPoint("TOPLEFT", tprev, "BOTTOMLEFT", 0, -(gap or 8))
+		tprev = widget
+		return widget
+	end
+
+	placeTest(W.CreateDropdown(content, {
+		label = "Type", value = g.testType or "mixed",
+		options = BuildTestTypeOptions(), width = 200,
+		tooltip = "Which kind of sample cooldowns to create. Mixed uses a spread of your spells, buffs and utility. Each type is routed with that category's Lane, Bar and Ready Box settings, so this previews your own Filters routing.",
+		onChange = function(v) g.testType = v; RequestTestReseed() end,
+	}))
+
+	placeTest(W.CreateSlider(content, {
+		label = "Number of Cooldowns", min = 1, max = 20, step = 1,
+		value = g.testCount or 6, width = 240,
+		tooltip = "How many sample cooldowns to create, from 1 to 20. A ready box only holds as many icons as its Max Ready Icons setting, so extras push the oldest pop out.",
+		onChange = function(v) g.testCount = v; RequestTestReseed() end,
+	}))
+
+	placeTest(W.CreateSlider(content, {
+		label = "First Cooldown Duration", min = 1, max = 600, step = 1,
+		value = g.testFirst or 5, width = 240,
+		tooltip = "Length of the first sample cooldown, in seconds. The rest are spread evenly between this and the Last Cooldown Duration.",
+		onChange = function(v) g.testFirst = v; RequestTestReseed() end,
+	}))
+
+	placeTest(W.CreateSlider(content, {
+		label = "Last Cooldown Duration", min = 1, max = 600, step = 1,
+		value = g.testLast or 120, width = 240,
+		tooltip = "Length of the last sample cooldown, in seconds. A lane only draws cooldowns up to its Max Time unless you turn off Hide Long Timers, so a value above that will not appear on the lane.",
+		onChange = function(v) g.testLast = v; RequestTestReseed() end,
+	}))
+
+	placeTest(W.CreateCheckbox(content, {
+		label = "Loop",
+		checked = g.testLoop ~= false,
+		tooltip = "Keep restarting the sample cooldowns after they pop into the ready box. Turn this off to watch them run once and clear.",
+		onChange = function(v) g.testLoop = v; RequestTestReseed() end,
+	}))
 
 	local testBtn = Theme.CreateButton(content, "Test", 110, 30)
-	testBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -24)
+	testBtn:SetPoint("TOPLEFT", tprev, "BOTTOMLEFT", 0, -16)
 	testBtn:SetScript("OnClick", function()
 		if ns.Engine and not ns.Engine.testActive then CDM:ToggleTestMode() end
 	end)
@@ -304,11 +380,11 @@ end
 
 local LANES_INNER_RAIL_W = 160
 local LANES_SECTION_LIST = {
-	{ id = "general",    label = "General",    active = true  },
-	{ id = "appearance", label = "Appearance", active = true  },
-	{ id = "icons",      label = "Icons",      active = true  },
-	{ id = "stacking",   label = "Stacking",   active = true  },
-	{ id = "text",       label = "Text",       active = true  },
+	{ id = "general",    label = "General"    },
+	{ id = "appearance", label = "Appearance" },
+	{ id = "icons",      label = "Icons"      },
+	{ id = "stacking",   label = "Stacking"   },
+	{ id = "text",       label = "Text"       },
 }
 
 local ANCHOR_OPTIONS = {
@@ -355,8 +431,6 @@ local TRACKING_OPTIONS = {
 	{ value = "GCD",   text = "GCD"   },
 	{ value = "SWING", text = "Swing" },
 }
-
-local TEXTURE_OPTIONS_FG = { { value = "CDM Smooth", text = "CDM Smooth" } }
 
 local function BuildStatusbarOptions()
 	local opts = {}
@@ -576,13 +650,12 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 			onChange = function(v) cfg.stHeight = v; RefreshLane(laneIndex) end,
 		}))
 
-		local stTexDD = W.CreateDropdown(parent, {
+		place(W.CreateDropdown(parent, {
 			label = "ST Texture", value = cfg.stTexture,
-			options = TEXTURE_OPTIONS_FG, width = 200,
+			options = BuildStatusbarOptions(), width = 200,
+			tooltip = "The texture that fills the Secondary Tracking bar. Any statusbar texture from LibSharedMedia is selectable.",
 			onChange = function(v) cfg.stTexture = v; RefreshLane(laneIndex) end,
-		})
-		stTexDD:SetEnabled(false)  -- only one entry; locked until v0.3 LSM hookup
-		place(stTexDD)
+		}))
 
 		place(W.CreateColorPicker(parent, {
 			label = "ST Color", color = cfg.stColor, hasAlpha = true,
@@ -680,6 +753,7 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 	local borderTexDD = W.CreateDropdown(parent, {
 		label = "Border Texture", value = cfg.borderTexture,
 		options = BuildBorderOptions(), width = 200,
+		tooltip = "The texture drawn around this lane. A soft texture like CDM Soft Edge needs room to fade, so raise Border Size to about 6 or it squashes into a smear.",
 		onChange = function(v) cfg.borderTexture = v; RefreshLane(laneIndex) end,
 	})
 	place(borderTexDD)
@@ -972,6 +1046,60 @@ local function BuildLaneTextForm(parent, laneIndex)
 		end
 	end
 
+	local secMarker = W.CreateSectionHeader(parent, "Marker Font")
+	secMarker:SetWidth(parent:GetWidth() - pad * 2)
+	place(secMarker, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.laneTextFont, options = BuildFontOptions(), width = 240,
+		tooltip = "Font for the Ready/25%/50%/75%/100% markers along this lane.",
+		onChange = function(v) cfg.laneTextFont = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.laneTextSize or 9, width = 240,
+		onChange = function(v) cfg.laneTextSize = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.laneTextFlags or "NONE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.laneTextFlags = v; RefreshLane(laneIndex) end,
+	}))
+	cfg.laneTextColor = cfg.laneTextColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.laneTextColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.laneTextColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+
+	local secLabel = W.CreateSectionHeader(parent, "Name Tag Font")
+	secLabel:SetWidth(parent:GetWidth() - pad * 2)
+	place(secLabel, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = "Font for this lane's name tag (shown above the bar while frames are unlocked).",
+		onChange = function(v) cfg.labelFont = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		onChange = function(v) cfg.labelSize = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.labelFlags = v; RefreshLane(laneIndex) end,
+	}))
+	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.labelColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+
 	parent:SetHeight(math.abs(y) + pad)
 end
 
@@ -995,12 +1123,6 @@ local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
 		BuildLaneIconsForm(child, laneIndex)
 	elseif sectionID == "text" then
 		BuildLaneTextForm(child, laneIndex)
-	else
-		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		fs:SetPoint("CENTER")
-		fs:SetText("Coming in v0.3")
-		fs:SetTextColor(0.7, 0.7, 0.7)
-		child:SetHeight(60)
 	end
 
 	scroll:Hide()
@@ -1031,13 +1153,11 @@ local function ShowLaneSection(panelArea, laneIndex, sectionID)
 
 	for _, row in ipairs(lanesState.railRows) do
 		local active = row._sectionID == sectionID
-		if row._isActiveSection then
-			row.text:SetTextColor(
-				active and YELLOW.r or 1,
-				active and YELLOW.g or 1,
-				active and YELLOW.b or 1,
-				1)
-		end
+		row.text:SetTextColor(
+			active and YELLOW.r or 1,
+			active and YELLOW.g or 1,
+			active and YELLOW.b or 1,
+			1)
 	end
 
 	for li, btn in ipairs(lanesState.subTabBtns) do
@@ -1101,35 +1221,22 @@ local function BuildLanesTab(content)
 		fs:SetText(sec.label)
 		row.text = fs
 		row._sectionID = sec.id
-		row._isActiveSection = sec.active
 
-		if sec.active then
-			fs:SetTextColor(1, 1, 1)
-			row:EnableMouse(true)
-			row:SetScript("OnClick", function()
-				ShowLaneSection(formArea, lanesState.laneIndex, sec.id)
-			end)
-			row:SetScript("OnEnter", function()
-				if sec.id ~= lanesState.sectionID then
-					fs:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
-				end
-			end)
-			row:SetScript("OnLeave", function()
-				if sec.id ~= lanesState.sectionID then
-					fs:SetTextColor(1, 1, 1)
-				end
-			end)
-		else
-			fs:SetAlpha(0.5)
-			fs:SetTextColor(1, 1, 1)
-			row:EnableMouse(true)
-			row:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-				GameTooltip:SetText("Coming in v0.3")
-				GameTooltip:Show()
-			end)
-			row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		end
+		fs:SetTextColor(1, 1, 1)
+		row:EnableMouse(true)
+		row:SetScript("OnClick", function()
+			ShowLaneSection(formArea, lanesState.laneIndex, sec.id)
+		end)
+		row:SetScript("OnEnter", function()
+			if sec.id ~= lanesState.sectionID then
+				fs:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+			end
+		end)
+		row:SetScript("OnLeave", function()
+			if sec.id ~= lanesState.sectionID then
+				fs:SetTextColor(1, 1, 1)
+			end
+		end)
 
 		lanesState.railRows[#lanesState.railRows + 1] = row
 		ry = ry - 26
@@ -1181,6 +1288,76 @@ local function SetSpellOverride(spellID, field, value)
 	ov[field] = value
 end
 
+local function CustomStore()
+	local p = ns.CDM.db.profile
+	p.customCooldowns = p.customCooldowns or { nextId = 1, defs = {} }
+	p.customCooldowns.defs = p.customCooldowns.defs or {}
+	return p.customCooldowns
+end
+
+local categoryScratch = {}
+local EMPTY_TABLE = {}
+
+local function CollectCategoryIDs(categoryKey)
+	wipe(categoryScratch)
+	if categoryKey == "custom" then
+		for id in pairs(CustomStore().defs) do
+			categoryScratch[#categoryScratch + 1] = id
+		end
+		return categoryScratch
+	end
+	local engine = ns.Engine
+	if not engine then return categoryScratch end
+	for spellID, info in pairs(engine.trackedSpells or EMPTY_TABLE) do
+		if engine:GetCategoryFilterKey(info.category) == categoryKey then
+			categoryScratch[#categoryScratch + 1] = spellID
+		end
+	end
+	for itemID, info in pairs(engine.trackedItems or EMPTY_TABLE) do
+		if engine:GetCategoryFilterKey(info.category) == categoryKey then
+			categoryScratch[#categoryScratch + 1] = itemID
+		end
+	end
+	return categoryScratch
+end
+
+-- Clear the override rather than stamp the default onto each spell - that keeps the category
+-- default live for later changes and stops spellOverrides growing a row per tracked spell.
+local function ClearOverrideField(categoryKey, field)
+	local ids = CollectCategoryIDs(categoryKey)
+	for i = 1, #ids do
+		SetSpellOverride(ids[i], field, nil)
+	end
+	if ns.Engine then ns.Engine:ReapplyRouting() end
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
+end
+
+local setAllState = {}
+
+StaticPopupDialogs["COOLDOWNMASTER_FILTERS_SET_ALL"] = {
+	text = "Set every cooldown in %s to follow the category default for %s? Any per-spell choice for that setting is cleared.",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function() ClearOverrideField(setAllState.key, setAllState.field) end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+
+local function AddSetAll(parent, dd, key, field, fieldLabel, categoryLabel, tooltip)
+	local btn = ns.Widgets.CreateButton(parent, {
+		label = "Set All", width = 70, tooltip = tooltip,
+		onClick = function()
+			setAllState.key, setAllState.field = key, field
+			StaticPopup_Show("COOLDOWNMASTER_FILTERS_SET_ALL", categoryLabel, fieldLabel, setAllState)
+		end,
+	})
+	btn:SetPoint("LEFT", dd, "RIGHT", 8, -5)
+	return btn
+end
+
 local FILTER_LANE_OPTIONS = {
 	{ value = 0, text = "Default" },  -- 0 = nil sentinel; stored as nil
 	{ value = 1, text = "Lane 1"  },
@@ -1201,12 +1378,27 @@ local FILTER_READYBOX_FOR_DEFAULTS = {
 	{ value = 3, text = "Box 3" },
 }
 
+local FILTER_BAR_FOR_DEFAULTS = {
+	{ value = 0, text = "Off"    },
+	{ value = 1, text = "Bars 1" },
+	{ value = 2, text = "Bars 2" },
+	{ value = 3, text = "Bars 3" },
+}
+
 local FILTER_READYBOX_OPTIONS = {
 	{ value = -1, text = "Default" },  -- -1 = nil sentinel; stored as nil
 	{ value = 0,  text = "Off"     },
 	{ value = 1,  text = "Box 1"   },
 	{ value = 2,  text = "Box 2"   },
 	{ value = 3,  text = "Box 3"   },
+}
+
+local FILTER_BAR_OPTIONS = {
+	{ value = -1, text = "Default" },  -- -1 = nil sentinel; stored as nil
+	{ value = 0,  text = "Off"     },
+	{ value = 1,  text = "Bars 1"  },
+	{ value = 2,  text = "Bars 2"  },
+	{ value = 3,  text = "Bars 3"  },
 }
 
 -- Per-spell ready treatment, packed as bits: bit0 = important (highlight), bit1 = pinned.
@@ -1308,21 +1500,45 @@ local function BuildFiltersDefaultsForm(parent)
 		onChange = function(v) cfg.ignoreThreshold = v end,
 	}))
 
-	place(W.CreateDropdown(parent, {
+	local laneDD = W.CreateDropdown(parent, {
 		label = "Default Lane",
 		value = cfg.defaultLane or 1,
 		options = FILTER_LANE_FOR_DEFAULTS,
 		width = 200,
-		onChange = function(v) cfg.defaultLane = v end,
-	}))
+		onChange = function(v)
+			cfg.defaultLane = v
+			if ns.Engine then ns.Engine:ReapplyRouting() end
+		end,
+	})
+	place(laneDD)
+	AddSetAll(parent, laneDD, key, "lane", "Lane", label,
+		"Makes every cooldown in this category follow the Default Lane above. Any per-spell Lane you picked in the category's list is cleared. Show, Bar, Ready Box, Important and Pinned choices are left alone.")
 
-	place(W.CreateDropdown(parent, {
+	local readyDD = W.CreateDropdown(parent, {
 		label = "Ready Box",
 		value = cfg.readyBox or 0,
 		options = FILTER_READYBOX_FOR_DEFAULTS,
 		width = 200,
 		onChange = function(v) cfg.readyBox = v end,
-	}))
+	})
+	place(readyDD)
+	AddSetAll(parent, readyDD, key, "readyBox", "Ready Box", label,
+		"Makes every cooldown in this category follow the Ready Box above. Any per-spell Ready Box you picked in the category's list is cleared. Show, Lane, Bar, Important and Pinned choices are left alone.")
+
+	local barDD = W.CreateDropdown(parent, {
+		label = "Default Bar",
+		value = cfg.defaultBar or 0,
+		options = FILTER_BAR_FOR_DEFAULTS,
+		width = 200,
+		tooltip = "Which bar frame this category's cooldowns appear in. The chosen Bars frame must also be enabled on the Bars tab. Off shows no bar.",
+		onChange = function(v)
+			cfg.defaultBar = v
+			if ns.Engine then ns.Engine:ReapplyRouting() end
+		end,
+	})
+	place(barDD)
+	AddSetAll(parent, barDD, key, "bar", "Bar", label,
+		"Makes every cooldown in this category follow the Default Bar above. Any per-spell Bar you picked in the category's list is cleared. Show, Lane, Ready Box, Important and Pinned choices are left alone.")
 
 	parent:SetHeight(math.abs(y) + pad)
 end
@@ -1395,12 +1611,27 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		label = "",
 		value = laneVal,
 		options = FILTER_LANE_OPTIONS,
-		width = 90,
+		width = 80,
 		onChange = function(v)
 			SetSpellOverride(spellID, "lane", v ~= 0 and v or nil)
+			if ns.Engine then ns.Engine:ReapplyRouting() end
 		end,
 	})
-	dd:SetPoint("LEFT", cb, "RIGHT", 90, 0)
+	dd:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+
+	local barVal = override and override.bar
+	if barVal == nil then barVal = -1 end  -- -1 sentinel for "Default"
+	local bdd = W.CreateDropdown(row, {
+		label = "",
+		value = barVal,
+		options = FILTER_BAR_OPTIONS,
+		width = 80,
+		onChange = function(v)
+			SetSpellOverride(spellID, "bar", v ~= -1 and v or nil)
+			if ns.Engine then ns.Engine:ReapplyRouting() end
+		end,
+	})
+	bdd:SetPoint("LEFT", dd, "RIGHT", 8, 0)
 
 	local rbVal = override and override.readyBox
 	if rbVal == nil then rbVal = -1 end  -- -1 sentinel for "Default"
@@ -1408,12 +1639,12 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		label = "",
 		value = rbVal,
 		options = FILTER_READYBOX_OPTIONS,
-		width = 90,
+		width = 80,
 		onChange = function(v)
 			SetSpellOverride(spellID, "readyBox", v ~= -1 and v or nil)
 		end,
 	})
-	rdd:SetPoint("LEFT", dd, "RIGHT", 12, 0)
+	rdd:SetPoint("LEFT", bdd, "RIGHT", 8, 0)
 
 	local flagVal = ((override and override.important) and 1 or 0) + ((override and override.pinned) and 2 or 0)
 	local fdd = W.CreateDropdown(row, {
@@ -1438,10 +1669,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 end
 
 
--- Column header aligned above the per-spell controls. The x offsets mirror BuildSpellRow's
--- anchor chain so each label sits over its control: icon(20)+8, name(180)+8 -> Show at 216;
--- checkbox(220)+90 -> Lane at 526; +dd(90)+12 -> Ready Box at 628; +rdd(90)+8 -> Flags at 726.
-local FILTER_COL_HEADERS = { { "Show", 216 }, { "Lane", 526 }, { "Ready Box", 628 }, { "Flags", 726 } }
+-- These x offsets are BuildSpellRow's anchor chain summed, so a control moved there must move here.
+local FILTER_COL_HEADERS = { { "Show", 216 }, { "Lane", 440 }, { "Bar", 528 }, { "Ready Box", 616 }, { "Flags", 704 } }
 local function BuildFiltersColumnHeader(parent, yPos)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(parent:GetWidth() - 24, 16)
@@ -1518,6 +1747,286 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 end
 
 
+local CUSTOM_TRIGGER_TYPE_OPTIONS = {
+	{ value = "spell", text = "Spell cast"  },
+	{ value = "aura",  text = "Aura gained" },
+}
+
+local CUSTOM_TRIGGER_TIP = "Spell cast starts the timer when you cast the entered spell (on-use trinkets and potions count - enter the spell they cast). Aura gained starts it when you gain the entered buff."
+
+
+local function SortedCustomDefs()
+	local store = CustomStore()
+	local ids = {}
+	for id in pairs(store.defs) do ids[#ids + 1] = id end
+	table.sort(ids)
+	return ids, store
+end
+
+
+local function ResolveCustomDef(def)
+	if not (def.triggerID and C_Spell and C_Spell.GetSpellInfo) then return end
+	local info = C_Spell.GetSpellInfo(def.triggerID)
+	if info then
+		def.icon = info.iconID or def.icon
+		if not def.name or def.name == "" or def.name == "New Custom" then
+			def.name = info.name
+		end
+	end
+end
+
+
+local function NewCustomDef()
+	-- Older profiles default the custom filter category to disabled, so force it on or the new cooldown is silently filtered out.
+	local p = ns.CDM.db.profile
+	if p.filters and p.filters.custom then
+		p.filters.custom.enabled = true
+		p.filters.custom.showByDefault = true
+	end
+
+	local store = CustomStore()
+	store.nextId = store.nextId or 1
+	local id = ns.CONST.CUSTOM_ID_BASE + store.nextId
+	store.nextId = store.nextId + 1
+	store.defs[id] = {
+		id          = id,
+		name        = "New Custom",
+		icon        = 134400,
+		triggerType = "spell",
+		triggerID   = nil,
+		durationMs  = 30000,
+		enabled     = true,
+	}
+end
+
+
+local function DeleteCustomDef(id)
+	local p = ns.CDM.db.profile
+	if p.customCooldowns and p.customCooldowns.defs then p.customCooldowns.defs[id] = nil end
+	if p.spellOverrides then p.spellOverrides[id] = nil end
+	if ns.Engine and ns.Engine.entries then ns.Engine.entries[id] = nil end
+end
+
+
+-- Deferred a frame - the widget whose callback we are in lives on the surface this tears down.
+local function RefreshCustomForm()
+	if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
+	C_Timer.After(0, function()
+		if filtersState.formFrames["custom"] then
+			filtersState.formFrames["custom"]:Hide()
+			filtersState.formFrames["custom"] = nil
+		end
+		if filtersState._refresh and filtersState.selectedSubTab == "custom" then
+			filtersState._refresh()
+		end
+	end)
+end
+
+
+StaticPopupDialogs["COOLDOWNMASTER_DELETE_CUSTOM"] = {
+	text = "Delete this custom cooldown?",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function(_, id) DeleteCustomDef(id); RefreshCustomForm() end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+
+local function BuildCustomDefBlock(parent, def, y)
+	local W = ns.Widgets
+	local pad, rowGap = 12, 8
+	local id = def.id
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	local head = W.CreateSectionHeader(parent, def.name or "Custom")
+	head:SetWidth(parent:GetWidth() - pad * 2)
+	place(head, 18)
+
+	place(W.CreateEditBox(parent, {
+		label = "Name", value = def.name, width = 240, maxLetters = 40, commitOnly = true,
+		tooltip = "Shown on the cooldown's icon tooltip and bar. Left blank, it follows the trigger spell's name.",
+		onChange = function(t)
+			if t == "" then
+				def.name = nil
+				ResolveCustomDef(def)
+			else
+				def.name = t
+			end
+			RefreshCustomForm()
+		end,
+	}))
+
+	local isAura = (def.triggerType or "spell") == "aura"
+
+	local rowY = y
+	local typeDD = W.CreateDropdown(parent, {
+		label = "Trigger", value = def.triggerType or "spell",
+		options = CUSTOM_TRIGGER_TYPE_OPTIONS, width = 120, tooltip = CUSTOM_TRIGGER_TIP,
+		onChange = function(v) def.triggerType = v; RefreshCustomForm() end,
+	})
+	typeDD:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, rowY)
+
+	local idBox = W.CreateEditBox(parent, {
+		label = "Trigger ID", value = def.triggerID and tostring(def.triggerID) or "",
+		width = 100, maxLetters = 10, numeric = true, commitOnly = true,
+		tooltip = isAura
+			and "The buff's spell ID (often different from the ability that grants it). Not sure of the ID? Use the Detect button."
+			or "The spell ID you cast that fires this cooldown. For an on-use item, enter the spell the item casts.",
+		onChange = function(t)
+			def.triggerID = tonumber(t)
+			ResolveCustomDef(def)
+			RefreshCustomForm()
+		end,
+	})
+	idBox:SetPoint("TOPLEFT", typeDD, "TOPRIGHT", 12, 0)
+
+	local prev = parent:CreateTexture(nil, "ARTWORK")
+	prev:SetSize(22, 22)
+	prev:SetPoint("LEFT", idBox, "RIGHT", 12, 0)
+	prev:SetTexture(def.icon or 134400)
+	prev:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+	if isAura and ns.Engine and ns.Engine.ArmAuraCapture then
+		local detect = W.CreateButton(parent, {
+			label = "Detect", width = 90,
+			tooltip = "Click, then gain the buff in-game within 15 seconds - CDM fills in its ID, name, and icon.",
+			onClick = function(self2)
+				self2:SetLabel("Gain a buff...")
+				ns.Engine:ArmAuraCapture(function(spellID, name, icon)
+					def.triggerID = spellID
+					if icon then def.icon = icon end
+					if name and (not def.name or def.name == "" or def.name == "New Custom") then
+						def.name = name
+					end
+					RefreshCustomForm()
+				end)
+				C_Timer.After(15, function()
+					if ns.Engine._auraCaptureArmed then
+						ns.Engine:CancelAuraCapture()
+						RefreshCustomForm()
+					end
+				end)
+			end,
+		})
+		detect:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+	end
+	y = rowY - 48 - rowGap
+
+	place(W.CreateSlider(parent, {
+		label = "Duration (sec)", min = 1, max = 3600, step = 1,
+		value = (def.durationMs or 30000) / 1000, width = 240,
+		tooltip = "How long the timer runs after the trigger fires. Type an exact value in the box below the slider.",
+		onChange = function(v) def.durationMs = v * 1000 end,
+	}))
+
+	local ov = ns.CDM.db.profile.spellOverrides and ns.CDM.db.profile.spellOverrides[id]
+	local routeY = y
+
+	local laneVal = (ov and ov.lane) or 0
+	local laneDD = W.CreateDropdown(parent, {
+		label = "Lane", value = laneVal, options = FILTER_LANE_OPTIONS, width = 84,
+		onChange = function(v)
+			SetSpellOverride(id, "lane", v ~= 0 and v or nil)
+			if ns.Engine then ns.Engine:ReapplyRouting() end
+		end,
+	})
+	laneDD:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, routeY)
+
+	local barVal = ov and ov.bar
+	if barVal == nil then barVal = -1 end
+	local barDD = W.CreateDropdown(parent, {
+		label = "Bar", value = barVal, options = FILTER_BAR_OPTIONS, width = 84,
+		onChange = function(v)
+			SetSpellOverride(id, "bar", v ~= -1 and v or nil)
+			if ns.Engine then ns.Engine:ReapplyRouting() end
+		end,
+	})
+	barDD:SetPoint("TOPLEFT", laneDD, "TOPRIGHT", 8, 0)
+
+	local rbVal = ov and ov.readyBox
+	if rbVal == nil then rbVal = -1 end
+	local rbDD = W.CreateDropdown(parent, {
+		label = "Ready Box", value = rbVal, options = FILTER_READYBOX_OPTIONS, width = 84,
+		onChange = function(v) SetSpellOverride(id, "readyBox", v ~= -1 and v or nil) end,
+	})
+	rbDD:SetPoint("TOPLEFT", barDD, "TOPRIGHT", 8, 0)
+
+	local flagVal = ((ov and ov.important) and 1 or 0) + ((ov and ov.pinned) and 2 or 0)
+	local flagDD = W.CreateDropdown(parent, {
+		label = "Flags", value = flagVal, options = FILTER_READYFLAG_OPTIONS, width = 84,
+		onChange = function(v)
+			SetSpellOverride(id, "important", (v % 2 == 1) or nil)
+			SetSpellOverride(id, "pinned", (v >= 2) or nil)
+		end,
+	})
+	flagDD:SetPoint("TOPLEFT", rbDD, "TOPRIGHT", 8, 0)
+	y = routeY - 44 - rowGap
+
+	local enY = y
+	local en = W.CreateCheckbox(parent, {
+		label = "Enabled", checked = def.enabled ~= false,
+		onChange = function(v)
+			def.enabled = v
+			if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
+			if not v and ns.Engine and ns.Engine.entries then ns.Engine.entries[id] = nil end
+		end,
+	})
+	en:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, enY)
+
+	local del = W.CreateButton(parent, {
+		label = "Delete", width = 90, tooltip = "Remove this custom cooldown.",
+		onClick = function() StaticPopup_Show("COOLDOWNMASTER_DELETE_CUSTOM", nil, nil, id) end,
+	})
+	del:SetPoint("TOPLEFT", en, "TOPRIGHT", 60, -1)
+	y = enY - 26 - rowGap * 2
+
+	return y
+end
+
+
+local function BuildFiltersCustomForm(parent)
+	local W = ns.Widgets
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	hint:SetText("Custom cooldowns run a local timer you define - a fixed duration plus a trigger. They never read a live cooldown, so they behave the same in combat.")
+	hint:SetTextColor(0.7, 0.7, 0.7)
+	hint:SetWidth(parent:GetWidth() - pad * 2 - 20)
+	hint:SetJustifyH("LEFT")
+	place(hint, 32)
+
+	place(W.CreateButton(parent, {
+		label = "Add Custom Cooldown", width = 200,
+		tooltip = "Create a new custom cooldown, then set its trigger and duration below.",
+		onClick = function() NewCustomDef(); RefreshCustomForm() end,
+	}), 24)
+
+	local ids, store = SortedCustomDefs()
+	if #ids == 0 then
+		local none = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		none:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		none:SetText("No custom cooldowns yet.")
+		y = y - 20 - rowGap
+	else
+		for _, id in ipairs(ids) do
+			y = BuildCustomDefBlock(parent, store.defs[id], y)
+		end
+	end
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
 local function BuildFiltersFormSurface(panelArea, subTabKey)
 	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT",     panelArea, "TOPLEFT",     0,   0)
@@ -1533,10 +2042,12 @@ local function BuildFiltersFormSurface(panelArea, subTabKey)
 	    or subTabKey == "buffs"   or subTabKey == "debuffs"
 	    or subTabKey == "potions" or subTabKey == "trinkets" then
 		BuildFiltersSpellListForm(child, subTabKey)
+	elseif subTabKey == "custom" then
+		BuildFiltersCustomForm(child)
 	else
 		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		fs:SetPoint("CENTER")
-		fs:SetText("Coming in v0.4")
+		fs:SetText("Planned for a future update coming soon!")
 		fs:SetTextColor(0.7, 0.7, 0.7)
 		child:SetHeight(60)
 	end
@@ -2037,7 +2548,7 @@ local ABOUT_COMMANDS = {
 	{ cmd = "/cm",         desc = "Open or close the options window (or /cdmaster)" },
 	{ cmd = "/cm lock",    desc = "Lock the lane frames" },
 	{ cmd = "/cm unlock",  desc = "Unlock the lane frames for moving" },
-	{ cmd = "/cm test",    desc = "Toggle sample cooldowns in Lane 1" },
+	{ cmd = "/cm test",    desc = "Toggle sample cooldowns (set them up in Global > Test Mode)" },
 	{ cmd = "/cm reset",   desc = "Reset the current profile to defaults" },
 	{ cmd = "/cm version", desc = "Print the version and game flavor" },
 	{ cmd = "/cm whatsnew", desc = "Reopen the What's New window" },
@@ -2250,6 +2761,7 @@ local READY_SECTION_LIST = {
 	{ id = "general",    label = "General"    },
 	{ id = "appearance", label = "Appearance" },
 	{ id = "icons",      label = "Icons"      },
+	{ id = "text",       label = "Text"       },
 	{ id = "highlight",  label = "Highlight"  },
 }
 
@@ -2478,6 +2990,48 @@ local function BuildReadyIconsForm(parent, i)
 end
 
 
+local function BuildReadyTextForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetReadyCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	local secLabel = W.CreateSectionHeader(parent, "Name Tag Font")
+	secLabel:SetWidth(parent:GetWidth() - pad * 2)
+	place(secLabel, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = "Font for this box's name tag (shown above the box while frames are unlocked).",
+		onChange = function(v) cfg.labelFont = v; ReadyApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		onChange = function(v) cfg.labelSize = v; ReadyApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.labelFlags = v; ReadyApply(i) end,
+	}))
+	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.labelColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			ReadyApply(i)
+		end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
 local function BuildReadyHighlightForm(parent, i)
 	local W = ns.Widgets
 	local cfg = GetReadyCfg(i)
@@ -2541,6 +3095,8 @@ local function BuildReadyFormSurface(panelArea, i, sectionID)
 		BuildReadyAppearanceForm(child, i)
 	elseif sectionID == "icons" then
 		BuildReadyIconsForm(child, i)
+	elseif sectionID == "text" then
+		BuildReadyTextForm(child, i)
 	elseif sectionID == "highlight" then
 		BuildReadyHighlightForm(child, i)
 	end
@@ -2585,8 +3141,7 @@ local function BuildReadyTab(content)
 	subBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -pad, -pad)
 	subBar:SetHeight(Theme.PANEL.TAB_H)
 
-	-- A profile-switch rebuild recreates this tab's frames; drop cached form
-	-- surfaces parented to the old (now orphaned) frame so they rebuild fresh.
+	-- A profile-switch rebuild recreates this tab's frames, so drop surfaces parented to the old one.
 	wipe(readyState.subTabBtns)
 	wipe(readyState.railRows)
 	wipe(readyState.formFrames)
@@ -2651,4 +3206,470 @@ end
 
 for _, def in ipairs(TABS) do
 	if def.id == "ready" then def.builder = BuildReadyTab end
+end
+
+
+local BARS_SECTION_LIST = {
+	{ id = "general",    label = "General"    },
+	{ id = "appearance", label = "Appearance" },
+	{ id = "bar",        label = "Bar"        },
+}
+
+local BAR_SORT_OPTIONS = {
+	{ value = "DESCENDING", text = "Longest first"  },
+	{ value = "ASCENDING",  text = "Shortest first" },
+}
+
+local BAR_ICON_POS_OPTIONS = {
+	{ value = "LEFT",  text = "Left"  },
+	{ value = "RIGHT", text = "Right" },
+}
+
+local barsState = {
+	frameIndex = 1,
+	sectionID  = "general",
+	subTabBtns = {},
+	railRows   = {},
+	formFrames = {},
+}
+
+local function GetBarCfg(i) return ns.CDM.db.profile.barFrames[i] end
+
+local function BarApply(i)
+	if ns.Bars_ApplyConfig then ns.Bars_ApplyConfig(i) end
+	if ns.Bars_Refresh then ns.Bars_Refresh(i) end
+end
+
+
+local function BuildBarGeneralForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetBarCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateEditBox(parent, {
+		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		onChange = function(t) cfg.frameName = t; BarApply(i) end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Enabled", checked = cfg.enabled,
+		onChange = function(v)
+			cfg.enabled = v
+			if ns.Bars_RebuildOne then ns.Bars_RebuildOne(i) end
+		end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Grow Direction", value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
+		tooltip = "Direction the bars stack as more cooldowns become active.",
+		onChange = function(v) cfg.growDirection = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Sort Order", value = cfg.sortDir or "DESCENDING", options = BAR_SORT_OPTIONS, width = 200,
+		tooltip = "Longest first puts the cooldown with the most time left at the start of the grow direction.",
+		onChange = function(v) cfg.sortDir = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Max Bars", min = 1, max = 20, step = 1, value = cfg.maxBars or 10, width = 240,
+		tooltip = "Cap on how many bars this frame shows at once.",
+		onChange = function(v) cfg.maxBars = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Spacing", min = 0, max = 40, step = 1, value = cfg.spacing or 0, width = 240,
+		tooltip = "Gap, in pixels, between stacked bars.",
+		onChange = function(v) cfg.spacing = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Frame Padding", min = 0, max = 40, step = 1, value = cfg.padding or 0, width = 240,
+		onChange = function(v) cfg.padding = v; BarApply(i) end,
+	}))
+
+	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	hint:SetText("Tip: turn on Unlock Frames (Global tab) to drag this frame, and Test (Global tab) to preview bars.")
+	hint:SetWidth(parent:GetWidth() - pad * 2 - 20)
+	hint:SetJustifyH("LEFT")
+	place(hint, 28)
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildBarAppearanceForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetBarCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "X Offset", min = -500, max = 500, step = 1, value = cfg.x, width = 240,
+		onChange = function(v) cfg.x = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Y Offset", min = -500, max = 500, step = 1, value = cfg.y, width = 240,
+		onChange = function(v) cfg.y = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		tooltip = "Screen point the frame is pinned to, then nudged by the X and Y offsets above.",
+		onChange = function(v) cfg.anchor = v; BarApply(i) end,
+	}))
+
+	local secBG = W.CreateSectionHeader(parent, "Background")
+	secBG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBG, 18)
+
+	place(W.CreateColorPicker(parent, {
+		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Frame Alpha", min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
+		onChange = function(v) cfg.alpha = v; BarApply(i) end,
+	}))
+
+	local secBorder = W.CreateSectionHeader(parent, "Border")
+	secBorder:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBorder, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		onChange = function(v) cfg.borderEnabled = v; BarApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Padding", min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
+		onChange = function(v) cfg.borderPadding = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Border Size", min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
+		onChange = function(v) cfg.borderSize = v; BarApply(i) end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildBarStyleForm(parent, i)
+	local W = ns.Widgets
+	local cfg = GetBarCfg(i)
+	local pad, rowGap = 12, 10
+	local y = -pad
+	local function place(widget, height)
+		widget:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		y = y - (height or widget:GetHeight()) - rowGap
+		return widget
+	end
+
+	place(W.CreateSlider(parent, {
+		label = "Bar Width", min = 50, max = 500, step = 1, value = cfg.barWidth, width = 240,
+		onChange = function(v) cfg.barWidth = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Bar Height", min = 4, max = 60, step = 1, value = cfg.barHeight, width = 240,
+		onChange = function(v) cfg.barHeight = v; BarApply(i) end,
+	}))
+
+	local secFG = W.CreateSectionHeader(parent, "Foreground")
+	secFG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secFG, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Texture", value = cfg.fgTexture, options = BuildStatusbarOptions(), width = 200,
+		onChange = function(v) cfg.fgTexture = v; BarApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Color", color = cfg.fgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.fgColor.r, cfg.fgColor.g, cfg.fgColor.b, cfg.fgColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Use Class Color", checked = cfg.fgClassColor,
+		tooltip = "Fill the bar with your class color instead of the color above.",
+		onChange = function(v) cfg.fgClassColor = v; BarApply(i) end,
+	}))
+
+	local secBarBG = W.CreateSectionHeader(parent, "Bar Background")
+	secBarBG:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBarBG, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Texture", value = cfg.barBgTexture, options = BuildStatusbarOptions(), width = 200,
+		onChange = function(v) cfg.barBgTexture = v; BarApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Color", color = cfg.barBgColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.barBgColor.r, cfg.barBgColor.g, cfg.barBgColor.b, cfg.barBgColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+
+	local secIcon = W.CreateSectionHeader(parent, "Icon")
+	secIcon:SetWidth(parent:GetWidth() - pad * 2)
+	place(secIcon, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Icon", checked = cfg.showIcon ~= false,
+		onChange = function(v) cfg.showIcon = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Icon Position", value = cfg.iconPosition or "LEFT", options = BAR_ICON_POS_OPTIONS, width = 200,
+		onChange = function(v) cfg.iconPosition = v; BarApply(i) end,
+	}))
+
+	local secText = W.CreateSectionHeader(parent, "Text")
+	secText:SetWidth(parent:GetWidth() - pad * 2)
+	place(secText, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Name", checked = cfg.showName ~= false,
+		onChange = function(v) cfg.showName = v; BarApply(i) end,
+	}))
+	place(W.CreateCheckbox(parent, {
+		label = "Show Time", checked = cfg.showTime ~= false,
+		tooltip = "Show the countdown number, drawn by the game's own cooldown widget so it stays correct in combat.",
+		onChange = function(v) cfg.showTime = v; BarApply(i) end,
+	}))
+	local secName = W.CreateSectionHeader(parent, "Name")
+	secName:SetWidth(parent:GetWidth() - pad * 2)
+	place(secName, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.barFont, options = BuildFontOptions(), width = 240,
+		onChange = function(v) cfg.barFont = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.barFontSize or 12, width = 240,
+		onChange = function(v) cfg.barFontSize = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.barFontFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		onChange = function(v) cfg.barFontFlags = v; BarApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Name Color", color = cfg.barFontColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.barFontColor.r, cfg.barFontColor.g, cfg.barFontColor.b, cfg.barFontColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+
+	local secTime = W.CreateSectionHeader(parent, "Time")
+	secTime:SetWidth(parent:GetWidth() - pad * 2)
+	place(secTime, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Time Font", value = cfg.barTimeFont, options = BuildFontOptions(), width = 240,
+		tooltip = "Font for the countdown number, drawn by the game's cooldown widget. Restyling applies on Retail.",
+		onChange = function(v) cfg.barTimeFont = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Time Size", min = 6, max = 32, step = 1, value = cfg.barTimeSize or 12, width = 240,
+		onChange = function(v) cfg.barTimeSize = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Time Outline", value = cfg.barTimeFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		onChange = function(v) cfg.barTimeFlags = v; BarApply(i) end,
+	}))
+	cfg.barTimeColor = cfg.barTimeColor or { r = 1, g = 1, b = 1, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Time Color", color = cfg.barTimeColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.barTimeColor.r, cfg.barTimeColor.g, cfg.barTimeColor.b, cfg.barTimeColor.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+
+	local secTag = W.CreateSectionHeader(parent, "Name Tag")
+	secTag:SetWidth(parent:GetWidth() - pad * 2)
+	place(secTag, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = "Font for this frame's name tag (shown above the frame while frames are unlocked).",
+		onChange = function(v) cfg.labelFont = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		onChange = function(v) cfg.labelSize = v; BarApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		onChange = function(v) cfg.labelFlags = v; BarApply(i) end,
+	}))
+	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.labelColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+
+	cfg.highlight = cfg.highlight or { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.8 } }
+	cfg.highlight.color = cfg.highlight.color or { r = 1, g = 0.82, b = 0, a = 0.8 }
+	local secHL = W.CreateSectionHeader(parent, "Highlight (Important spells)")
+	secHL:SetWidth(parent:GetWidth() - pad * 2)
+	place(secHL, 18)
+
+	place(W.CreateDropdown(parent, {
+		label = "Highlight Style", value = cfg.highlight.style or "BORDER", options = HL_STYLE_OPTIONS, width = 200,
+		tooltip = "Emphasis drawn on the bar of a spell flagged Important (per spell, in the Filters tab).",
+		onChange = function(v) cfg.highlight.style = v; BarApply(i) end,
+	}))
+	place(W.CreateColorPicker(parent, {
+		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			cfg.highlight.color.r, cfg.highlight.color.g, cfg.highlight.color.b, cfg.highlight.color.a = r, g, b, a
+			BarApply(i)
+		end,
+	}))
+
+	parent:SetHeight(math.abs(y) + pad)
+end
+
+
+local function BuildBarFormSurface(panelArea, i, sectionID)
+	local scroll = CreateFrame("ScrollFrame", nil, panelArea, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", panelArea, "TOPLEFT", 0, 0)
+	scroll:SetPoint("BOTTOMRIGHT", panelArea, "BOTTOMRIGHT", -22, 0)
+
+	local child = CreateFrame("Frame", nil, scroll)
+	child:SetSize(panelArea:GetWidth() - 26, 1)
+	scroll:SetScrollChild(child)
+
+	if sectionID == "general" then
+		BuildBarGeneralForm(child, i)
+	elseif sectionID == "appearance" then
+		BuildBarAppearanceForm(child, i)
+	elseif sectionID == "bar" then
+		BuildBarStyleForm(child, i)
+	end
+
+	scroll:Hide()
+	return scroll
+end
+
+
+local function ShowBarSection(panelArea, i, sectionID)
+	barsState.formFrames[i] = barsState.formFrames[i] or {}
+	for _, surf in pairs(barsState.formFrames[i]) do surf:Hide() end
+	for bi, sections in pairs(barsState.formFrames) do
+		if bi ~= i then for _, surf in pairs(sections) do surf:Hide() end end
+	end
+
+	local surf = barsState.formFrames[i][sectionID]
+	if not surf then
+		surf = BuildBarFormSurface(panelArea, i, sectionID)
+		barsState.formFrames[i][sectionID] = surf
+	end
+	surf:Show()
+
+	barsState.frameIndex = i
+	barsState.sectionID  = sectionID
+
+	for _, row in ipairs(barsState.railRows) do
+		local active = row._sectionID == sectionID
+		row.text:SetTextColor(active and YELLOW.r or 1, active and YELLOW.g or 1, active and YELLOW.b or 1, 1)
+	end
+	for bi, btn in ipairs(barsState.subTabBtns) do
+		btn:SetSelected(bi == i)
+	end
+end
+
+
+local function BuildBarsTab(content)
+	local pad = Theme.PANEL.CONTENT_PAD
+
+	local subBar = CreateFrame("Frame", nil, content)
+	subBar:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
+	subBar:SetPoint("TOPRIGHT", content, "TOPRIGHT", -pad, -pad)
+	subBar:SetHeight(Theme.PANEL.TAB_H)
+
+	-- A profile-switch rebuild recreates this tab's frames, so drop surfaces parented to the old one.
+	wipe(barsState.subTabBtns)
+	wipe(barsState.railRows)
+	wipe(barsState.formFrames)
+	local x = 0
+	for i = 1, 3 do
+		local b = Theme.CreateTab(subBar, "Bars " .. i, 90)
+		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
+		barsState.subTabBtns[i] = b
+		x = x + 90 + Theme.PANEL.TAB_GAP
+	end
+
+	local body = CreateFrame("Frame", nil, content)
+	body:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
+	body:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
+
+	local rail = CreateFrame("Frame", nil, body,
+		BackdropTemplateMixin and "BackdropTemplate" or nil)
+	rail:SetPoint("TOPLEFT", body, "TOPLEFT", 0, 0)
+	rail:SetPoint("BOTTOMLEFT", body, "BOTTOMLEFT", 0, 0)
+	rail:SetWidth(LANES_INNER_RAIL_W)
+	Theme.ApplyBackdrop(rail,
+		{ r = 0, g = 0, b = 0, a = 0.4 }, ns.CONST.RGB.PANEL_BORDER)
+
+	local formArea = CreateFrame("Frame", nil, body)
+	formArea:SetPoint("TOPLEFT", rail, "TOPRIGHT", 8, 0)
+	formArea:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
+
+	for i, b in ipairs(barsState.subTabBtns) do
+		b:SetScript("OnClick", function()
+			ShowBarSection(formArea, i, barsState.sectionID)
+		end)
+	end
+
+	local ry = -8
+	for _, sec in ipairs(BARS_SECTION_LIST) do
+		local row = CreateFrame("Button", nil, rail)
+		row:SetPoint("TOPLEFT",  rail, "TOPLEFT",  6, ry)
+		row:SetPoint("TOPRIGHT", rail, "TOPRIGHT", -6, ry)
+		row:SetHeight(22)
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		fs:SetPoint("LEFT", row, "LEFT", 4, 0)
+		fs:SetText(sec.label)
+		fs:SetTextColor(1, 1, 1)
+		row.text = fs
+		row._sectionID = sec.id
+		row:EnableMouse(true)
+		row:SetScript("OnClick", function()
+			ShowBarSection(formArea, barsState.frameIndex, sec.id)
+		end)
+		row:SetScript("OnEnter", function()
+			if sec.id ~= barsState.sectionID then fs:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b) end
+		end)
+		row:SetScript("OnLeave", function()
+			if sec.id ~= barsState.sectionID then fs:SetTextColor(1, 1, 1) end
+		end)
+		barsState.railRows[#barsState.railRows + 1] = row
+		ry = ry - 26
+	end
+
+	ShowBarSection(formArea, barsState.frameIndex, barsState.sectionID)
+end
+
+for _, def in ipairs(TABS) do
+	if def.id == "bars" then def.builder = BuildBarsTab end
 end

@@ -10,11 +10,13 @@ _G[ns.CONST.ADDON_NAME] = CDM   -- expose globally so `/dump CooldownMaster` wor
 CDM.version = ns.CONST.VERSION
 CDM.lanes = {}
 CDM.readyFrames = {}
+CDM.barFrames = {}
 CDM.cooldowns = {}
 -- Free-lists for frame reuse (WoW never GC's frames): `lanes`/`readyFrames` hold the
 -- active ones, the pools hold every frame ever built so rebuilds reuse not recreate.
 CDM.lanePool = {}
 CDM.readyFramePool = {}
+CDM.barFramePool = {}
 
 
 ns.DISCORD_URL = "https://discord.gg/vm8K2WfQUE"
@@ -98,12 +100,10 @@ function CDM:OnInitialize()
 end
 
 
--- One-time migration off the pre-0.3.0 Bars/Ready scope. Idempotent; safe to delete in a later major version.
+-- One-time pre-0.3.0 key cleanup. Idempotent - safe to delete in a later major version.
 function CDM:MigrateV030()
 	local p = self.db and self.db.profile
 	if not p then return end
-
-	if p.barFrames   ~= nil then p.barFrames   = nil end
 
 	-- Dead diagnostic key: /cm curvetest writes db.profile._curveProbe for same-session
 	-- inspection; clear it on load so it never ships permanently in saved variables.
@@ -122,7 +122,6 @@ function CDM:MigrateV030()
 	if type(p.filters) == "table" then
 		for _, f in pairs(p.filters) do
 			if type(f) == "table" then
-				if f.defaultBar   ~= nil then f.defaultBar   = nil end
 				if f.defaultReady ~= nil then f.defaultReady = nil end
 			end
 		end
@@ -157,12 +156,20 @@ function CDM:ApplyProfile()
 	if ns.Engine and ns.Engine.LoadPersistedDurations then
 		ns.Engine:LoadPersistedDurations()
 	end
+	if ns.Engine and ns.Engine.ClearCustomEntries then
+		ns.Engine:ClearCustomEntries()
+	end
+	if ns.Engine and ns.Engine.RebuildCustomTriggers then
+		ns.Engine:RebuildCustomTriggers()
+	end
 	for i = 1, 3 do
 		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
 		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
+		if ns.Bars_RebuildOne then ns.Bars_RebuildOne(i) end
 	end
 	if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
 	if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
+	if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
 	if ns.DataBroker_ApplyProfile then ns.DataBroker_ApplyProfile(self) end
 	-- Defer to next frame: ApplyProfile can run from the Active-profile dropdown's onChange, and
 	-- Options_Rebuild SetParent(nil)s that dropdown mid-callback; letting the callback unwind first
@@ -234,9 +241,11 @@ function CDM:OnEnteringWorld()
 	self.combat = InCombatLockdown()
 	if ns.Lanes_Build then ns.Lanes_Build(self) end
 	if ns.ReadyFrames_Build then ns.ReadyFrames_Build(self) end
+	if ns.Bars_Build then ns.Bars_Build(self) end
 	-- Build is idempotent and won't re-evaluate existing lanes, so refresh the
 	-- In Instance / In Group gate explicitly on every world enter.
 	if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
+	if ns.Bars_RefreshVisibility then ns.Bars_RefreshVisibility() end
 
 	if ns.Events and ns.Events.Register and not self._eventsWired then
 		ns.Events.Register(self)
@@ -266,12 +275,14 @@ function CDM:OnSlash(input)
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "locked|r.")
 		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
 		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
+		if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
 
 	elseif input == "unlock" then
 		self.db.profile.global.unlockFrames = true
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "unlocked|r.")
 		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
 		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
+		if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
 
 	elseif input == "test" then
 		self:ToggleTestMode()

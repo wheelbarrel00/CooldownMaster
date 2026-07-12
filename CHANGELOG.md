@@ -1,5 +1,48 @@
 # Cooldown Master Changelog
 
+## 1.0.0 (2026-07-12) — Out of beta: bar frames, custom cooldowns, and a new default look
+
+Cooldown Master is officially out of beta.
+
+### A note on the new defaults
+
+**Your settings are safe.** AceDB only fills in defaults for keys you never touched, so anything you have personally changed stays exactly as it is. If you've customized heavily, this release will barely look different to you.
+
+But anything you left alone follows the default, and the defaults have all moved. If you've been running Cooldown Master roughly as it came out of the box, here's what will look different on your next login:
+
+- **Lane 2 and Lane 3 are off.** They used to be on by default, so if you never touched them, they will simply not be there anymore. Tick Enabled under Lanes > Lane 2 / Lane 3 to bring them back.
+- **Lanes are thinner** — 10px tall instead of 17.
+- **Icons have a thin border now**, on both lanes and ready boxes.
+- **Backgrounds and borders are much lighter.** The background went from near-black at 85% opacity to a paler grey at 58%, and the border from a solid 2px black to a soft 1px at about half opacity. The overall effect is a lot quieter.
+- **A Bars 1 frame shows up.** Bar frames are new in this release and the first one is on by default.
+
+**Why:** the beta defaults accumulated one release at a time across about thirty versions, and nobody ever stopped to ask what a brand-new user should actually see on their first login. Three lanes stacked up behind heavy black borders was a lot to hand someone before they'd changed a single setting. 1.0 is a deliberate pass at a clean, quiet starting point.
+
+Every one of these is a normal option, and the in-game What's New popup spells out exactly where each one lives. If you'd rather start fresh, Profiles > Reset Profile gives you the new defaults from a clean slate.
+
+### New Features
+
+- **Bar frames** — a third display surface alongside the lanes and ready boxes. Up to 3 frames of depleting status bars, each with icon, spell name, and live countdown, sorted by what's coming up next. Per-frame fill texture/color (or class color), icon side, bar cap, and an emphasis highlight for Important spells. Route any category or individual spell to a bar from the Filters tab.
+- **Custom cooldowns** — define your own tracked cooldown from a duration plus a trigger (a spell you cast, or a buff you gain). Runs on a purely local timer, so it covers things the cooldown API doesn't expose. Aura triggers get a **Detect** button that captures the next buff you gain and fills in the ID, name, and icon. Lives under Filters > Custom.
+- **Configurable Test Mode** — sample type, count (1-20), first/last duration range, and a loop toggle. Applies live, and the samples honor your real Filters routing.
+- **Set All** — bulk-apply a category's Default Lane / Ready Box / Default Bar to every cooldown in it at once.
+- **Bundled textures** — three original CDM textures (Gradient, Glass, Soft Edge), registered through LibSharedMedia.
+- **Text styling** — font, size, outline, and color for lane markers, frame name tags, and the bar countdown number.
+
+### Bug Fixes
+
+- **A passive talent could appear as a tracked cooldown.** Some talents (e.g. the Paladin talent Undisputed Ruling) are exposed by `C_CooldownViewer` as their own entry, flagged `HideByDefault`, and carry their parent ability's icon art. Blizzard's own Cooldown Manager skips those rows; we weren't. The passive rendered as a bar/lane icon wearing Judgment's icon with the wrong name and its own internal proc timer. Hidden rows are now skipped — which also fixes the wrong spell tooltip on hover and the wrong name (and sort position) in the Filters list.
+- A spell still on cooldown across a spec or talent change kept its pre-swap name and icon until it expired. Entries now re-sync on rebuild.
+- **Color opacity never took effect on text.** Two separate bugs: the color picker's opacity value is transparency (not alpha) and was being stored inverted, and a FontString's `SetAlpha` overrides the alpha passed to `SetTextColor`. Both fixed; this also corrects background, border, and highlight opacity at the extremes.
+- Identically configured frames could show visibly different border darkness depending on their screen position (sub-pixel grid misalignment). Frames are now snapped to the physical pixel grid.
+- A ready box could briefly render as two concentric boxes when two cooldowns came up in the same tick (only visible with Auto-hide on).
+- Changing a cooldown's lane or bar routing now moves it immediately, instead of only taking effect the next time that cooldown is used.
+- The global Unlock Frames and Auto-hide toggles now apply to bar frames, which previously ignored both.
+
+### Thanks
+
+Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose CooldownTimeline2 is the reason this addon exists.
+
 ## 0.21.0 (2026-07-11) — Auto-hide while unlocked, plus a shared-cooldown fix
 
 ### New Features

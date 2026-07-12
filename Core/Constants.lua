@@ -4,7 +4,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "0.21.0",
+	VERSION          = "1.0.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -45,8 +45,8 @@ ns.CONST = {
 	},
 
 	-- Keys are Blizzard's Enum.CooldownViewerCategory (0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff);
-	-- 100+ are our own synthetic item categories (100 = bag potions/flasks via C_Container.GetItemCooldown;
-	-- 101 = equipped on-use trinkets via GetInventoryItemCooldown).
+	-- 100+ are our own synthetic categories, not Blizzard enum values (100 = bag potions/flasks,
+	-- 101 = equipped on-use trinkets, 102 = user-defined custom cooldowns on a local timer).
 	CATEGORY_TO_FILTER_KEY = {
 		[0]   = "spells",
 		[1]   = "items",
@@ -54,10 +54,29 @@ ns.CONST = {
 		[3]   = "debuffs",
 		[100] = "potions",
 		[101] = "trinkets",
+		[102] = "custom",
 	},
 
 	POTION_CATEGORY  = 100,
 	TRINKET_CATEGORY = 101,
+	CUSTOM_CATEGORY  = 102,
+
+	-- Custom cooldowns have no real spellID, so ids come from this reserved range - past real spell/item ids, under 2^31.
+	CUSTOM_ID_BASE   = 90000000,
+
+	-- Entries are keyed by spellID, so test entries need their own id range or duplicates would collapse into one.
+	TEST_ID_BASE     = 95000000,
+
+	-- No discovery feeds Offensives or Pet Spells yet, and Custom is excluded so a demo never mimics a live timer.
+	TEST_TYPES = {
+		{ value = "mixed",    text = "Mixed",    category = nil },
+		{ value = "spells",   text = "Spells",   category = 0   },
+		{ value = "items",    text = "Utility",  category = 1   },
+		{ value = "buffs",    text = "Buffs",    category = 2   },
+		{ value = "debuffs",  text = "Debuffs",  category = 3   },
+		{ value = "potions",  text = "Potions",  category = 100 },
+		{ value = "trinkets", text = "Trinkets", category = 101 },
+	},
 
 	-- Classic discovery has no Blizzard category tagging, so these baseline travel/teleport
 	-- spells would land in Spells; file them under Utility (category 1) instead. Keyed by
@@ -77,7 +96,7 @@ ns.CONST = {
 		{ key = "trinkets",   label = "Trinkets",   active = true  },
 		{ key = "offensives", label = "Offensives", active = false },
 		{ key = "petspells",  label = "Pet Spells", active = false },
-		{ key = "custom",     label = "Custom",     active = false },
+		{ key = "custom",     label = "Custom",     active = true  },
 	},
 }
 
