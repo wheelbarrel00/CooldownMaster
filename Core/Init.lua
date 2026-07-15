@@ -162,6 +162,10 @@ function CDM:ApplyProfile()
 	if ns.Engine and ns.Engine.RebuildCustomTriggers then
 		ns.Engine:RebuildCustomTriggers()
 	end
+	-- Offensives track what is already on the target, so they reproject against the new profile at once instead of waiting for a recast.
+	if ns.Engine and ns.Engine.RebuildOffensiveEntries then
+		ns.Engine:RebuildOffensiveEntries()
+	end
 	for i = 1, 3 do
 		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
 		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
@@ -311,6 +315,62 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "offprobe" then
+		if ns.Engine and ns.Engine.RunOffensiveProbe then
+			ns.Engine:RunOffensiveProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "off" then
+		if ns.Engine and ns.Engine.RunOffensiveDump then
+			ns.Engine:RunOffensiveDump()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "auraprobe" then
+		if ns.Engine and ns.Engine.ArmAuraInstanceProbe then
+			ns.Engine:ArmAuraInstanceProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "auraapi" then
+		if ns.Engine and ns.Engine.RunAuraApiProbe then
+			ns.Engine:RunAuraApiProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "offreset" then
+		if ns.Engine and ns.Engine.ResetOffensiveLearning then
+			ns.Engine:ResetOffensiveLearning()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "items" then
+		if ns.Engine and ns.Engine.RunItemDump then
+			ns.Engine:RunItemDump()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "buffs" then
+		if ns.Engine and ns.Engine.RunBuffProbe then
+			ns.Engine:RunBuffProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "petprobe" or input == "pettest" then
+		if ns.Engine and ns.Engine.RunPetProbe then
+			ns.Engine:RunPetProbe()
+		else
+			self:Print("Engine not loaded.")
+		end
+
 	elseif input == "seedtest" then
 		if ns.Engine and ns.Engine.RunSeedDiagnostic then
 			ns.Engine:RunSeedDiagnostic()
@@ -424,7 +484,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | anchor | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | auraprobe | auraapi | offreset | items | buffs | anchor | spells | haste | tracking")
 	end
 end
 

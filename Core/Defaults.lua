@@ -41,7 +41,7 @@ local function lane(frameName, y, enabled)
 		iconSize       = 35,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
-		swipeAlpha     = 0,   -- cooldown-swipe darkness; 0 = no tint (spell art fully visible)
+		swipeAlpha     = 0,   -- cooldown-swipe darkness. 0 = no tint.
 		iconBorder      = true,
 		iconBorderSize  = 1,
 		iconBorderColor = { r = 0, g = 0, b = 0, a = 1 },
@@ -95,8 +95,8 @@ local function readyFrame(frameName, x, y, enabled)
 		growDirection  = "DOWN",
 		normalDuration = 5,
 		normalSound    = "CDM: Ready Click",
-		pTime          = 0,    -- post-combat linger seconds; 0 = off (icons clear on their own hold)
-		maxIcons       = 10,   -- cap on simultaneously-visible ready icons in this box (1-10)
+		pTime          = 0,    -- post-combat linger seconds. 0 = off.
+		maxIcons       = 10,
 
 		-- "Important" spells (per-spell override) use these instead of the normal hold/sound.
 		highlightDuration = 10,
@@ -198,7 +198,9 @@ ns.DEFAULTS = {
 		autohide         = false,
 		enableTooltip    = false,
 		detectSharedCD   = false,
-		zoom             = 1,   -- icon zoom multiplier; 1 = default border-trim look, >1 crops in
+		zoom             = 1,   -- icon zoom multiplier. 1 = default border-trim look, >1 crops in.
+		frameScale       = 1,   -- SetScale on every lane/ready/bar cooldown frame. 1 = native size.
+		optionsScale     = 1,   -- SetScale on the options config window. 1 = native size.
 		notUsableTint    = false,
 		notUsableDesaturate = false,
 		notUsableColor   = { r = 0.75, g = 0.1, b = 0.1, a = 1 },
@@ -230,7 +232,7 @@ ns.DEFAULTS = {
 		[3] = barFrame("Bars 3",    0, -300, false),
 	},
 
-	-- readyBox routes the category's ready-popup to a box (1/2/3); 0 = off. Defaults to box 1 so every category pops there until the user spreads them across boxes 2/3.
+	-- readyBox routes the category's ready-popup to a box (1/2/3). 0 = off.
 	filters = {
 		spells     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
@@ -238,13 +240,20 @@ ns.DEFAULTS = {
 		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		trinkets   = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
-		offensives = { enabled = false, showByDefault = false, ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
+		-- Opt-in on purpose. Flipping this to true pushes dots into every existing user's lanes on upgrade.
+		offensives = { enabled = false, showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		custom     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 	},
 
 	-- spellOverrides[spellID] = { visible, lane, bar, readyBox, important, pinned }. A nil field falls back to the category default.
 	spellOverrides = {},
+
+	-- castMap[castSpellID] = { debuffSpellID, ... } in land order. Learned at runtime - retail never reports which debuff a cast applied.
+	castMap = {},
+
+	-- auraRoll[spellID] = extra seconds a refresh adds on top of the base length. Measured at runtime, never assumed.
+	auraRoll = {},
 
 	-- customCooldowns.defs[id] = { id, name, icon, triggerType = "spell"|"aura", triggerID, durationMs, enabled }. id comes from CONST.CUSTOM_ID_BASE and doubles as the spellOverrides key.
 	customCooldowns = { nextId = 1, defs = {} },

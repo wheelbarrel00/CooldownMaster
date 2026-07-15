@@ -117,11 +117,20 @@ function ns.Options_SelectTab(id)
 end
 
 
+local function ApplyOptionsScale()
+	if not panel then return end
+	local g = ns.CDM and ns.CDM.db and ns.CDM.db.profile and ns.CDM.db.profile.global
+	local s = g and g.optionsScale
+	panel:SetScale((type(s) == "number" and s > 0) and s or 1)
+end
+
+
 function ns.Options_Toggle()
 	if not panel then BuildPanel() end
 	if panel:IsShown() then
 		panel:Hide()
 	else
+		ApplyOptionsScale()
 		panel:Show()
 		ns.Options_SelectTab(currentTabID or "global")
 	end
@@ -131,6 +140,7 @@ end
 -- Show (never toggle) the panel on a given tab; used by the What's New popup's Open Options button.
 function ns.Options_Open(tabID)
 	if not panel then BuildPanel() end
+	ApplyOptionsScale()
 	if not panel:IsShown() then panel:Show() end
 	ns.Options_SelectTab(tabID or currentTabID or "global")
 end
@@ -371,6 +381,59 @@ local function BuildGlobalTab(content)
 	stopTestBtn:SetScript("OnClick", function()
 		if ns.Engine and ns.Engine.testActive then CDM:ToggleTestMode() end
 	end)
+
+	local scaleHeader = W.CreateSectionHeader(content, "Scale")
+	scaleHeader:SetWidth(320)
+	scaleHeader:SetPoint("TOPLEFT", testBtn, "BOTTOMLEFT", 0, -18)
+
+	local frameScaleSlider = W.CreateSlider(content, {
+		label = "Cooldown Frames", min = 0.5, max = 2, step = 0.05,
+		value = g.frameScale or 1, width = 240,
+		tooltip = "Resize the cooldown display - your lanes, bars and ready boxes - together. 1.00 is the normal size, below shrinks them, above enlarges them. They keep their on-screen position as they scale.",
+		onChange = function(v)
+			if type(v) ~= "number" or v <= 0 then return end
+			local old = (type(g.frameScale) == "number" and g.frameScale > 0) and g.frameScale or 1
+			g.frameScale = v
+			-- Offsets are stored in each frame's own scaled units, so rescale them to hold the on-screen position as the scale changes.
+			if old ~= v then
+				local ratio = old / v
+				for _, key in ipairs({ "lanes", "readyFrames", "barFrames" }) do
+					local list = CDM.db.profile[key]
+					if list then
+						for _, c in pairs(list) do
+							if type(c.x) == "number" then c.x = c.x * ratio end
+							if type(c.y) == "number" then c.y = c.y * ratio end
+						end
+					end
+				end
+			end
+			for i = 1, 3 do
+				if ns.Lanes_ApplyConfig then ns.Lanes_ApplyConfig(i) end
+				if ns.ReadyFrames_ApplyConfig then ns.ReadyFrames_ApplyConfig(i) end
+				if ns.Bars_ApplyConfig then ns.Bars_ApplyConfig(i) end
+			end
+		end,
+	})
+	frameScaleSlider:SetPoint("TOPLEFT", scaleHeader, "BOTTOMLEFT", 0, -8)
+
+	-- Applied on RELEASE, never live. This slider is a child of the panel it scales, so scaling
+	-- mid-drag moves the slider track under the cursor and the value oscillates (the flashing and
+	-- wrong sizes). onChange only records the value; the hooks below apply it once the drag ends.
+	local optScaleSlider = W.CreateSlider(content, {
+		label = "Options Window", min = 0.5, max = 2, step = 0.05,
+		value = g.optionsScale or 1, width = 240,
+		tooltip = "Resize this Cooldown Master settings window itself. 1.00 is the normal size. Applies when you let go of the slider or press Enter.",
+		onChange = function(v)
+			if type(v) == "number" and v > 0 then g.optionsScale = v end
+		end,
+	})
+	optScaleSlider:SetPoint("TOPLEFT", frameScaleSlider, "BOTTOMLEFT", 0, -10)
+	if optScaleSlider._slider then
+		optScaleSlider._slider:HookScript("OnMouseUp", ApplyOptionsScale)
+	end
+	if optScaleSlider._edit then
+		optScaleSlider._edit:HookScript("OnEditFocusLost", ApplyOptionsScale)
+	end
 end
 
 for _, def in ipairs(TABS) do
@@ -1318,6 +1381,11 @@ local function CollectCategoryIDs(categoryKey)
 			categoryScratch[#categoryScratch + 1] = itemID
 		end
 	end
+	for spellID, info in pairs(engine.trackedOffensives or EMPTY_TABLE) do
+		if engine:GetCategoryFilterKey(info.category) == categoryKey then
+			categoryScratch[#categoryScratch + 1] = spellID
+		end
+	end
 	return categoryScratch
 end
 
@@ -1371,6 +1439,17 @@ local FILTER_LANE_FOR_DEFAULTS = {
 	{ value = 3, text = "Lane 3" },
 }
 
+-- Mutate the option tables in place - every dropdown already built holds them by reference.
+local function RefreshLaneOptionLabels()
+	local lanes = ns.CDM and ns.CDM.db and ns.CDM.db.profile.lanes
+	for i = 1, 3 do
+		local cfg = lanes and lanes[i]
+		local text = (cfg and cfg.enabled == false) and ("Lane " .. i .. " (off)") or ("Lane " .. i)
+		FILTER_LANE_OPTIONS[i + 1].text = text
+		FILTER_LANE_FOR_DEFAULTS[i].text = text
+	end
+end
+
 local FILTER_READYBOX_FOR_DEFAULTS = {
 	{ value = 0, text = "Off"   },
 	{ value = 1, text = "Box 1" },
@@ -1422,6 +1501,8 @@ local function BuildFiltersDefaultsForm(parent)
 	local W = ns.Widgets
 	local pad = 12
 	local rowGap = 10
+
+	RefreshLaneOptionLabels()
 
 	local y = -pad
 	local function place(widget, height)
@@ -1505,6 +1586,7 @@ local function BuildFiltersDefaultsForm(parent)
 		value = cfg.defaultLane or 1,
 		options = FILTER_LANE_FOR_DEFAULTS,
 		width = 200,
+		tooltip = "Which lane this category's cooldowns travel along. The chosen lane must also be enabled on the Lanes tab - one marked (off) draws nothing.",
 		onChange = function(v)
 			cfg.defaultLane = v
 			if ns.Engine then ns.Engine:ReapplyRouting() end
@@ -1689,9 +1771,25 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 	local pad = 12
 	local rowGap = 4
 
-	-- Items live in a parallel table (Engine:BuildTrackedItems); rows key on .spellID, which is itemID for items. Reset itemRows so stale FontString refs can't SetText a no-longer-shown row.
+	RefreshLaneOptionLabels()
+
+	-- Wipe so a stale FontString ref cannot SetText a row that is no longer shown.
 	if (categoryKey == "potions" or categoryKey == "trinkets") and filtersState.itemRows then
 		wipe(filtersState.itemRows)
+	end
+
+	-- Must stay above the empty-list return below - Offensives starts empty, and this is the only switch that enables it.
+	local top = -pad
+	local catCfg = GetFilterCfg(categoryKey)
+	if catCfg then
+		local cb = ns.Widgets.CreateCheckbox(parent, {
+			label   = "Track this category",
+			checked = catCfg.enabled,
+			tooltip = "Untick to stop tracking this whole category. None of its cooldowns show on a lane or a bar, or pop a ready frame. This is the same setting as Enabled on the Defaults tab.",
+			onChange = function(v) catCfg.enabled = v end,
+		})
+		cb:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		top = top - 26
 	end
 
 	local engine = ns.Engine
@@ -1712,6 +1810,14 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 			end
 		end
 	end
+	if engine and engine.trackedOffensives then
+		for spellID, info in pairs(engine.trackedOffensives) do
+			local key = engine:GetCategoryFilterKey(info.category)
+			if key == categoryKey then
+				matches[#matches + 1] = { spellID = spellID, info = info }
+			end
+		end
+	end
 
 	table.sort(matches, function(a, b)
 		local an = (a.info.name or ""):lower()
@@ -1722,22 +1828,26 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 	if #matches == 0 then
 		local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		fs:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
-		fs:SetText("No spells discovered yet for this category.\nLog in or /reload to populate the list.")
+		fs:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		if categoryKey == "offensives" then
+			fs:SetText("No harmful effects discovered yet.\nYour damage-over-time effects are listed here as you apply them to a target.")
+		else
+			fs:SetText("No spells discovered yet for this category.\nLog in or /reload to populate the list.")
+		end
 		fs:SetTextColor(0.7, 0.7, 0.7)
 		fs:SetJustifyH("LEFT")
-		parent:SetHeight(80)
+		parent:SetHeight(math.abs(top) + 60)
 		return
 	end
 
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, -pad)
+	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
 	header:SetText(string.format("%d spells tracked. \"Default\" follows this category's Defaults tab; the last column flags a spell Important or Pinned.", #matches))
 	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
-	BuildFiltersColumnHeader(parent, -pad - 20)
+	BuildFiltersColumnHeader(parent, top - 20)
 
-	local y = -pad - 40
+	local y = top - 40
 	for _, item in ipairs(matches) do
 		local _, h = BuildSpellRow(parent, item.spellID, item.info, y)
 		y = y - h - rowGap
@@ -1752,7 +1862,7 @@ local CUSTOM_TRIGGER_TYPE_OPTIONS = {
 	{ value = "aura",  text = "Aura gained" },
 }
 
-local CUSTOM_TRIGGER_TIP = "Spell cast starts the timer when you cast the entered spell (on-use trinkets and potions count - enter the spell they cast). Aura gained starts it when you gain the entered buff."
+local CUSTOM_TRIGGER_TIP = "Spell cast starts the timer when you cast the entered spell. On-use trinkets, potions and flasks all count - enter the spell the item casts. This is the reliable choice.\n\nAura gained starts it when you gain the entered buff. On retail, the game hides your buffs from addons while you are in combat, so a buff gained mid-fight cannot be seen and the timer will not start. Prefer Spell cast for anything you cast or use."
 
 
 local function SortedCustomDefs()
@@ -1811,6 +1921,11 @@ end
 -- Deferred a frame - the widget whose callback we are in lives on the surface this tears down.
 local function RefreshCustomForm()
 	if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
+
+	-- Read now - the deferred teardown below drops the scroll frame and its position with it.
+	local prev = filtersState.formFrames["custom"]
+	local offset = prev and prev:GetVerticalScroll() or 0
+
 	C_Timer.After(0, function()
 		if filtersState.formFrames["custom"] then
 			filtersState.formFrames["custom"]:Hide()
@@ -1818,6 +1933,22 @@ local function RefreshCustomForm()
 		end
 		if filtersState._refresh and filtersState.selectedSubTab == "custom" then
 			filtersState._refresh()
+
+			local surf = filtersState.formFrames["custom"]
+			if surf and offset > 0 then
+				-- The scroll range is only recomputed next frame, so force it or the set clamps against a stale 0.
+				if surf.UpdateScrollChildRect then surf:UpdateScrollChildRect() end
+				local maxScroll = surf:GetVerticalScrollRange() or 0
+				if offset > maxScroll then offset = maxScroll end
+				surf:SetVerticalScroll(offset)
+
+				-- A delete shortens the form, so the range can shrink again after this frame.
+				C_Timer.After(0, function()
+					if filtersState.formFrames["custom"] ~= surf then return end
+					local maxNow = surf:GetVerticalScrollRange() or 0
+					if surf:GetVerticalScroll() > maxNow then surf:SetVerticalScroll(maxNow) end
+				end)
+			end
 		end
 	end)
 end
@@ -2038,18 +2169,10 @@ local function BuildFiltersFormSurface(panelArea, subTabKey)
 
 	if subTabKey == "defaults" then
 		BuildFiltersDefaultsForm(child)
-	elseif subTabKey == "spells"  or subTabKey == "items"
-	    or subTabKey == "buffs"   or subTabKey == "debuffs"
-	    or subTabKey == "potions" or subTabKey == "trinkets" then
-		BuildFiltersSpellListForm(child, subTabKey)
 	elseif subTabKey == "custom" then
 		BuildFiltersCustomForm(child)
 	else
-		local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		fs:SetPoint("CENTER")
-		fs:SetText("Planned for a future update coming soon!")
-		fs:SetTextColor(0.7, 0.7, 0.7)
-		child:SetHeight(60)
+		BuildFiltersSpellListForm(child, subTabKey)
 	end
 
 	scroll:Hide()
@@ -2074,11 +2197,7 @@ local function ShowFiltersSubTab(panelArea, subTabKey)
 			row.label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 			row.bg:Show()
 		else
-			if row.active then
-				row.label:SetTextColor(1, 1, 1)
-			else
-				row.label:SetTextColor(0.45, 0.45, 0.45)
-			end
+			row.label:SetTextColor(1, 1, 1)
 			row.bg:Hide()
 		end
 	end
@@ -2104,7 +2223,7 @@ local function BuildFiltersTab(content)
 	wipe(filtersState.railRows)
 
 	local railEntries = {
-		{ key = "defaults", label = "Defaults", active = true },
+		{ key = "defaults", label = "Defaults" },
 	}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
 		railEntries[#railEntries + 1] = def
@@ -2124,24 +2243,15 @@ local function BuildFiltersTab(content)
 		local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		label:SetPoint("LEFT", row, "LEFT", 8, 0)
 		label:SetText(entry.label)
-		if not entry.active then
-			label:SetTextColor(0.45, 0.45, 0.45)
-		else
-			label:SetTextColor(1, 1, 1)
-		end
+		label:SetTextColor(1, 1, 1)
 
-		row.bg     = bg
-		row.label  = label
-		row.key    = entry.key
-		row.active = entry.active
+		row.bg    = bg
+		row.label = label
+		row.key   = entry.key
 
-		if entry.active then
-			row:SetScript("OnClick", function()
-				ShowFiltersSubTab(formArea, entry.key)
-			end)
-		else
-			row:EnableMouse(false)
-		end
+		row:SetScript("OnClick", function()
+			ShowFiltersSubTab(formArea, entry.key)
+		end)
 
 		filtersState.railRows[#filtersState.railRows + 1] = row
 		y = y - 24

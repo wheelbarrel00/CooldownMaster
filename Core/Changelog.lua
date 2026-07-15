@@ -2,6 +2,30 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.1.0",
+		date = "2026-07-14",
+		sections = {
+			{ head = "New Features", items = {
+				"Offensives. A new Filters category that tracks your own damage-over-time effects and debuffs on your current target, so you can see when a dot is about to fall off. It is off by default - turn it on under Filters > Offensives. On retail the game hides a target's auras from addons in combat, so Offensives learns each dot from the spell you cast rather than by reading the target. A brand new dot may take a cast or two to start showing, and it follows your current target only.",
+				"Pet Spells. A new Filters category that tracks your pet's ability cooldowns, for Hunters, Warlocks, Death Knights and anyone with a pet bar. It is on by default. Your pet's basic attack and its command and stance buttons are left out, so only real cooldowns show.",
+				"Scale controls, on the Global tab. Cooldown Frames resizes all of your lanes, bars and ready boxes together while keeping them where they are. Options Window resizes this settings window itself. Both run from half size to double size.",
+			} },
+			{ head = "Improvements", items = {
+				"Each Filters category now has its own Track this category checkbox on its own tab, instead of only being reachable from the Defaults tab.",
+				"Disabled lanes now read Lane N (off) in the lane dropdowns, so it is clear why a routed spell is not showing.",
+				"The Custom cooldown editor keeps its scroll position while you add or edit entries.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Custom aura-gained triggers are reliable on retail now. In combat they could fire only every other time, and a buff first gained during a fight could fire late once combat ended. On retail your own buffs are hidden from addons in combat, so an aura-gained custom cannot start mid-combat at all. The editor now says so and points you to the Spell cast trigger, which does work in combat.",
+				"Fixed a cooldown that could travel the whole lane with no countdown and no swipe if it was recast the instant it came off cooldown. This was easiest to see with a pet ability the pet recasts on its own, such as Growl.",
+				"Fixed a potion or other consumable showing the wrong name when several of them shared a single cooldown.",
+			} },
+			{ head = "Thanks", items = {
+				"Thanks to user_1y22hxslizrfxfxf4w on CurseForge for suggesting the UI scale slider.",
+			} },
+		},
+	},
+	{
 		version = "1.0.0",
 		date = "2026-07-12",
 		sections = {

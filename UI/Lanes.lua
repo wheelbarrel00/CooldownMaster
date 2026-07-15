@@ -41,6 +41,13 @@ function ns.SnapFrameToPixelGrid(frame)
 	end
 end
 
+function ns.GetFrameScale()
+	local cdm = ns.CDM
+	local g = cdm and cdm.db and cdm.db.profile and cdm.db.profile.global
+	local s = g and g.frameScale
+	return (type(s) == "number" and s > 0) and s or 1
+end
+
 local function ReSnapAllFrames()
 	local addon = ns.CDM
 	if not addon then return end
@@ -456,6 +463,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	f:SetSize(cfg.width, cfg.height)
 	f:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
+	f:SetScale(ns.GetFrameScale())
 	f:SetClampedToScreen(true)
 	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only; ApplyVisibility keeps it in sync
 	f.laneIndex = index
@@ -1047,6 +1055,7 @@ local function ApplyConfigBody(laneIndex)
 		laneFrame:ClearAllPoints()
 		laneFrame:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
 	end
+	laneFrame:SetScale(ns.GetFrameScale())
 	-- Frame stays opaque so icons keep their own iconAlpha; cfg.alpha fades the bar chrome (SetLaneChrome).
 	laneFrame:SetAlpha(1)
 	ns.SnapFrameToPixelGrid(laneFrame)
@@ -1171,10 +1180,13 @@ end
 -- reshuffling icons between pool slots and flickering their textures/swipes. Sort by startTime
 -- so a fresh cooldown appends to the last slot (existing icons keep theirs); spellID breaks ties.
 local refreshScratch = {}
+-- The shared-cooldown dedupe keeps the FIRST of a group, so this order picks which potion is shown.
 local function ByStartTime(a, b)
 	if a.startTime ~= b.startTime then
 		return (a.startTime or 0) < (b.startTime or 0)
 	end
+	local au, bu = ns.IsLastUsedItem(a), ns.IsLastUsedItem(b)
+	if au ~= bu then return au end
 	return a.spellID < b.spellID
 end
 
@@ -1388,7 +1400,9 @@ local function RefreshBody(laneIndex)
 				local remaining = e.endTime - now
 				-- isActive entries are removed by ScanSpells at the true cooldown
 				-- end, so render them even if our extrapolated remaining ran out.
-				if remaining > 0 or e._source == "isactive" then
+				-- Offensives likewise: they are only removed on the real fall-off edge, so an
+				-- underestimated length must park the icon at the ready edge, not vanish mid-dot.
+				if remaining > 0 or e._source == "isactive" or e._source == "offensive" then
 					if not (remaining > maxTime and cfg.hideLongTimers) then
 						visible[#visible + 1] = e
 					end
@@ -1440,12 +1454,13 @@ local function RefreshBody(laneIndex)
 		end
 		-- Feed the native cooldown once per instance, keyed on spellID+startTime so a
 		-- reused pool slot re-feeds when it switches spells.
-		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime then
+		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime or btn._cdGen ~= e._feedGen then
 			btn._cdSpellID = e.spellID
 			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
 			btn._cdCustom  = (e.spellID or 0) >= ns.CONST.CUSTOM_ID_BASE
 			btn._cdName    = e.name
 			btn._cdStart   = e.startTime
+			btn._cdGen     = e._feedGen
 			btn._justFed   = true   -- position synchronously below, before this frame renders
 			-- Prefer the opaque DurationObject, but the privileged setter can throw on
 			-- a stale/secret handle and leave the widget with no cooldown, so fall back

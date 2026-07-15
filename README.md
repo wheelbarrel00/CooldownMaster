@@ -75,11 +75,17 @@ secret too; see `docs/EXPERIMENTS.md`.)
   have a **Detect** button that captures the next buff you gain, so you never have
   to go hunting for an aura ID.
 - **Per-category filters** (spells, utility, buffs, debuffs, potions, trinkets,
-  custom) with per-spell overrides for visibility, lane, bar, ready box, important,
-  and pinned — plus **Set All** buttons to bulk-apply a category's routing to every
-  cooldown in it at once.
+  offensives, pet spells, custom) with per-spell overrides for visibility, lane, bar,
+  ready box, important, and pinned — plus **Set All** buttons to bulk-apply a
+  category's routing to every cooldown in it at once.
 - **Consumables and trinkets** — potions/flasks are auto-discovered from your
   bags and equipped on-use trinkets (slots 13/14) are tracked.
+- **Pet spells** — your pet's abilities (Spell Lock, Axe Toss, Gnaw, Freeze and the
+  rest) are discovered from the pet spellbook and tracked like any other cooldown.
+- **Offensives** — your damage-over-time effects on your current target, timed by
+  aura duration instead of by a cooldown, so a dot travels the lane and pops a ready
+  box when it falls off and wants recasting. Discovered as you apply them; refreshes
+  re-anchor. Tracking follows your target, so swapping targets clears the lane.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
 
@@ -102,11 +108,6 @@ secret too; see `docs/EXPERIMENTS.md`.)
 
 ## Planned
 
-- **Offensives** and **Pet Spells** filter categories. Both appear greyed out in the
-  Filters list today. They need real data-model work rather than a UI toggle — on
-  retail they have to be mapped onto the `C_CooldownViewer` category sets (or the
-  combat log, for offensives), and on Classic pet spells need their own spellbook
-  scan. They're next up after 1.0.
 - **Masque** support for icon skinning.
 - A richer text/tag system for lane and bar labels, scoped to the tags that stay
   readable in combat (see the secret-value section above — `[cd.time]` and

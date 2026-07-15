@@ -4,7 +4,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.0.0",
+	VERSION          = "1.1.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -44,9 +44,7 @@ ns.CONST = {
 		WARRIOR      = { r = 0.78, g = 0.61, b = 0.43 },
 	},
 
-	-- Keys are Blizzard's Enum.CooldownViewerCategory (0=Essential, 1=Utility, 2=TrackedBuff, 3=TrackedDebuff);
-	-- 100+ are our own synthetic categories, not Blizzard enum values (100 = bag potions/flasks,
-	-- 101 = equipped on-use trinkets, 102 = user-defined custom cooldowns on a local timer).
+	-- Keys 0-3 are Blizzard's Enum.CooldownViewerCategory (3 is TrackedBar, not debuffs). 100+ are our own synthetic ids.
 	CATEGORY_TO_FILTER_KEY = {
 		[0]   = "spells",
 		[1]   = "items",
@@ -55,11 +53,15 @@ ns.CONST = {
 		[100] = "potions",
 		[101] = "trinkets",
 		[102] = "custom",
+		[103] = "petspells",
+		[104] = "offensives",
 	},
 
-	POTION_CATEGORY  = 100,
-	TRINKET_CATEGORY = 101,
-	CUSTOM_CATEGORY  = 102,
+	POTION_CATEGORY    = 100,
+	TRINKET_CATEGORY   = 101,
+	CUSTOM_CATEGORY    = 102,
+	PET_CATEGORY       = 103,
+	OFFENSIVE_CATEGORY = 104,
 
 	-- Custom cooldowns have no real spellID, so ids come from this reserved range - past real spell/item ids, under 2^31.
 	CUSTOM_ID_BASE   = 90000000,
@@ -67,36 +69,34 @@ ns.CONST = {
 	-- Entries are keyed by spellID, so test entries need their own id range or duplicates would collapse into one.
 	TEST_ID_BASE     = 95000000,
 
-	-- No discovery feeds Offensives or Pet Spells yet, and Custom is excluded so a demo never mimics a live timer.
+	-- Offensives and Custom are omitted - no donor pool to demo from, and a fake Custom would look like a live timer.
 	TEST_TYPES = {
-		{ value = "mixed",    text = "Mixed",    category = nil },
-		{ value = "spells",   text = "Spells",   category = 0   },
-		{ value = "items",    text = "Utility",  category = 1   },
-		{ value = "buffs",    text = "Buffs",    category = 2   },
-		{ value = "debuffs",  text = "Debuffs",  category = 3   },
-		{ value = "potions",  text = "Potions",  category = 100 },
-		{ value = "trinkets", text = "Trinkets", category = 101 },
+		{ value = "mixed",     text = "Mixed",      category = nil },
+		{ value = "spells",    text = "Spells",     category = 0   },
+		{ value = "items",     text = "Utility",    category = 1   },
+		{ value = "buffs",     text = "Buffs",      category = 2   },
+		{ value = "debuffs",   text = "Debuffs",    category = 3   },
+		{ value = "potions",   text = "Potions",    category = 100 },
+		{ value = "trinkets",  text = "Trinkets",   category = 101 },
+		{ value = "petspells", text = "Pet Spells", category = 103 },
 	},
 
-	-- Classic discovery has no Blizzard category tagging, so these baseline travel/teleport
-	-- spells would land in Spells; file them under Utility (category 1) instead. Keyed by
-	-- spellID (locale-stable). Extend as more surface.
+	-- Classic discovery has no Blizzard category tagging, so these would land in Spells instead of Utility.
 	CLASSIC_UTILITY_SPELLS = {
 		[50977] = true,  -- Death Gate
 	},
 
-	-- Order matters: drives the Filters sub-tab strip order.
 	FILTER_CATEGORIES = {
-		{ key = "spells",     label = "Spells",     active = true  },
-		-- key stays "items" for saved-variable back-compat; label "Utility" is Blizzard's Utility-tagged spells, not inventory items.
-		{ key = "items",      label = "Utility",    active = true  },
-		{ key = "buffs",      label = "Buffs",      active = true  },
-		{ key = "debuffs",    label = "Debuffs",    active = true  },
-		{ key = "potions",    label = "Potions",    active = true  },
-		{ key = "trinkets",   label = "Trinkets",   active = true  },
-		{ key = "offensives", label = "Offensives", active = false },
-		{ key = "petspells",  label = "Pet Spells", active = false },
-		{ key = "custom",     label = "Custom",     active = true  },
+		{ key = "spells",     label = "Spells"     },
+		-- Key stays "items" for saved-variable back-compat. The label is Blizzard's Utility-tagged spells, not inventory items.
+		{ key = "items",      label = "Utility"    },
+		{ key = "buffs",      label = "Buffs"      },
+		{ key = "debuffs",    label = "Debuffs"    },
+		{ key = "potions",    label = "Potions"    },
+		{ key = "trinkets",   label = "Trinkets"   },
+		{ key = "offensives", label = "Offensives" },
+		{ key = "petspells",  label = "Pet Spells" },
+		{ key = "custom",     label = "Custom"     },
 	},
 }
 

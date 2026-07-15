@@ -321,6 +321,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	f:SetSize(ICON_SIZE, ICON_SIZE)
 	f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -250)
+	if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 	f:SetClampedToScreen(true)
 	f:EnableMouse(true)
 	f.index     = index
@@ -640,6 +641,7 @@ function ns.ReadyFrames_ApplyConfig(index)
 			f:ClearAllPoints()
 			f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -250)
 		end
+		if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 
 		local borderOn = cfg.borderEnabled ~= false
 		-- Repair color cfg corrupted by an older bug (scalars instead of tables).

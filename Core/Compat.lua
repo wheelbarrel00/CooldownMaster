@@ -13,7 +13,9 @@ ns.Compat.TOC_VERSION = tocversion or 0
 -- Midnight 12.0+ (tocversion >= 120000) is where Blizzard's native Cooldown Manager exists.
 ns.Compat.HAS_BLIZZ_CDM = ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000
 
--- Normalizes the C_Spell.GetSpellCooldown (modern) vs GetSpellCooldown (Classic) API split.
+-- Retail 12.0 forbids COMBAT_LOG_EVENT_UNFILTERED. Registering it fires ADDON_ACTION_FORBIDDEN, so it cannot be probed for.
+ns.Compat.HAS_COMBAT_LOG = not (ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000)
+
 function ns.Compat.GetSpellCooldown(spellID)
 	if C_Spell and C_Spell.GetSpellCooldown then
 		local info = C_Spell.GetSpellCooldown(spellID)
@@ -27,17 +29,13 @@ function ns.Compat.GetSpellCooldown(spellID)
 	end
 end
 
--- Spec API: C_SpecializationInfo is Blizzard's canonical cross-flavor namespace
--- (retail + MoP Classic both serve GetSpecialization/GetSpecializationInfo from it).
--- The bare globals only exist on retail's deprecation shim; MoP Classic's shim leaves
--- them nil, which blanked the Profiles tab -- so prefer the namespace, fall back to the
--- globals. GetNumSpecializations stays a native global on all flavors (0 on Era/TBC).
 function ns.Compat.GetNumSpecs()
 	-- Return nil (not a truthy 0) on spec-less flavors so bare `if GetNumSpecs()` gates skip them.
 	local n = GetNumSpecializations and GetNumSpecializations()
 	if n and n > 0 then return n end
 end
 
+-- The bare GetSpecialization/GetSpecializationInfo globals are nil on MoP Classic, so read them off C_SpecializationInfo first.
 function ns.Compat.GetSpecIndex()
 	if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
 		return C_SpecializationInfo.GetSpecialization()

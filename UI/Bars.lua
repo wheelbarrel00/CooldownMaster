@@ -3,7 +3,7 @@ local ADDON_NAME, ns = ...
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 local WHITE8X8     = "Interface\\Buttons\\WHITE8x8"
-local BOX_FADE_DUR = 0.3    -- seconds for the backdrop to fade once the frame goes empty
+local BOX_FADE_DUR = 0.3
 local FILL_FLOOR   = 0.02   -- keep an isActive bar visibly non-empty while its true end is secret
 
 local function StatusbarTex(name)
@@ -23,10 +23,13 @@ local function ByRemainingAsc(a, b)
 end
 
 local SHARED_CD_TOL = 0.5
+-- The dedupe keeps the first of a merged group, so the last-used tiebreak is what decides which shared-cooldown item gets shown.
 local function ByStartTime(a, b)
 	if a.startTime ~= b.startTime then
 		return (a.startTime or 0) < (b.startTime or 0)
 	end
+	local au, bu = ns.IsLastUsedItem(a), ns.IsLastUsedItem(b)
+	if au ~= bu then return au end
 	return (a.spellID or 0) < (b.spellID or 0)
 end
 
@@ -49,8 +52,7 @@ local function UpdateBarHandle(f)
 	if not f.dragHandle then return end
 	local addon = ns.CDM
 	local g = addon and addon.db and addon.db.profile.global
-	-- The frame stays shown while fading out, so gate on not-shown or the fading backdrop and the
-	-- tag would draw at once. The box-fade hide re-runs this once the frame really hides.
+	-- The frame is still shown while it fades out, so the not-shown gate keeps the drag tag off the fading backdrop.
 	local shown = g and g.unlockFrames and not addon.combat
 		and not (BarFrameHasContent(f) or BarFrameKeepShown(g))
 		and not f:IsShown()
@@ -318,7 +320,7 @@ local function ClearBars(f)
 	for i = 1, #f.barPool do
 		local item = f.barPool[i]
 		if item then
-			item._cdSpellID, item._cdStart = nil, nil
+			item._cdSpellID, item._cdStart, item._cdGen = nil, nil, nil
 			ClearBarHighlight(item)
 			item:Hide()
 		end
@@ -346,6 +348,7 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
 	f:SetSize(cfg.barWidth or 200, cfg.barHeight or 20)
 	f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -300)
+	if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 	f:SetClampedToScreen(true)
 	f:EnableMouse(true)
 	f.index      = index
@@ -485,7 +488,8 @@ local function RefreshBarBody(index)
 				and (e.barIndex or 0) == index
 				and engine:IsSpellVisible(e.spellID, e.category) then
 				-- An entry past its extrapolated end would draw an empty bar, so drop it and let the engine confirm ready.
-				if e.endTime - now > 0 then
+				-- Offensives are exempt: they are only removed on the real fall-off edge, so an underestimated duration must sit empty rather than vanish mid-dot.
+				if e.endTime - now > 0 or e._source == "offensive" then
 					visible[#visible + 1] = e
 				end
 			end
@@ -535,10 +539,11 @@ local function RefreshBarBody(index)
 		end
 
 		-- Feed the DurationObject when we can - it is the only combat-legal source of the real number.
-		if item._cdSpellID ~= e.spellID or item._cdStart ~= e.startTime then
+		if item._cdSpellID ~= e.spellID or item._cdStart ~= e.startTime or item._cdGen ~= e._feedGen then
 			item._cdSpellID = e.spellID
 			item._cdItemID  = e.itemID
 			item._cdStart   = e.startTime
+			item._cdGen     = e._feedGen
 			local fed = false
 			if e.dObj and item.cd.SetCooldownFromDurationObject then
 				fed = pcall(item.cd.SetCooldownFromDurationObject, item.cd, e.dObj)
@@ -583,7 +588,7 @@ local function RefreshBarBody(index)
 	for j = count + 1, f.activeBars do
 		local item = f.barPool[j]
 		if item then
-			item._cdSpellID, item._cdStart = nil, nil
+			item._cdSpellID, item._cdStart, item._cdGen = nil, nil, nil
 			ClearBarHighlight(item)
 			item:Hide()
 		end
@@ -621,6 +626,7 @@ function ns.Bars_ApplyConfig(index)
 			f:ClearAllPoints()
 			f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -300)
 		end
+		if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 
 		if type(cfg.bgColor) ~= "table" then
 			cfg.bgColor = { r = 0.1, g = 0.1, b = 0.1, a = 0.5 }
@@ -659,7 +665,6 @@ function ns.Bars_ApplyConfig(index)
 
 		ConfigureBarTimeFont(f, cfg)
 
-		-- Clear per-bar style memos so the styling below (and the next refresh) re-applies.
 		for i = 1, #f.barPool do
 			local item = f.barPool[i]
 			if item then
