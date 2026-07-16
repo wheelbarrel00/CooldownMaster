@@ -4,7 +4,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.1.0",
+	VERSION          = "1.2.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -75,7 +75,7 @@ ns.CONST = {
 		{ value = "spells",    text = "Spells",     category = 0   },
 		{ value = "items",     text = "Utility",    category = 1   },
 		{ value = "buffs",     text = "Buffs",      category = 2   },
-		{ value = "debuffs",   text = "Debuffs",    category = 3   },
+		{ value = "debuffs",   text = "Buff Bars",  category = 3   },
 		{ value = "potions",   text = "Potions",    category = 100 },
 		{ value = "trinkets",  text = "Trinkets",   category = 101 },
 		{ value = "petspells", text = "Pet Spells", category = 103 },
@@ -91,7 +91,8 @@ ns.CONST = {
 		-- Key stays "items" for saved-variable back-compat. The label is Blizzard's Utility-tagged spells, not inventory items.
 		{ key = "items",      label = "Utility"    },
 		{ key = "buffs",      label = "Buffs"      },
-		{ key = "debuffs",    label = "Debuffs"    },
+		-- Key stays "debuffs" for saved-variable back-compat. Category 3 is Blizzard's TrackedBar (bar-style tracked buffs), not debuffs - your DoTs on a target are the Offensives category.
+		{ key = "debuffs",    label = "Buff Bars"  },
 		{ key = "potions",    label = "Potions"    },
 		{ key = "trinkets",   label = "Trinkets"   },
 		{ key = "offensives", label = "Offensives" },

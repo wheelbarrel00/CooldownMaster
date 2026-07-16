@@ -475,6 +475,19 @@ local FONT_FLAG_OPTIONS = {
 	{ value = "THICKOUTLINE", text = "Thick Outline" },
 }
 
+local ICON_LABEL_ANCHOR_OPTIONS = {
+	{ value = "TOP",    text = "Above icon" },
+	{ value = "CENTER", text = "On icon"    },
+	{ value = "BOTTOM", text = "Below icon" },
+}
+
+local STATUS_ANCHOR_OPTIONS = {
+	{ value = "TOP",    text = "Above frame" },
+	{ value = "BOTTOM", text = "Below frame" },
+	{ value = "LEFT",   text = "Left"        },
+	{ value = "RIGHT",  text = "Right"       },
+}
+
 local function BuildFontOptions()
 	local opts = {}
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -555,6 +568,91 @@ end
 
 local function RebuildLane(laneIndex)
 	if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(laneIndex) end
+end
+
+
+local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet)
+	local W = ns.Widgets
+
+	local eb = W.CreateEditBox(parent, {
+		label = labelText or "Text", value = sub.text or "", width = 200, maxLetters = 120,
+		tooltip = ns.TAG_HELP,
+		onChange = function(t) sub.text = t; apply() end,
+	})
+
+	local picker = CreateFrame("Frame", nil, parent)
+	local hdr = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	hdr:SetPoint("TOPLEFT", picker, "TOPLEFT", 0, 0)
+	hdr:SetText("Click a tag to add it:")
+	hdr:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+
+	local list = tagSet or {}
+	local COLS, BW, BH, ROWH, GAP = 3, 115, 18, 20, 6
+	for i, entry in ipairs(list) do
+		local col = (i - 1) % COLS
+		local row = math.floor((i - 1) / COLS)
+		local b = W.CreateButton(picker, {
+			label = entry[1], width = BW, height = BH, tooltip = "Inserts " .. entry[2],
+			onClick = function()
+				local nt = (eb:GetValue() or "") .. entry[2]
+				eb:SetValue(nt)
+				if eb._onChange then eb._onChange(nt) end
+			end,
+		})
+		b:SetPoint("TOPLEFT", picker, "TOPLEFT", col * (BW + GAP), -14 - row * ROWH)
+	end
+	local rows = math.ceil(#list / COLS)
+	local gridH = 14 + rows * ROWH
+	picker:SetSize(COLS * BW + (COLS - 1) * GAP, gridH)
+
+	place(eb, math.max(40, gridH))
+	picker:SetPoint("TOPLEFT", eb, "TOPRIGHT", 16, 0)
+end
+
+
+local function BuildStatusLineSection(parent, place, pad, cfg, apply)
+	local W = ns.Widgets
+
+	local sec = W.CreateSectionHeader(parent, "Status Line")
+	sec:SetWidth(parent:GetWidth() - pad * 2)
+	place(sec, 18)
+
+	cfg.statusText = cfg.statusText or { enabled = false, text = "[cd.next]", anchor = "BOTTOM" }
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Status Line",
+		checked = cfg.statusText.enabled,
+		tooltip = "Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - your health or resource, the next cooldown coming up, or how many are on cooldown.",
+		onChange = function(v) cfg.statusText.enabled = v; apply() end,
+	}))
+	BuildTagTextRow(parent, place, cfg.statusText, apply, "Text", ns.TAG_PICKER_GLOBAL)
+
+	place(W.CreateDropdown(parent, {
+		label = "Position", value = cfg.statusText.anchor or "BOTTOM",
+		options = STATUS_ANCHOR_OPTIONS, width = 240,
+		onChange = function(v) cfg.statusText.anchor = v; apply() end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font", value = cfg.statusFont, options = BuildFontOptions(), width = 240,
+		onChange = function(v) cfg.statusFont = v; apply() end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.statusSize or 11, width = 240,
+		onChange = function(v) cfg.statusSize = v; apply() end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = "Font Outline", value = cfg.statusFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.statusFlags = v; apply() end,
+	}))
+	cfg.statusColor = cfg.statusColor or { r = 1, g = 1, b = 1, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Font Color", color = cfg.statusColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.statusColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			apply()
+		end,
+	}))
 end
 
 
@@ -1058,6 +1156,53 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		end,
 	}))
 
+	local secLbl = W.CreateSectionHeader(parent, "Icon Label")
+	secLbl:SetWidth(parent:GetWidth() - pad * 2)
+	place(secLbl, 18)
+
+	cfg.iconLabel = cfg.iconLabel or { enabled = false, text = "[cd.name]", anchor = "BOTTOM" }
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Label",
+		checked = cfg.iconLabel.enabled,
+		tooltip = "Draw a line of text on each cooldown icon in this lane, built from the tags in Label Text below. Off by default - lanes otherwise show only the timer number, so this is how you put the ability name on the icon.",
+		onChange = function(v) cfg.iconLabel.enabled = v; RefreshLane(laneIndex) end,
+	}))
+
+	BuildTagTextRow(parent, place, cfg.iconLabel, function() RefreshLane(laneIndex) end, "Label Text", ns.TAG_PICKER_COOLDOWN)
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Position", value = cfg.iconLabel.anchor or "BOTTOM",
+		options = ICON_LABEL_ANCHOR_OPTIONS, width = 240,
+		tooltip = "Where the label sits on the icon. On icon overlaps the timer number.",
+		onChange = function(v) cfg.iconLabel.anchor = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Font", value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
+		onChange = function(v) cfg.iconLabelFont = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Label Size", min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
+		onChange = function(v) cfg.iconLabelSize = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Outline", value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.iconLabelFlags = v; RefreshLane(laneIndex) end,
+	}))
+
+	cfg.iconLabelColor = cfg.iconLabelColor or { r = 1, g = 1, b = 1, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Label Color", color = cfg.iconLabelColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.iconLabelColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			RefreshLane(laneIndex)
+		end,
+	}))
+
 	parent:SetHeight(math.abs(y) + pad)
 end
 
@@ -1162,6 +1307,8 @@ local function BuildLaneTextForm(parent, laneIndex)
 			RefreshLane(laneIndex)
 		end,
 	}))
+
+	BuildStatusLineSection(parent, place, pad, cfg, function() RefreshLane(laneIndex) end)
 
 	parent:SetHeight(math.abs(y) + pad)
 end
@@ -1741,6 +1888,21 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	})
 	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
 
+	-- Offensives is the only auto-discovered, persisted list, so it is the only place a leaked entry can lodge. Narrow so the button clears the scrollbar on a full list.
+	if info.category == ns.CONST.OFFENSIVE_CATEGORY then
+		local del = W.CreateButton(row, {
+			label = "X", width = 22,
+			tooltip = "Remove this from Offensives. Use it to clear a debuff that leaked in from another player on a shared target. If the spell is actually yours, it relearns the next time you cast it.",
+			onClick = function()
+				-- Deferred a frame - the forget rebuilds this list, tearing down the surface this button lives on.
+				C_Timer.After(0, function()
+					if ns.Engine and ns.Engine.ForgetOffensive then ns.Engine:ForgetOffensive(spellID) end
+				end)
+			end,
+		})
+		del:SetPoint("LEFT", fdd.box, "RIGHT", 8, 0)   -- to fdd.box, not fdd - the dropdown's box sits below its label, so the padded frame center rides high
+	end
+
 	-- Register item rows (keyed by itemID == spellID by convention) so the async ItemMixin load can update name/icon in place. Spells are always cached by build time.
 	if info.kind == "item" then
 		filtersState.itemRows = filtersState.itemRows or {}
@@ -1753,7 +1915,7 @@ end
 
 -- These x offsets are BuildSpellRow's anchor chain summed, so a control moved there must move here.
 local FILTER_COL_HEADERS = { { "Show", 216 }, { "Lane", 440 }, { "Bar", 528 }, { "Ready Box", 616 }, { "Flags", 704 } }
-local function BuildFiltersColumnHeader(parent, yPos)
+local function BuildFiltersColumnHeader(parent, yPos, categoryKey)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(parent:GetWidth() - 24, 16)
 	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yPos)
@@ -1762,6 +1924,13 @@ local function BuildFiltersColumnHeader(parent, yPos)
 		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		fs:SetPoint("LEFT", row, "LEFT", c[2], 0)
 		fs:SetText(c[1])
+		fs:SetTextColor(Y.r, Y.g, Y.b)
+	end
+	if categoryKey == "offensives" then
+		-- Row x 786, just left of the Delete button, so it clears the Flags dropdown (ends 784) and the scrollbar.
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		fs:SetPoint("LEFT", row, "LEFT", 786, 0)
+		fs:SetText("Remove")
 		fs:SetTextColor(Y.r, Y.g, Y.b)
 	end
 end
@@ -1845,7 +2014,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 	header:SetText(string.format("%d spells tracked. \"Default\" follows this category's Defaults tab; the last column flags a spell Important or Pinned.", #matches))
 	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
-	BuildFiltersColumnHeader(parent, top - 20)
+	BuildFiltersColumnHeader(parent, top - 20, categoryKey)
 
 	local y = top - 40
 	for _, item in ipairs(matches) do
@@ -3655,6 +3824,8 @@ local function BuildBarStyleForm(parent, i)
 			BarApply(i)
 		end,
 	}))
+
+	BuildStatusLineSection(parent, place, pad, cfg, function() BarApply(i) end)
 
 	parent:SetHeight(math.abs(y) + pad)
 end

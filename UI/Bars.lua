@@ -449,6 +449,10 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 	f.label = label
 
+	local statusText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	statusText:Hide()
+	f.statusText = statusText
+
 	f.dragHandle = ns.CreateDragHandle(f, "Bar "..index, function(point, x, y)
 		local bcfg = addon.db.profile.barFrames[index]
 		if bcfg then
@@ -475,6 +479,16 @@ local function RefreshBarBody(index)
 	local engine  = ns.Engine
 	local entries = engine and engine:GetActiveEntries() or nil
 	local now     = GetTime()
+
+	local sbcfg = cfg.statusText
+	if sbcfg and sbcfg.enabled and f.statusText and f:IsShown() then
+		local sstr = ns.RenderTag(sbcfg.text, nil)
+		if f._statusStr ~= sstr then
+			f._statusStr = sstr
+			f.statusText:SetText(sstr)
+		end
+	end
+
 	local g       = addon.db.profile.global
 	local _, classToken = UnitClass("player")
 	local classCol = classToken and addon.db.profile.classColors[classToken]
@@ -661,6 +675,18 @@ function ns.Bars_ApplyConfig(index)
 			f.label:SetTextColor(lc.r, lc.g, lc.b, 1)
 			f.label:SetText(cfg.frameName or "")
 			f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
+		end
+
+		if f.statusText then
+			if cfg.statusText and cfg.statusText.enabled then
+				ns.ApplyStatusTextStyle(f, f.statusText, cfg)
+				-- cfg.alpha rides the parent frame, which cascades onto this child, so fold in only the color alpha here.
+				f.statusText:SetAlpha((cfg.statusColor and cfg.statusColor.a) or 1)
+				f.statusText:Show()
+				f._statusStr = nil
+			else
+				f.statusText:Hide()
+			end
 		end
 
 		ConfigureBarTimeFont(f, cfg)

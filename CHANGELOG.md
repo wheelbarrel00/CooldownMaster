@@ -1,5 +1,17 @@
 # Cooldown Master Changelog
 
+## 1.2.0 (2026-07-15) — Icon labels, status lines, and filter cleanups
+
+### New Features
+
+- **Icon labels.** You can now show text on each cooldown icon in a lane — by default the ability name. Build it from tags like `[cd.name]` and `[cd.type]`, with a click-to-insert picker so you don't have to remember them, plus full font, size, outline, and color control. Turn it on under Lanes > (a lane) > Icons > Icon Label. Off by default.
+- **Status line.** A line of live text you can add to any lane or bar frame — your health or resource percent, the name of the next cooldown coming up, how many are on cooldown, your target's name, and more. Same click-to-insert tag picker. Turn it on under a lane's Text tab or a bar's Style tab. Off by default.
+- **Remove button on Offensives.** Each spell in the Offensives category now has a small **Remove (X)** button. Use it to clear a damage-over-time effect that got picked up from another player on a shared target dummy. If the spell is really yours, it comes back the next time you cast it.
+
+### Improvements
+
+- **The "Debuffs" filter tab is now labeled "Buff Bars."** It was always a mislabel — that category is Blizzard's bar-style tracked buffs (what the built-in Cooldown Manager shows as bars), not debuffs. Your own damage-over-time effects live in the **Offensives** category. Your existing settings for the category are kept.
+
 ## 1.1.0 (2026-07-14) — Offensives, Pet Spells, and scale controls
 
 ### New Features

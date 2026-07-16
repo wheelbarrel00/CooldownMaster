@@ -20,6 +20,7 @@ Engine.auraOrigin      = {}   -- [auraInstanceID] = { cast, idx }
 Engine.auraRec         = {}   -- [spellID] = { start, duration, inst }, current target only
 Engine.castMap         = {}   -- persisted [castSpellID] = { debuffSpellID, ... } in the order they land
 Engine.auraRoll        = {}   -- persisted [spellID] = seconds a refresh adds
+Engine.ignoredOffUntil = {}   -- [spellID] = GetTime cutoff a manual forget sets to hold a still-live dot off re-adoption until its copy expires
 Engine.cdIDToSpellID   = {}
 Engine.knownDurations  = {}   -- learned out of combat / persisted; talent-adjusted, overrides baseline
 Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime; below known, above baseline
@@ -936,6 +937,10 @@ function Engine:SyncOffensiveEntry(spellID, rec)
 	local cat = ns.CONST.OFFENSIVE_CATEGORY
 	local e = self.entries[spellID]
 	if e and e._source ~= "offensive" then return end   -- a cooldown owns this key outright
+	if self:IsOffensiveForgotten(spellID) then
+		if e then self.entries[spellID] = nil end
+		return
+	end
 
 	if not (rec and rec.start and rec.duration and rec.duration > 0)
 		or not self:IsSpellVisible(spellID, cat) then
@@ -1030,6 +1035,7 @@ end
 
 function Engine:LearnCastDebuff(castID, idx, spellID)
 	if not (castID and idx and spellID) then return end
+	if self:IsOffensiveForgotten(spellID) then return end
 	local map = self.castMap[castID]
 	if not map then
 		map = {}
@@ -1066,6 +1072,7 @@ function Engine:BindAura(inst, spellID, aura, now)
 	-- A control spell's debuff carries the spell's own id (Hammer of Justice 853, Frost Nova 122), and offensives are exempt from the cooldown prune, so the hijacked icon would stick on the lane.
 	if self.trackedSpells[spellID] then return end
 	if not self:IsSpellVisible(spellID, ns.CONST.OFFENSIVE_CATEGORY) then return end
+	if self:IsOffensiveForgotten(spellID) then return end
 
 	self.auraBind[inst] = spellID
 	self.auraPending[inst] = nil
@@ -1834,6 +1841,79 @@ function Engine:ResetOffensiveLearning()
 
 	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 	cdm:Print("Offensives: catalog, learned lengths and cast mappings all cleared. They relearn as you cast.")
+end
+
+
+local function purgeCastMap(store, spellID)
+	for castID, map in pairs(store) do
+		local remaining = false
+		for idx, id in pairs(map) do
+			if id == spellID then map[idx] = nil else remaining = true end
+		end
+		if not remaining then store[castID] = nil end
+	end
+end
+
+
+function Engine:IsOffensiveForgotten(spellID)
+	local cutoff = self.ignoredOffUntil[spellID]
+	if not cutoff then return false end
+	if GetTime() >= cutoff then
+		self.ignoredOffUntil[spellID] = nil
+		return false
+	end
+	return true
+end
+
+
+function Engine:ForgetOffensive(spellID)
+	if not spellID then return end
+
+	-- A copy still ticking on the target gets re-read off the unit and re-adopted (and re-persisted) with no new cast, so hold this id off re-adoption until that live copy must have expired. Nothing live means no window.
+	local rec = self.auraRec[spellID]
+	local recInst = rec and rec.inst
+	if rec and rec.start and rec.duration then
+		local remaining = (rec.start + rec.duration) - GetTime()
+		if remaining > 0 then self.ignoredOffUntil[spellID] = GetTime() + remaining + 2 end
+	end
+
+	self.trackedOffensives[spellID] = nil
+	self.auraDurations[spellID]     = nil
+	self.auraObserved[spellID]      = nil
+	self.auraRoll[spellID]          = nil
+	self.auraRec[spellID]           = nil
+	self._offPendingStart[spellID]  = nil
+
+	local e = self.entries[spellID]
+	if e and e._source == "offensive" then self.entries[spellID] = nil end
+
+	purgeCastMap(self.castMap, spellID)
+
+	-- Drop the live binding plus the cast-origin it re-teaches from, or the next reseed writes the mapping straight back.
+	for inst, id in pairs(self.auraBind) do
+		if id == spellID then
+			self.auraBind[inst]    = nil
+			self.auraOrigin[inst]  = nil
+			self.auraPending[inst] = nil
+		end
+	end
+	if recInst then
+		self.auraOrigin[recInst]  = nil
+		self.auraPending[recInst] = nil
+	end
+
+	for _, byID in pairs(debuffs) do byID[spellID] = nil end
+
+	local addon = ns.CDM
+	if addon and addon.db then
+		local p = addon.db.profile
+		if p.auraDurations then p.auraDurations[spellID] = nil end
+		if p.auraObserved  then p.auraObserved[spellID]  = nil end
+		if p.auraRoll      then p.auraRoll[spellID]      = nil end
+		if p.castMap       then purgeCastMap(p.castMap, spellID) end
+	end
+
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 end
 
 
@@ -2709,7 +2789,7 @@ function Engine:PollAllItems()
 end
 
 
-local MIXED_ORDER = { 0, 2, 1, 3 }   -- spells, buffs, utility, debuffs
+local MIXED_ORDER = { 0, 2, 1, 3 }   -- spells, buffs, utility, buff bars
 local UNKNOWN_ICON = 134400
 
 -- Pooled across seeds: testDonorCount is the live length, not #testDonors (stale entries linger past it).

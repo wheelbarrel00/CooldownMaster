@@ -55,6 +55,12 @@ local function lane(frameName, y, enabled)
 		iconFontFlags  = "OUTLINE",
 		iconFontColor  = { r = 1, g = 1, b = 1, a = 1 },
 
+		iconLabel      = { enabled = false, text = "[cd.name]", anchor = "BOTTOM" },
+		iconLabelFont  = "Friz Quadrata TT",
+		iconLabelSize  = 10,
+		iconLabelFlags = "OUTLINE",
+		iconLabelColor = { r = 1, g = 1, b = 1, a = 1 },
+
 
 		laneTextFont   = "Friz Quadrata TT",
 		laneTextSize   = 9,
@@ -65,6 +71,12 @@ local function lane(frameName, y, enabled)
 		labelSize      = 10,
 		labelFlags     = "OUTLINE",
 		labelColor     = { r = 1, g = 1, b = 1, a = 1 },
+
+		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
+		statusFont     = "Friz Quadrata TT",
+		statusSize     = 11,
+		statusFlags    = "OUTLINE",
+		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
 
 		highlight      = { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.8 } },
 
@@ -177,6 +189,11 @@ local function barFrame(frameName, x, y, enabled)
 		labelFlags     = "OUTLINE",
 		labelColor     = { r = 1, g = 1, b = 1, a = 1 },
 
+		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
+		statusFont     = "Friz Quadrata TT",
+		statusSize     = 11,
+		statusFlags    = "OUTLINE",
+		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
 
 		highlight      = { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.8 } },
 

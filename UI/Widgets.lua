@@ -256,6 +256,7 @@ function Widgets.CreateDropdown(parent, cfg)
 	btn:SetPoint("TOP", label, "BOTTOM", 0, -2)
 	btn:SetSize(width, 22)
 	applyBackdrop(btn, RED, PANEL_BORDER)
+	root.box = btn   -- the visible box (below the label) - anchor a sibling here to line it up with the dropdown
 
 	local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	btnText:SetPoint("LEFT", btn, "LEFT", 6, 0)

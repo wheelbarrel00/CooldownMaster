@@ -116,6 +116,24 @@ end
 
 -- Alpha-toggle the chrome only; never the frame alpha or the icon children (that is what
 -- keeps icons lit). Backdrop is the frame's own artwork, so alpha-zero it, don't detach.
+function ns.ApplyStatusTextStyle(anchorFrame, fs, cfg)
+	local sc = cfg.statusColor or ns.CONST.RGB.YELLOW
+	fs:SetFont(ns.ResolveFont(cfg.statusFont, cfg.statusSize, cfg.statusFlags))
+	fs:SetTextColor(sc.r, sc.g, sc.b, 1)
+	fs:ClearAllPoints()
+	local anch = (cfg.statusText and cfg.statusText.anchor) or "BOTTOM"
+	if anch == "TOP" then
+		fs:SetPoint("BOTTOM", anchorFrame, "TOP", 0, 2)
+	elseif anch == "LEFT" then
+		fs:SetPoint("RIGHT", anchorFrame, "LEFT", -4, 0)
+	elseif anch == "RIGHT" then
+		fs:SetPoint("LEFT", anchorFrame, "RIGHT", 4, 0)
+	else
+		fs:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -2)
+	end
+end
+
+
 local function SetLaneChrome(addon, f, cfg, show)
 	-- cfg.alpha fades the bar chrome only; icons keep their own iconAlpha (the frame stays opaque).
 	local a = cfg.alpha or 1
@@ -133,6 +151,18 @@ local function SetLaneChrome(addon, f, cfg, show)
 	if f.label then
 		local lta = (cfg.labelColor and cfg.labelColor.a) or 1
 		f.label:SetAlpha(show and (addon.db.profile.global.unlockFrames and 0.6 or 0) * a * lta or 0)
+	end
+	if f.statusText then
+		if show and cfg.statusText and cfg.statusText.enabled then
+			-- Resolve once on the show transition so a re-show never flashes text frozen from before it hid.
+			local s = ns.RenderTag(cfg.statusText.text, nil)
+			f._statusStr = s
+			f.statusText:SetText(s)
+			f.statusText:SetAlpha(a * ((cfg.statusColor and cfg.statusColor.a) or 1))
+			f.statusText:Show()
+		else
+			f.statusText:Hide()
+		end
 	end
 	if f.markers and cfg.laneText then
 		local mta = (cfg.laneTextColor and cfg.laneTextColor.a) or 1
@@ -537,6 +567,10 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 	f.label = label
 
+	local statusText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	statusText:Hide()
+	f.statusText = statusText
+
 	f.markers = {}
 	for i = 1, 5 do
 		local m = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -696,6 +730,10 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		local fmt = GetCountdownFormatter()
 		if fmt then btn.cd:SetCountdownFormatter(fmt) end
 	end
+
+	-- Parented to cdAnchor (held on whole pixels by the OnUpdate) so the label stays crisp while the icon glides sub-pixel.
+	btn.tagText = btn.cdAnchor:CreateFontString(nil, "OVERLAY")
+	btn.tagText:Hide()
 
 	-- Highlight overlay for Important spells (Border / Glow / Flash), mirroring the
 	-- ready box. Additive border anchored a few px out so it tracks icon size.
@@ -991,6 +1029,23 @@ local function ConfigureLaneCountFont(laneFrame, cfg)
 end
 
 
+local function ConfigureLaneTagFont(laneFrame, cfg)
+	local name = "CDMLaneTagFont" .. (laneFrame.index or 1)
+	local fontObj = _G[name] or CreateFont(name)
+	local path = (LSM and LSM:Fetch("font", cfg.iconLabelFont, true)) or STANDARD_FONT
+	local flags = cfg.iconLabelFlags or "OUTLINE"
+	if flags == "NONE" then flags = "" end
+	local size = cfg.iconLabelSize
+	if not size or size <= 0 then size = 10 end
+	fontObj:SetFont(path, size, flags)
+	local c = cfg.iconLabelColor
+	fontObj:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1, c and c.a or 1)
+	laneFrame._tagFontObj = fontObj
+	laneFrame._tagLive = ns.TemplateHasLiveTag(cfg.iconLabel and cfg.iconLabel.text)
+	return fontObj
+end
+
+
 -- Body extracted to a module-level function so the pcall wrapper can reference it
 -- by name rather than allocating a fresh closure at 30 Hz across 3 lanes.
 local function ApplyConfigBody(laneIndex)
@@ -1068,6 +1123,11 @@ local function ApplyConfigBody(laneIndex)
 		laneFrame.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
 	end
 
+	if laneFrame.statusText then
+		ns.ApplyStatusTextStyle(laneFrame, laneFrame.statusText, cfg)
+		laneFrame._statusStr = nil   -- force the next tick to re-resolve so new text/anchor shows at once
+	end
+
 	if laneFrame.markers and cfg.laneText then
 		local mPath, mSize, mFlags = ns.ResolveFont(cfg.laneTextFont, cfg.laneTextSize, cfg.laneTextFlags)
 		local mc = cfg.laneTextColor or ns.CONST.RGB.YELLOW
@@ -1112,6 +1172,7 @@ local function ApplyConfigBody(laneIndex)
 	end
 
 	ConfigureLaneCountFont(laneFrame, cfg)
+	ConfigureLaneTagFont(laneFrame, cfg)
 
 	ApplyTrackingConfig(laneFrame, cfg)
 	RecomputeTrackingNeeds()
@@ -1382,6 +1443,16 @@ local function RefreshBody(laneIndex)
 	local maxTime  = cfg.maxTime  or 120
 	local now      = GetTime()
 
+	-- Runs even when the lane has no icons (placed after the shown-gate), and is skipped while chrome is autohidden.
+	local stcfg = cfg.statusText
+	if stcfg and stcfg.enabled and laneFrame.statusText and not laneFrame._chromeHidden then
+		local sstr = ns.RenderTag(stcfg.text, nil)
+		if laneFrame._statusStr ~= sstr then
+			laneFrame._statusStr = sstr
+			laneFrame.statusText:SetText(sstr)
+		end
+	end
+
 	-- Icons take mouse only when tooltips are on AND frames are locked, so an unlocked
 	-- lane still drags freely and tooltip-off play has no mouse capture at all.
 	local g       = addon.db.profile.global
@@ -1504,6 +1575,43 @@ local function RefreshBody(laneIndex)
 
 		ns.StyleIcon(btn, e.spellID, e.itemID, g)
 		ns.ApplyIconBorder(btn, cfg)
+
+		local lbl = cfg.iconLabel
+		if lbl and lbl.enabled then
+			if btn._tagFontObj ~= laneFrame._tagFontObj then
+				btn._tagFontObj = laneFrame._tagFontObj
+				if laneFrame._tagFontObj then btn.tagText:SetFontObject(laneFrame._tagFontObj) end
+			end
+			local anch = lbl.anchor or "BOTTOM"
+			if btn._tagAnchor ~= anch then
+				btn._tagAnchor = anch
+				btn.tagText:ClearAllPoints()
+				if anch == "TOP" then
+					btn.tagText:SetPoint("BOTTOM", btn.cdAnchor, "TOP", 0, 1)
+				elseif anch == "CENTER" then
+					btn.tagText:SetPoint("CENTER", btn.cdAnchor, "CENTER", 0, 0)
+				else
+					btn.tagText:SetPoint("TOP", btn.cdAnchor, "BOTTOM", 0, -1)
+				end
+			end
+			-- A static template moves only when this slot's entry does, so re-resolve on an entry or template change. A live template resolves each pass.
+			if laneFrame._tagLive or btn._tagEntry ~= e.spellID or btn._tagTemplate ~= lbl.text then
+				btn._tagEntry = e.spellID
+				btn._tagTemplate = lbl.text
+				local str = ns.RenderTag(lbl.text, e)
+				if btn._tagStr ~= str then
+					btn._tagStr = str
+					btn.tagText:SetText(str)
+				end
+			end
+			if not btn._tagShown then
+				btn._tagShown = true
+				btn.tagText:Show()
+			end
+		elseif btn._tagShown ~= false then
+			btn._tagShown = false
+			btn.tagText:Hide()
+		end
 
 		if btn._mouseOn ~= mouseOn then
 			btn._mouseOn = mouseOn
