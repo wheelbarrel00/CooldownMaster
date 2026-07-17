@@ -622,7 +622,7 @@ local function BuildStatusLineSection(parent, place, pad, cfg, apply)
 	place(W.CreateCheckbox(parent, {
 		label = "Show Status Line",
 		checked = cfg.statusText.enabled,
-		tooltip = "Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - your health or resource, the next cooldown coming up, or how many are on cooldown.",
+		tooltip = "Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - the next cooldown coming up, how many are on cooldown, or your target's name.",
 		onChange = function(v) cfg.statusText.enabled = v; apply() end,
 	}))
 	BuildTagTextRow(parent, place, cfg.statusText, apply, "Text", ns.TAG_PICKER_GLOBAL)
@@ -1063,7 +1063,7 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	place(W.CreateCheckbox(parent, {
 		label = "Show Icon Border",
 		checked = cfg.iconBorder,
-		tooltip = "Draw a clean solid border around every cooldown icon in this lane. Set per lane, so you can border one lane and leave another plain. Off by default.",
+		tooltip = "Draw a clean solid border around every cooldown icon in this lane. Set per lane, so you can border one lane and leave another plain. On by default.",
 		onChange = function(v) cfg.iconBorder = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -1797,6 +1797,20 @@ function ns.Options_InvalidateFilterLists()
 end
 
 
+-- These rows build their dropdowns label-less, and the factory hangs its tooltip off the label, so a
+-- tooltip passed in the config would never be hoverable. The box binds only OnClick, so hook it here.
+local function AttachRowTip(frame, title, text)
+	if not frame then return end
+	frame:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(title)
+		GameTooltip:AddLine(text, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+
 local function BuildSpellRow(parent, spellID, info, yPos)
 	local W = ns.Widgets
 	local rowH = 26
@@ -1818,6 +1832,25 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	name:SetText(info.name or ("Spell " .. spellID))
 	name:SetTextColor(1, 1, 1)
 
+	-- Item rows key on the itemID, so spellID IS the itemID there. A custom's synthetic id is no real spell.
+	local idHit = CreateFrame("Frame", nil, row)
+	idHit:SetPoint("TOPLEFT", tex, "TOPLEFT", 0, 0)
+	idHit:SetPoint("BOTTOMRIGHT", name, "BOTTOMRIGHT", 0, 0)
+	idHit:EnableMouse(true)
+	idHit:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if info.kind == "item" then
+			if info.link then GameTooltip:SetHyperlink(info.link) else GameTooltip:SetItemByID(spellID) end
+		elseif spellID >= ns.CONST.CUSTOM_ID_BASE then
+			GameTooltip:SetText(info.name or "Cooldown", 1, 1, 1)
+			GameTooltip:AddLine("Custom cooldown", 0.6, 0.6, 0.6)
+		else
+			GameTooltip:SetSpellByID(spellID)
+		end
+		GameTooltip:Show()
+	end)
+	idHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 	local override = GetSpellOverride(spellID)
 	local categoryKey = ns.Engine and ns.Engine:GetCategoryFilterKey(info.category)
 	local fcfg = categoryKey and GetFilterCfg(categoryKey)
@@ -1831,9 +1864,13 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	local cb = W.CreateCheckbox(row, {
 		label = "Show",
 		checked = effectiveVisible,
+		tooltip = "Track this cooldown and draw it. Untick to hide it from every lane, bar and ready box. Until you touch it here, it follows this category's Show By Default setting.",
 		onChange = function(v) SetSpellOverride(spellID, "visible", v) end,
 	})
 	cb:SetPoint("LEFT", name, "RIGHT", 8, 0)
+	-- The factory widens a tooltip'd checkbox's hit rect across its whole 220px root, which in a packed
+	-- row turns the dead space before the Lane dropdown into a Show toggle. Keep the hit rect on the box.
+	if cb._cb then cb._cb:SetHitRectInsets(0, 0, 0, 0) end
 
 	local laneVal = (override and override.lane) or 0  -- 0 sentinel for "Default"
 	local dd = W.CreateDropdown(row, {
@@ -1847,6 +1884,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+	AttachRowTip(dd.box, "Lane",
+		"Which lane this cooldown travels in. Default follows this category's Default Lane, set on the Defaults tab.")
 
 	local barVal = override and override.bar
 	if barVal == nil then barVal = -1 end  -- -1 sentinel for "Default"
@@ -1861,6 +1900,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	bdd:SetPoint("LEFT", dd, "RIGHT", 8, 0)
+	AttachRowTip(bdd.box, "Bar",
+		"Which bar frame this cooldown shows on. Default follows this category's Default Bar. Off keeps it off the bars without hiding it from your lanes or ready boxes.")
 
 	local rbVal = override and override.readyBox
 	if rbVal == nil then rbVal = -1 end  -- -1 sentinel for "Default"
@@ -1874,6 +1915,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	rdd:SetPoint("LEFT", bdd, "RIGHT", 8, 0)
+	AttachRowTip(rdd.box, "Ready Box",
+		"Which ready box this pops into the moment the cooldown comes up. Default follows this category's Ready Box. Off means it never pops.")
 
 	local flagVal = ((override and override.important) and 1 or 0) + ((override and override.pinned) and 2 or 0)
 	local fdd = W.CreateDropdown(row, {
@@ -1887,6 +1930,12 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
+	AttachRowTip(fdd.box, "Flags",
+		"How this one behaves once it pops into a ready box."
+		.. "\n\nNormal - fades after the box's Display Duration."
+		.. "\n\nImportant - highlights the icon and holds it for the box's Highlight Duration instead, and plays the box's Highlight Sound (set to None until you pick one)."
+		.. "\n\nPinned - the icon never fades. It stays until you reload or switch profile, and a box full of pinned icons has no room for new pops."
+		.. "\n\nImp + Pin - both.")
 
 	-- Offensives is the only auto-discovered, persisted list, so it is the only place a leaked entry can lodge. Narrow so the button clears the scrollbar on a full list.
 	if info.category == ns.CONST.OFFENSIVE_CATEGORY then
@@ -2941,10 +2990,13 @@ local function BuildAboutTab(content)
 	sub:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
 	sub:SetText(ABOUT_GOLD .. "v" .. ver .. ABOUT_CLOSE
 		.. ABOUT_MUTED .. "    by Wheelbarrel00"
-		.. "    -    for WoW Midnight (12.0.x)" .. ABOUT_CLOSE)
+		.. "    -    " .. ns.Compat.FlavorLabel() .. ABOUT_CLOSE)
 	Y = Y - 22
 
-	body(ABOUT_WHITE .. "A timeline-style lane cooldown tracker that complements Blizzard's built-in Cooldown Manager." .. ABOUT_CLOSE)
+	-- Only retail has a built-in Cooldown Manager to complement.
+	body(ABOUT_WHITE .. (ns.Compat.HAS_BLIZZ_CDM
+		and "A timeline-style lane cooldown tracker that complements Blizzard's built-in Cooldown Manager."
+		or "A timeline-style lane cooldown tracker for your spells, items, and buffs.") .. ABOUT_CLOSE)
 	gap(10)
 
 	linkRow({
@@ -3246,7 +3298,7 @@ local function BuildReadyIconsForm(parent, i)
 	place(W.CreateCheckbox(parent, {
 		label = "Show Icon Border",
 		checked = cfg.iconBorder,
-		tooltip = "Draw a clean solid border around each ready icon in this box. Set per box. Off by default.",
+		tooltip = "Draw a clean solid border around each ready icon in this box. Set per box. On by default.",
 		onChange = function(v) cfg.iconBorder = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
@@ -3260,6 +3312,53 @@ local function BuildReadyIconsForm(parent, i)
 		label = "Border Color", color = cfg.iconBorderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconBorderColor
+			c.r, c.g, c.b, c.a = r, g, b, a
+			ReadyApply(i)
+		end,
+	}))
+
+	local secLbl = W.CreateSectionHeader(parent, "Icon Label")
+	secLbl:SetWidth(parent:GetWidth() - pad * 2)
+	place(secLbl, 18)
+
+	cfg.iconLabel = cfg.iconLabel or { enabled = false, text = "[cd.name]", anchor = "CENTER" }
+
+	place(W.CreateCheckbox(parent, {
+		label = "Show Label",
+		checked = cfg.iconLabel.enabled,
+		tooltip = "Draw a line of text on each ready icon in this box, built from the tags in Label Text below. Off by default - a ready icon is otherwise just art, so this is how you name what came up.",
+		onChange = function(v) cfg.iconLabel.enabled = v; ReadyApply(i) end,
+	}))
+
+	BuildTagTextRow(parent, place, cfg.iconLabel, function() ReadyApply(i) end, "Label Text", ns.TAG_PICKER_READY)
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Position", value = cfg.iconLabel.anchor or "CENTER",
+		options = ICON_LABEL_ANCHOR_OPTIONS, width = 240,
+		tooltip = "Where the label sits on the icon. On icon draws it over the art.",
+		onChange = function(v) cfg.iconLabel.anchor = v; ReadyApply(i) end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Font", value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
+		onChange = function(v) cfg.iconLabelFont = v; ReadyApply(i) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = "Label Size", min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
+		onChange = function(v) cfg.iconLabelSize = v; ReadyApply(i) end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = "Label Outline", value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		onChange = function(v) cfg.iconLabelFlags = v; ReadyApply(i) end,
+	}))
+
+	cfg.iconLabelColor = cfg.iconLabelColor or { r = 1, g = 1, b = 1, a = 1 }
+	place(W.CreateColorPicker(parent, {
+		label = "Label Color", color = cfg.iconLabelColor, hasAlpha = true,
+		onChange = function(r, g, b, a)
+			local c = cfg.iconLabelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
 			ReadyApply(i)
 		end,
@@ -3306,6 +3405,8 @@ local function BuildReadyTextForm(parent, i)
 			ReadyApply(i)
 		end,
 	}))
+
+	BuildStatusLineSection(parent, place, pad, cfg, function() ReadyApply(i) end)
 
 	parent:SetHeight(math.abs(y) + pad)
 end

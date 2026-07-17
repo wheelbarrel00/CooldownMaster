@@ -1,11 +1,44 @@
 # Cooldown Master Changelog
 
+## 1.3.0 (2026-07-17) — Masque, ready box text, and a new default layout
+
+### Changed Defaults
+
+- **A fresh install now starts with all three lanes on, and potions in their own lane.** Lane 1 carries your spells, utility, buffs and trinkets. Lane 2 carries potions, flasks and elixirs, so your consumables stop competing with your rotation. Lane 3 is switched on but deliberately has nothing routed to it — it is a spare, so you can send something to it or just turn it off, whichever suits you. This mirrors the layout a lot of people already expect from a timeline tracker, and it is meant to make the first five minutes make sense for someone who just installed the addon.
+- **This will reach you even if you have been using the addon a while.** Any setting you have actually changed is kept — but anything you never touched picks up the new default, so if you never went near Lane 2 or Lane 3 you will see them switch on, and potions move to Lane 2. Turning a lane back off is one tick under Lanes > (that lane) > General > Enabled, and potions go back under Filters > Defaults > pick Potions > Default Lane.
+- **This is the last time I change the defaults.** I am sorry for any re-setup this costs you. It is only to give new users a sensible starting layout, and it will not happen again.
+
+### New Features
+
+- **Masque support.** If you use Masque, Cooldown Master now registers three groups you can skin or disable independently in Masque's own options: **Lane Icons**, **Ready Icons**, and **Bar Icons**. Nothing changes until you pick a skin for a group. While a group is skinned, the skin owns that icon's border and crop, so Cooldown Master's own icon border and zoom step aside for it. Masque was listed as an optional dependency long before it actually did anything — that is now real.
+- **Ready boxes now do text, like lanes and bars.** Ready boxes were the last display without it. They now support both an **icon label** on each ready icon (the ability name by default) and a **status line** on the box itself, with the same click-to-insert tag picker and full font, size, outline and color control. Both are off by default. Find them under Ready > (a box) > Icons > Icon Label, and Ready > (a box) > Text > Status Line.
+- **Elixirs are tracked now.** Potions and flasks were tracked, elixirs were quietly skipped. They now show up alongside them under Filters > Potions.
+
+### Bug Fixes
+
+- **Health and resource tags never worked on retail, and no longer pretend to.** `[player.hp.pct]` and `[player.power.pct]` rendered blank for every retail user since 1.2.0. Retail returns your health and power as protected values that addons are not allowed to read — even out of combat — so a percentage cannot be worked out at all. Those tags are now offered on the Classic flavors only, where they work, instead of sitting in the picker doing nothing. `[cd.time]` has always been Classic-only for the same reason; on retail the icon's own countdown covers it.
+- **A stale status line no longer flashes when a ready box comes back.** A box that had auto-hidden could show the text it froze at for a fraction of a second when it reappeared.
+- **The About tab no longer claims to complement Blizzard's Cooldown Manager on Classic**, which does not have one. Same for the addon list description on the three Classic flavors.
+
+### Improvements
+
+- **Every row in Filters has tooltips now.** Hover a spell or item's name to see its real in-game tooltip, and hover Show, Lane, Bar, Ready Box or Flags to find out exactly what each one does — including what Important and Pinned really mean.
+- **`/cm tagprobe`** joins the diagnostic commands, reporting what each text tag resolves to on your client.
+
+### Known Issues
+
+- **Offensives can pick up other players' damage-over-time effects in a raid.** If you target a boss or a trash pack that other people have already put dots on, those dots can end up in your Filters > Offensives list — Flame Shock or Ignite or Sunfire showing up on a Paladin, for example. It only happens on a target someone else has already dotted, which is why it shows up in raids and never when you are out solo. I have tracked down the cause and a fix is coming very soon in the next update. Until then, `/cm offreset` clears the whole list, and the per-spell **Remove (X)** button clears them one at a time. Sorry about this one.
+
+### Thanks
+
+- **Rocker57** — for pointing out that the default lanes were wrong, and for all the help along the way making this a better addon. Genuinely appreciated.
+
 ## 1.2.0 (2026-07-15) — Icon labels, status lines, and filter cleanups
 
 ### New Features
 
 - **Icon labels.** You can now show text on each cooldown icon in a lane — by default the ability name. Build it from tags like `[cd.name]` and `[cd.type]`, with a click-to-insert picker so you don't have to remember them, plus full font, size, outline, and color control. Turn it on under Lanes > (a lane) > Icons > Icon Label. Off by default.
-- **Status line.** A line of live text you can add to any lane or bar frame — your health or resource percent, the name of the next cooldown coming up, how many are on cooldown, your target's name, and more. Same click-to-insert tag picker. Turn it on under a lane's Text tab or a bar's Style tab. Off by default.
+- **Status line.** A line of live text you can add to any lane or bar frame — the name of the next cooldown coming up, how many are on cooldown, your target's name, and more. Same click-to-insert tag picker. Turn it on under a lane's Text tab or a bar's Bar tab. Off by default.
 - **Remove button on Offensives.** Each spell in the Offensives category now has a small **Remove (X)** button. Use it to clear a damage-over-time effect that got picked up from another player on a shared target dummy. If the spell is really yours, it comes back the next time you cast it.
 
 ### Improvements

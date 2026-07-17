@@ -45,8 +45,8 @@ local POTION_ITEMS = {
 	241308, 241304, 241309, 241323, 258318,
 }
 
--- Blizzard ItemConsumableSubclass IDs (verify in-game): 1 = Potion, 3 = Flask/Phial.
-local TRACKED_CONSUMABLE_SUBCLASS = { [1] = true, [3] = true }
+-- Blizzard ItemConsumableSubclass IDs: 1 = Potion, 2 = Elixir, 3 = Flask/Phial.
+local TRACKED_CONSUMABLE_SUBCLASS = { [1] = true, [2] = true, [3] = true }
 local TRINKET_SLOTS = { 13, 14 }
 
 Engine.readyCurve      = nil
@@ -3930,6 +3930,33 @@ function Engine:RunOffensiveProbe()
 				self.readyCurve, self.progressCurve, nil)
 		end
 	end
+
+	-- The whole ours-only filter rests on these two booleans plus the HARMFUL|PLAYER filter, so measure
+	-- them against EVERY harmful aura on the target, not just the ones the filter already let through.
+	cdm:Print("|cffEBB706--- ours-only filter vs EVERY harmful aura on the target ---|r")
+	local nAll, nMine = 0, 0
+	for i = 1, 40 do
+		local ok, d = pcall(C_UnitAuras.GetAuraDataByIndex, "target", i, "HARMFUL")
+		if not ok or not d then break end
+		nAll = nAll + 1
+		cdm:Print(string.format("  [%s] %s | isHarmful=%s isFromPlayerOrPlayerPet=%s filteredOut(H|P)=%s",
+			ProbeClassify(issecret, function() return d.spellId end),
+			ProbeClassify(issecret, function() return d.name end),
+			ProbeClassify(issecret, function() return d.isHarmful end),
+			ProbeClassify(issecret, function() return d.isFromPlayerOrPlayerPet end),
+			C_UnitAuras.IsAuraFilteredOutByInstanceID
+				and ProbeClassify(issecret, C_UnitAuras.IsAuraFilteredOutByInstanceID,
+					"target", d.auraInstanceID, "HARMFUL|PLAYER")
+				or "n/a"))
+	end
+	for i = 1, 40 do
+		local ok, d = pcall(C_UnitAuras.GetAuraDataByIndex, "target", i, "HARMFUL|PLAYER")
+		if not ok or not d then break end
+		nMine = nMine + 1
+	end
+	cdm:Print(string.format("HARMFUL=%d  HARMFUL|PLAYER=%d  %s", nAll, nMine,
+		nAll > nMine and "|cff00ff00PLAYER filter IS narrowing|r"
+		or "|cffff5555PLAYER filter is NOT narrowing - every dot on this target looks like ours|r"))
 
 	if found == 0 then
 		cdm:Print("|cffEBB706No harmful auras of ours on the target.|r Apply one and re-run.")

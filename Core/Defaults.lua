@@ -139,6 +139,19 @@ local function readyFrame(frameName, x, y, enabled)
 		},
 
 
+		-- CENTER not lanes' BOTTOM - boxes stack vertically, so a below-icon label lands on the next icon.
+		iconLabel      = { enabled = false, text = "[cd.name]", anchor = "CENTER" },
+		iconLabelFont  = "Friz Quadrata TT",
+		iconLabelSize  = 10,
+		iconLabelFlags = "OUTLINE",
+		iconLabelColor = { r = 1, g = 1, b = 1, a = 1 },
+
+		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
+		statusFont     = "Friz Quadrata TT",
+		statusSize     = 11,
+		statusFlags    = "OUTLINE",
+		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
+
 		labelFont      = "Friz Quadrata TT",
 		labelSize      = 10,
 		labelFlags     = "OUTLINE",
@@ -233,8 +246,9 @@ ns.DEFAULTS = {
 
 	lanes = {
 		[1] = lane("Lane 1", -175, true),
-		[2] = lane("Lane 2", -210, false),
-		[3] = lane("Lane 3", -245, false),
+		[2] = lane("Lane 2", -210, true),
+		-- Deliberately left with nothing routed to it, as a spare for the user to fill or disable.
+		[3] = lane("Lane 3", -245, true),
 	},
 
 	readyFrames = {
@@ -255,7 +269,7 @@ ns.DEFAULTS = {
 		items      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		buffs      = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		debuffs    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
-		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
+		potions    = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 2, readyBox = 1, defaultBar = 1 },
 		trinkets   = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		-- Opt-in on purpose. Flipping this to true pushes dots into every existing user's lanes on upgrade.
 		offensives = { enabled = false, showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },

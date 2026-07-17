@@ -764,6 +764,8 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	end)
 	if okFlash then btn.hlFlash = flash end
 
+	ns.Masque_Add("lane", btn)
+
 	btn:SetScript("OnEnter", function(self)
 		-- Raise above stack-mates so an occluded stacked icon can be hovered; only
 		-- meaningful when stacking overlaps icons, so gate it on the toggle.
@@ -934,12 +936,15 @@ function ns.StyleIcon(btn, spellID, itemID, g)
 	local tex = btn and btn.tex
 	if not (tex and g) then return end
 
-	local zoom = g.zoom or 1
-	if zoom < 1 then zoom = 1 end
-	if btn._zoom ~= zoom then
-		btn._zoom = zoom
-		local inset = (1 - ICON_BASE_VISIBLE / zoom) * 0.5
-		tex:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+	-- A Masque skin owns the TexCoord (it re-crops via its own mask), so our zoom stands down there.
+	if not ns.Masque_IsSkinned(btn) then
+		local zoom = g.zoom or 1
+		if zoom < 1 then zoom = 1 end
+		if btn._zoom ~= zoom then
+			btn._zoom = zoom
+			local inset = (1 - ICON_BASE_VISIBLE / zoom) * 0.5
+			tex:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+		end
 	end
 
 	local tint, desat = g.notUsableTint, g.notUsableDesaturate
@@ -985,6 +990,8 @@ local DEFAULT_ICON_BORDER = { r = 0, g = 0, b = 0, a = 1 }
 function ns.ApplyIconBorder(btn, cfg)
 	local b = btn.border
 	if not b then return end
+	-- Handed to Masque as the Normal region, which hides it and draws the skin's ring instead.
+	if ns.Masque_IsSkinned(btn) then return end
 	if not cfg.iconBorder then
 		if btn._bOn ~= false then
 			btn._bOn = false
@@ -1011,7 +1018,7 @@ end
 
 -- Per-lane Font object for the icon countdown. The native Cooldown widget draws the
 -- timer (its value is secret in combat, so we can't), but SetCountdownFont restyles it
--- via this live font object — reconfiguring it updates the shown text immediately.
+-- via this live font object - reconfiguring it updates the shown text immediately.
 local function ConfigureLaneCountFont(laneFrame, cfg)
 	local name = "CDMLaneCountFont" .. (laneFrame.index or 1)
 	local fontObj = _G[name] or CreateFont(name)
@@ -1518,6 +1525,7 @@ local function RefreshBody(laneIndex)
 		if btn._iconSize ~= iconSize then
 			btn:SetSize(iconSize, iconSize)
 			btn.cdAnchor:SetSize(iconSize, iconSize)
+			ns.Masque_ReSkin(btn)
 		end
 		if btn._texIcon ~= e.icon then
 			btn._texIcon = e.icon

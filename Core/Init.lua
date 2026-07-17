@@ -329,6 +329,13 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "tagprobe" then
+		if ns.RunTagProbe then
+			ns.RunTagProbe()
+		else
+			self:Print("Tags not loaded.")
+		end
+
 	elseif input == "auraprobe" then
 		if ns.Engine and ns.Engine.ArmAuraInstanceProbe then
 			ns.Engine:ArmAuraInstanceProbe()
@@ -484,7 +491,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | auraprobe | auraapi | offreset | items | buffs | anchor | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | auraprobe | auraapi | offreset | tagprobe | items | buffs | anchor | spells | haste | tracking")
 	end
 end
 

@@ -80,7 +80,7 @@ local function AcquireBar(f, index)
 	item.border:Hide()
 	item.tex = item.iconFrame:CreateTexture(nil, "ARTWORK")
 	item.tex:SetAllPoints(item.iconFrame)
-	item.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	item.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- a Masque skin recrops this, see ns.Masque_Add
 
 	-- The cooldown value is secret in combat, so the native widget has to own the countdown text.
 	item.cd = CreateFrame("Cooldown", nil, item.bar, "CooldownFrameTemplate")
@@ -96,6 +96,8 @@ local function AcquireBar(f, index)
 	item.name = item.bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	item.name:SetJustifyH("LEFT")
 	item.name:SetWordWrap(false)
+
+	ns.Masque_Add("bar", item.iconFrame, item)
 
 	item.hlBorder = CreateFrame("Frame", nil, item,
 		BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -136,6 +138,10 @@ local function LayoutBarInternals(item, cfg, bh)
 	item.bar:ClearAllPoints()
 	if showIcon then
 		item.iconFrame:SetSize(bh, bh)
+		if item._msqSize ~= bh then
+			item._msqSize = bh
+			ns.Masque_ReSkin(item)
+		end
 		item.iconFrame:Show()
 		if (cfg.iconPosition or "LEFT") == "RIGHT" then
 			item.iconFrame:SetPoint("RIGHT", item, "RIGHT", 0, 0)

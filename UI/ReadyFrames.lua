@@ -3,6 +3,7 @@ local ADDON_NAME, ns = ...
 local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
 local ICON_FADE_IN = 0.25  -- icon alpha fade-in on pop, so it surfaces softly instead of snapping in
+local TAG_REFRESH = 0.1    -- live-tag re-resolve cadence - the render OnUpdate is far too fast to gsub on
 
 -- Built-in ready sounds (SOUNDKIT + one bundled click), listed before LibSharedMedia sounds.
 local READY_BUILTIN_SOUNDS = {
@@ -106,6 +107,11 @@ local function AcquireReadyIcon(f, index)
 	end)
 	if okFlash then btn.hlFlash = flash end
 
+	btn.tagText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	btn.tagText:Hide()
+
+	ns.Masque_Add("ready", btn)
+
 	btn:Hide()
 	pool[index] = btn
 	return btn
@@ -142,6 +148,58 @@ local function ApplyIconHighlight(btn, cfg, important)
 		btn.hlFlash:Play()
 	end
 end
+
+local function ConfigureReadyTagFont(f, cfg)
+	local name = "CDMReadyTagFont" .. (f.index or 1)
+	local fontObj = _G[name] or CreateFont(name)
+	fontObj:SetFont(ns.ResolveFont(cfg.iconLabelFont, cfg.iconLabelSize, cfg.iconLabelFlags))
+	local c = cfg.iconLabelColor
+	fontObj:SetTextColor(c and c.r or 1, c and c.g or 1, c and c.b or 1, c and c.a or 1)
+	f._tagFontObj = fontObj
+	local lbl = cfg.iconLabel
+	f._tagLive = (lbl and lbl.enabled and ns.TemplateHasLiveTag(lbl.text)) or false
+end
+
+
+local function UpdateReadyIconTag(f, btn, cfg)
+	local lbl = cfg.iconLabel
+	if not (lbl and lbl.enabled) then
+		if btn._tagShown ~= false then
+			btn._tagShown = false
+			btn.tagText:Hide()
+		end
+		return
+	end
+
+	if btn._tagFontObj ~= f._tagFontObj then
+		btn._tagFontObj = f._tagFontObj
+		if f._tagFontObj then btn.tagText:SetFontObject(f._tagFontObj) end
+	end
+
+	local anch = lbl.anchor or "BOTTOM"
+	if btn._tagAnchor ~= anch then
+		btn._tagAnchor = anch
+		btn.tagText:ClearAllPoints()
+		if anch == "TOP" then
+			btn.tagText:SetPoint("BOTTOM", btn, "TOP", 0, 1)
+		elseif anch == "CENTER" then
+			btn.tagText:SetPoint("CENTER", btn, "CENTER", 0, 0)
+		else
+			btn.tagText:SetPoint("TOP", btn, "BOTTOM", 0, -1)
+		end
+	end
+
+	local str = ns.RenderTag(lbl.text, btn._tagSnap)
+	if btn._tagStr ~= str then
+		btn._tagStr = str
+		btn.tagText:SetText(str)
+	end
+	if not btn._tagShown then
+		btn._tagShown = true
+		btn.tagText:Show()
+	end
+end
+
 
 -- A ready box normally hides once it goes empty. Keep it up while test mode runs or when global
 -- autohide is OFF (autohide-off means always shown, mirroring the lanes). Unlock no longer keeps
@@ -209,6 +267,10 @@ local function RelayoutReadyFrame(f)
 
 	for k, btn in ipairs(active) do
 		btn:SetSize(iconSize, iconSize)
+		if btn._msqSize ~= iconSize then
+			btn._msqSize = iconSize
+			ns.Masque_ReSkin(btn)
+		end
 		if ns.ApplyIconBorder then ns.ApplyIconBorder(btn, cfg) end
 		btn:ClearAllPoints()
 		local off = step * (k - 1)
@@ -239,6 +301,12 @@ local function RelayoutReadyFrame(f)
 	local cdm = ns.CDM
 	local g = cdm and cdm.db and cdm.db.profile.global
 	if count > 0 or ReadyBoxKeepShown(g) then
+		-- A hidden box runs no OnUpdate, so resolve on the show transition or it flashes the string it froze at.
+		if not f:IsShown() and f._statusLive and f.statusText and cfg.statusText then
+			local s = ns.RenderTag(cfg.statusText.text, nil)
+			f._statusStr = s
+			f.statusText:SetText(s)
+		end
 		f._boxFade = nil
 		f:SetAlpha(cfg.alpha or 1)
 		f:Show()
@@ -451,6 +519,28 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			RelayoutReadyFrame(self)
 		end
 
+		-- Only a live template re-resolves here - a static one is already set by the pop or the apply.
+		if cfg and (self._statusLive or self._tagLive) then
+			self._tagClock = (self._tagClock or 0) + elapsed
+			if self._tagClock >= TAG_REFRESH then
+				self._tagClock = 0
+				local scfg = cfg.statusText
+				if self._statusLive and scfg then
+					local s = ns.RenderTag(scfg.text, nil)
+					if self._statusStr ~= s then
+						self._statusStr = s
+						self.statusText:SetText(s)
+					end
+				end
+				if self._tagLive then
+					for i = 1, #self.iconPool do
+						local btn = self.iconPool[i]
+						if btn and btn:IsShown() then UpdateReadyIconTag(self, btn, cfg) end
+					end
+				end
+			end
+		end
+
 		-- Box-level fade: when empty and nothing keeps it shown (unlock/test/autohide-off) it
 		-- fades the backdrop out over BOX_FADE_DUR then hides; OnUpdate only runs while shown,
 		-- so this owns the empty-box hide.
@@ -480,6 +570,10 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	label:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	label:SetAlpha(addon.db.profile.global.unlockFrames and 0.6 or 0)
 	f.label = label
+
+	local statusText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	statusText:Hide()
+	f.statusText = statusText
 
 	f.dragHandle = ns.CreateDragHandle(f, "Ready "..index, function(point, x, y)
 		local rfCfg = addon.db.profile.readyFrames[index]
@@ -586,6 +680,16 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	btn:SetAlpha(0)
 	ns.StyleIcon(btn, spellID, entry.itemID, addon.db.profile.global)
 
+	-- The Engine prunes the entry once it goes ready, so snapshot the tag fields, never hold the entry.
+	local snap = btn._tagSnap
+	if not snap then
+		snap = {}
+		btn._tagSnap = snap
+	end
+	snap.name, snap.category = entry.name, entry.category
+	snap.endTime = nil   -- it is ready, so [cd.time] blanks here rather than counting down from 0
+	UpdateReadyIconTag(target, btn, cfg)
+
 	btn:Show()
 
 	if btn.pulse then
@@ -677,6 +781,28 @@ function ns.ReadyFrames_ApplyConfig(index)
 			f.label:SetTextColor(lc.r, lc.g, lc.b, 1)
 			f.label:SetText(cfg.frameName or "")
 			f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
+		end
+
+		ConfigureReadyTagFont(f, cfg)
+		for k = 1, #f.iconPool do
+			local btn = f.iconPool[k]
+			if btn and btn:IsShown() then UpdateReadyIconTag(f, btn, cfg) end
+		end
+
+		if f.statusText then
+			local scfg = cfg.statusText
+			f._statusLive = (scfg and scfg.enabled and ns.TemplateHasLiveTag(scfg.text)) or false
+			if scfg and scfg.enabled then
+				ns.ApplyStatusTextStyle(f, f.statusText, cfg)
+				-- The box itself carries cfg.alpha and the text is its child, so only the picker opacity belongs here.
+				f.statusText:SetAlpha((cfg.statusColor and cfg.statusColor.a) or 1)
+				local s = ns.RenderTag(scfg.text, nil)
+				f._statusStr = s
+				f.statusText:SetText(s)
+				f.statusText:Show()
+			else
+				f.statusText:Hide()
+			end
 		end
 
 		RelayoutReadyFrame(f)

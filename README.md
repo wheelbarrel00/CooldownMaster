@@ -1,6 +1,6 @@
 # Cooldown Master
 
-[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.0-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120007-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
+[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.0-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120100-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
 
 A **timeline-style lane** cooldown tracker for World of Warcraft. Its signature
 display is a horizontal (or vertical) lane where each tracked spell's icon
@@ -67,6 +67,24 @@ secret too; see `docs/EXPERIMENTS.md`.)
 - **Secondary tracking** (Classic) — per-lane GCD and swing-timer indicators, as a
   lane fill plus a sliding bar.
 
+### Text
+
+- **Icon labels** — a line of tag-built text on each lane or ready-box icon
+  (`[cd.name]`, `[cd.type]`, and `[cd.time]` on Classic), anchored above, on, or
+  below the icon.
+- **Status line** — one line of live text per lane, bar frame, or ready box, built
+  from global tags: `[cd.next]`, `[cd.count]`, `[player.class]`, `[player.name]`,
+  `[target.name]`, `[target.class]`, plus `[player.hp.pct]` and
+  `[player.power.pct]` on Classic.
+- **Click-to-insert tag picker**, context-aware — the per-cooldown tags are offered
+  on icon labels, the global tags on status lines. Templates with only static tags
+  resolve once instead of every frame.
+
+> Retail note: `UnitHealth` and `UnitPower` return secret values under Midnight's
+> secret-value model (even out of combat), so health and power tags are offered on
+> the Classic flavors only. `[cd.time]` is Classic-only for the same reason — on
+> retail the icon's native countdown draws it instead.
+
 ### Tracking
 
 - **Custom cooldowns** — define your own tracked cooldown from a fixed duration
@@ -74,10 +92,11 @@ secret too; see `docs/EXPERIMENTS.md`.)
   timer, so it works for anything the cooldown API doesn't expose. Aura triggers
   have a **Detect** button that captures the next buff you gain, so you never have
   to go hunting for an aura ID.
-- **Per-category filters** (spells, utility, buffs, debuffs, potions, trinkets,
+- **Per-category filters** (spells, utility, buff bars, buffs, potions, trinkets,
   offensives, pet spells, custom) with per-spell overrides for visibility, lane, bar,
   ready box, important, and pinned — plus **Set All** buttons to bulk-apply a
-  category's routing to every cooldown in it at once.
+  category's routing to every cooldown in it at once. Every category is tracked by
+  default except **offensives**, which is opt-in.
 - **Consumables and trinkets** — potions/flasks are auto-discovered from your
   bags and equipped on-use trinkets (slots 13/14) are tracked.
 - **Pet spells** — your pet's abilities (Spell Lock, Axe Toss, Gnaw, Freeze and the
@@ -85,7 +104,11 @@ secret too; see `docs/EXPERIMENTS.md`.)
 - **Offensives** — your damage-over-time effects on your current target, timed by
   aura duration instead of by a cooldown, so a dot travels the lane and pops a ready
   box when it falls off and wants recasting. Discovered as you apply them; refreshes
-  re-anchor. Tracking follows your target, so swapping targets clears the lane.
+  re-anchor. Tracking follows your target, so swapping targets clears the lane. On
+  retail this is **cast-driven** — a target's auras are secret in combat, so identity
+  comes from `UNIT_SPELLCAST_SUCCEEDED` rather than from reading the target. A
+  per-spell **Remove (X)** button clears a dot that got learned off a shared target
+  dummy.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
 
@@ -100,7 +123,17 @@ secret too; see `docs/EXPERIMENTS.md`.)
   original CDM textures (Gradient, Glass, Soft Edge).
 - **Appearance** — per-lane icon borders, icon zoom, unusable-icon tint/desaturate,
   cooldown-swipe tint, and configurable fonts/colors for countdowns, lane markers,
-  and frame name tags.
+  icon labels, status lines, and frame name tags.
+- **Masque** — optional icon skinning. CooldownMaster registers three groups you can
+  skin or disable independently in Masque's own options: **Lane Icons**, **Ready
+  Icons**, and **Bar Icons**. Skinning is opt-in per group, so nothing changes until
+  you pick a skin. While a group is skinned, its skin owns the icon border and crop,
+  so CooldownMaster's own icon border and zoom step aside for it.
+- **Scale** — one slider resizes every lane, bar, and ready box together (0.5x-2x)
+  while keeping each frame anchored where it is; a second scales the options window
+  itself.
+- **Class colors** — a per-class color table, flavor-aware (13 classes on retail, 11
+  on MoP, 9 on Era/TBC), feeding the lane fill and bar fill "use class color" toggles.
 - **Profiles** — per-spec auto-switch, import/export to a copy-paste string, and
   standard AceDB profile management.
 - **What's New popup** — a short digest after an update, with a quiet chat-link
@@ -108,10 +141,7 @@ secret too; see `docs/EXPERIMENTS.md`.)
 
 ## Planned
 
-- **Masque** support for icon skinning.
-- A richer text/tag system for lane and bar labels, scoped to the tags that stay
-  readable in combat (see the secret-value section above — `[cd.time]` and
-  `[cd.stacks]` can't be templated on retail).
+- Classic offensive (dot) tracking — Offensives is retail-only today.
 
 ## Getting it running locally
 
@@ -154,9 +184,10 @@ directory and `/reload`.
 | `/cm version`  | Print version + flavor                                 |
 
 `/cdmaster` and `/cooldownmaster` are the long forms of `/cm` — each works with
-every subcommand above (e.g. `/cdmaster lock`). A handful of diagnostic
-subcommands (`debug`, `api`, `spells`, `seedtest`, `curvetest`) exist for
-troubleshooting the cooldown engine.
+every subcommand above (e.g. `/cdmaster lock`). A set of diagnostic subcommands
+exists for troubleshooting the engine: `debug`, `api`, `spells`, `haste`,
+`tracking`, `anchor`, `seedtest`, `curvetest`, `items`, `buffs`, `petprobe`, and
+the offensives probes (`off`, `offprobe`, `offreset`, `auraprobe`, `auraapi`).
 
 ## Panel addon integration
 
