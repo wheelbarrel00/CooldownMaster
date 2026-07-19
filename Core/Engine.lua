@@ -14,13 +14,15 @@ Engine.auraDurations   = {}
 Engine.auraObserved    = {}
 Engine._offPending     = {}
 Engine._offPendingStart = {}  -- [spellID] = entry startTime at drop time, so a recast before the flush is not popped as ready
-Engine.auraBind        = {}   -- [auraInstanceID] = spellID, current target only
-Engine.auraPending     = {}   -- [auraInstanceID] = { cast, idx }, spell not yet known
-Engine.auraOrigin      = {}   -- [auraInstanceID] = { cast, idx }
-Engine.auraRec         = {}   -- [spellID] = { start, duration, inst }, current target only
-Engine.castMap         = {}   -- persisted [castSpellID] = { debuffSpellID, ... } in the order they land
+Engine.auraPending     = {}   -- [auraInstanceID] = { cast, solo }, spell not yet known, resolved out of combat where the id reads plain
+Engine.auraRec         = {}   -- [spellID] = { start, duration }, current target only, cast-anchored
+Engine.castMap         = {}   -- persisted [castSpellID] = { [debuffSpellID] = true }, an unordered set learned out of combat
+Engine.offConfirmed    = {}   -- [spellID] = true once one of our casts has claimed the dot. The only ids allowed into the retail offensive catalog, so a foreign dot cannot ride in on a target-swap reseed
 Engine.auraRoll        = {}   -- persisted [spellID] = seconds a refresh adds
 Engine.ignoredOffUntil = {}   -- [spellID] = GetTime cutoff a manual forget sets to hold a still-live dot off re-adoption until its copy expires
+Engine._liveInsts      = {}   -- [auraInstanceID] = true, target-wide drop-detection only, no identity (secret in combat). Empties = the target lost all of our dots
+Engine._offLearnInsts  = {}   -- [auraInstanceID] = true, instances captured during a /cm offlearn window, resolved to their cast out of combat
+Engine._reanchorAt     = {}   -- [spellID] = last re-anchor GetTime, debounces a proc/Divine-Toll recast burst that would otherwise freeze a dot at the lane start
 Engine.cdIDToSpellID   = {}
 Engine.knownDurations  = {}   -- learned out of combat / persisted; talent-adjusted, overrides baseline
 Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime; below known, above baseline
@@ -393,32 +395,62 @@ function Engine:LoadPersistedDurations()
 	addon.db.profile.castMap = addon.db.profile.castMap or {}
 	for castID, map in pairs(addon.db.profile.castMap) do
 		if type(castID) == "number" and type(map) == "table" then
-			local clean, seen
-			for idx, spellID in pairs(map) do
-				if type(idx) == "number" and type(spellID) == "number" then
-					seen = seen or {}
-					if seen[spellID] then
-						addon.db.profile.castMap[castID][idx] = nil
-					else
-						seen[spellID] = true
-						clean = clean or {}
-						clean[idx] = spellID
-					end
+			-- Migrate the old ordered-slot form to the { [debuffID] = true } set, and pass an already-set map through. A numeric value is an old slot's debuffID, a true value means the key already is one. Real debuff ids are large, so a slot idx never collides.
+			local set, saved
+			for k, v in pairs(map) do
+				local debuffID
+				if v == true then
+					debuffID = (type(k) == "number") and k or nil
+				elseif type(v) == "number" then
+					debuffID = v
+				end
+				if debuffID then
+					set = set or {}; set[debuffID] = true
+					saved = saved or {}; saved[debuffID] = true
 				end
 			end
-			if clean then
-				self.castMap[castID] = clean
-			else
-				addon.db.profile.castMap[castID] = nil
-			end
+			self.castMap[castID] = set
+			addon.db.profile.castMap[castID] = saved
 		else
 			addon.db.profile.castMap[castID] = nil
 		end
 	end
 
+	wipe(self.offConfirmed)
+	for _, set in pairs(self.castMap) do
+		for debuffID in pairs(set) do self.offConfirmed[debuffID] = true end
+	end
+
 	-- The offensive catalog is discovered at runtime, so reseed it from the persisted lengths or Filters reads blank until each debuff lands again.
-	for spellID in pairs(self.auraDurations) do self:TrackOffensive(spellID) end
-	for spellID in pairs(self.auraObserved)  do self:TrackOffensive(spellID) end
+	if ns.Compat.HAS_COMBAT_LOG then
+		for spellID in pairs(self.auraDurations) do self:TrackOffensive(spellID) end
+		for spellID in pairs(self.auraObserved)  do self:TrackOffensive(spellID) end
+	else
+		-- Retail cannot read a re-read aura's source, so an unconfirmed length is a foreign dot a past target-swap reseed adopted - purge it so the leak self-heals. A dot that is really ours relearns on its next cast. An empty castMap drops everything here, by design.
+		local p = addon.db.profile
+		for spellID in pairs(self.auraDurations) do
+			if self.offConfirmed[spellID] then
+				self:TrackOffensive(spellID)
+			else
+				self.auraDurations[spellID] = nil
+				p.auraDurations[spellID]    = nil
+			end
+		end
+		for spellID in pairs(self.auraObserved) do
+			if self.offConfirmed[spellID] then
+				self:TrackOffensive(spellID)
+			else
+				self.auraObserved[spellID] = nil
+				p.auraObserved[spellID]    = nil
+			end
+		end
+		for spellID in pairs(self.auraRoll) do
+			if not self.offConfirmed[spellID] then
+				self.auraRoll[spellID] = nil
+				p.auraRoll[spellID]    = nil
+			end
+		end
+	end
 
 	-- Fallbacks go in baselineDurations, not knownDurations: layering them into
 	-- knownDurations makes LearnDuration's "already known" guard skip learning the
@@ -985,8 +1017,10 @@ end
 
 
 -- Records the dropped dot's start so FlushOffensivePops can tell a real expiry from a recast that
--- landed in the same window. One live instance per spellID, so a spellID is pending at most once.
+-- landed in the same window. The expiry sweep runs several times a second, so a spellID already
+-- queued this cycle must not be pushed twice.
 function Engine:QueueOffensivePop(spellID)
+	if self._offPendingStart[spellID] ~= nil then return end
 	local pending = self._offPending
 	pending[#pending + 1] = spellID
 	local e = self.entries[spellID]
@@ -1012,6 +1046,9 @@ function Engine:FlushOffensivePops()
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
 			self.entries[spellID] = nil
+			-- Never leave a live-looking rec behind, or the forward-only re-anchor guard suppresses a re-render of this dot on its next cast (empty on Classic, which does not use auraRec).
+			self.auraRec[spellID]    = nil
+			self._reanchorAt[spellID] = nil
 		end
 	end
 	wipe(pending)
@@ -1023,31 +1060,55 @@ end
 
 local CAST_BIND_WINDOW = 2.0   -- a debuff lands within a couple of frames of the cast that applied it
 
+-- A cast is re-applied far more often than its dot genuinely refreshes (Divine Toll re-casts Judgment, procs fire it again), so only re-anchor a live dot at most once a second, and never to an end sooner than it already has - or it re-stamps to now every frame and freezes at the lane start.
+local REANCHOR_DEBOUNCE = 1.0
+local REANCHOR_EPS = 0.1
+
+-- An offensive entry lingers on the lane past its extrapolated end (nothing time-prunes it), so a sweep pops it ready once now passes endTime. The tolerance absorbs the gap between the cast-anchored estimate and the server's real expiry.
+local EXPIRY_EPS = 0.3
+
+-- The same ability can fire under several cast spellIDs (an override, rank, or empowered variant - Divine Hammer 198137 vs 1236942), so a variant CDM never learned under would miss the map. Key on the base spell, mirroring the cooldown pipeline's GetBaseSpell use.
+local function NormalizeOffensiveCast(id)
+	if not (id and C_Spell and C_Spell.GetBaseSpell) then return id end
+	local ok, base = pcall(C_Spell.GetBaseSpell, id)
+	base = ok and PlainOrNil(base) or nil
+	return (base and base ~= 0) and base or id
+end
+
 
 function Engine:ClearTargetAuras()
-	wipe(self.auraBind)
 	wipe(self.auraPending)
-	wipe(self.auraOrigin)
 	wipe(self.auraRec)
+	wipe(self._reanchorAt)
+	wipe(self._liveInsts)
 	self:ClearOffensiveEntries()
 end
 
 
-function Engine:LearnCastDebuff(castID, idx, spellID)
-	if not (castID and idx and spellID) then return end
+-- force is set only by /cm offlearn, where the user declared the cast, so a stale mapping is moved off its old owner rather than rejected.
+function Engine:LearnCastDebuff(castID, spellID, force)
+	if not (castID and spellID) then return end
 	if self:IsOffensiveForgotten(spellID) then return end
+	-- Already mapped under another cast: rejecting a re-learn is what keeps the map clean (a cast merely current in a readable window would otherwise claim a dot it never applied). offlearn overrides this by first moving the id off its stale owner.
+	local owner = self:FindMappedOwner(spellID)
+	if owner and owner ~= castID then
+		if not force then return end
+		self.castMap[owner][spellID] = nil
+		if not next(self.castMap[owner]) then self.castMap[owner] = nil end
+		local a0 = ns.CDM
+		if a0 and a0.db and a0.db.profile.castMap and a0.db.profile.castMap[owner] then
+			a0.db.profile.castMap[owner][spellID] = nil
+			if not next(a0.db.profile.castMap[owner]) then a0.db.profile.castMap[owner] = nil end
+		end
+	end
+
 	local map = self.castMap[castID]
 	if not map then
 		map = {}
 		self.castMap[castID] = map
 	end
-	if map[idx] == spellID then return end
-	map[idx] = spellID
-
-	-- A cast cannot apply the same debuff twice, so surrender the stale slot: two slots resolving to one spellID collide on the same entry key and the other debuff can never render.
-	for i, id in pairs(map) do
-		if i ~= idx and id == spellID then map[i] = nil end
-	end
+	map[spellID] = true
+	self.offConfirmed[spellID] = true
 
 	local addon = ns.CDM
 	if addon and addon.db then
@@ -1057,26 +1118,36 @@ function Engine:LearnCastDebuff(castID, idx, spellID)
 			saved = {}
 			addon.db.profile.castMap[castID] = saved
 		end
-		saved[idx] = spellID
-		for i, id in pairs(saved) do
-			if i ~= idx and id == spellID then saved[i] = nil end
-		end
+		saved[spellID] = true
 	end
 end
 
 
+-- Called only out of combat now (resolve, reseed, offlearn), where the aura reads plain. In-combat rendering is cast-driven and never touches an aura.
 function Engine:BindAura(inst, spellID, aura, now)
 	-- HARMFUL|PLAYER does not actually mean "cast by me" (sourceUnit is secret), so without this another player's dots on a shared target get adopted. Both booleans stay plain in 12.0 and 12.1.
 	if aura and (aura.isHarmful == false or aura.isFromPlayerOrPlayerPet == false) then return end
+
+	-- The real ours-only gate: the guard above fails open on a swapped-in target's re-read aura, so a dot is adopted only once one of our casts has claimed it (offConfirmed, set in LearnCastDebuff). Every legit path confirms before it binds here.
+	if not self.offConfirmed[spellID] then
+		if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+			ns.CDM:Print(string.format("[offtrace] REJECT-unconfirmed %s(%s)",
+				tostring(GetSpellNameIcon(spellID)), tostring(spellID)))
+		end
+		return
+	end
 
 	-- A control spell's debuff carries the spell's own id (Hammer of Justice 853, Frost Nova 122), and offensives are exempt from the cooldown prune, so the hijacked icon would stick on the lane.
 	if self.trackedSpells[spellID] then return end
 	if not self:IsSpellVisible(spellID, ns.CONST.OFFENSIVE_CATEGORY) then return end
 	if self:IsOffensiveForgotten(spellID) then return end
 
-	self.auraBind[inst] = spellID
-	self.auraPending[inst] = nil
 	self:TrackOffensive(spellID)
+
+	if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+		ns.CDM:Print(string.format("[offtrace] BIND %s(%s) inst=%s",
+			tostring(GetSpellNameIcon(spellID)), tostring(spellID), tostring(inst)))
+	end
 
 	local duration   = aura and PlainOrNil(aura.duration)
 	local expiration = aura and PlainOrNil(aura.expirationTime)
@@ -1087,7 +1158,6 @@ function Engine:BindAura(inst, spellID, aura, now)
 		rec = {}
 		self.auraRec[spellID] = rec
 	end
-	rec.inst = inst
 
 	-- Clamp the start at now: a pandemic roll-over in the future drives remaining/duration above 1 and pins the icon at the lane start.
 	if duration and duration > 0 and expiration then
@@ -1099,62 +1169,70 @@ function Engine:BindAura(inst, spellID, aura, now)
 		rec.start    = now
 		rec.duration = self:BestAuraDuration(spellID)
 	end
+	self._reanchorAt[spellID] = now
+
+	-- Learn the pandemic extension: anything the dot's real length runs past base is the refresh roll, so a later recast reaches the right end. Measured not guessed (a made-up rollover once overstated Judgment by 4.5s), converge-up and capped, under a second is latency.
+	local base = self:BestAuraDuration(spellID)
+	if base and rec.duration then
+		local roll = rec.duration - base
+		if roll >= 1 and roll <= base * PANDEMIC_FRACTION + 0.5 then
+			local cur = self.auraRoll[spellID]
+			if not cur or roll > cur + 0.25 then
+				self.auraRoll[spellID] = roll
+				local a2 = ns.CDM
+				if a2 and a2.db then
+					a2.db.profile.auraRoll = a2.db.profile.auraRoll or {}
+					a2.db.profile.auraRoll[spellID] = roll
+				end
+			end
+		end
+	end
 
 	self:SyncOffensiveEntry(spellID, rec)
 end
 
 
-function Engine:StoreAuraRoll(spellID, roll)
-	if type(roll) ~= "number" or roll < 0 then return end
-	self.auraRoll[spellID] = roll
-	local addon = ns.CDM
-	if addon and addon.db then
-		addon.db.profile.auraRoll = addon.db.profile.auraRoll or {}
-		addon.db.profile.auraRoll[spellID] = roll
-	end
-end
-
-
-function Engine:LearnAuraRoll(spellID, rec, now)
-	local base = self:BestAuraDuration(spellID)
-	if not (base and rec and rec.start) then return end
-
-	local roll = (now - rec.start) - base
-	-- Past the pandemic cap this is a refresh we never saw (a proc, an off-GCD source) sitting on a stale start, and learning from it teaches an ever-growing length.
-	if roll > base * PANDEMIC_FRACTION + 0.5 then return end
-	-- The start is the cast and the debuff lands a moment later, so under a second is latency, not a rollover.
-	if roll < 1 then roll = 0 end
-
-	local cur = self.auraRoll[spellID]
-	if cur and roll <= cur + 0.25 then return end
-	self:StoreAuraRoll(spellID, roll)
-end
-
-
-function Engine:DropAuraInstance(inst, pop)
+-- A removed edge carries no identity (spellId is secret), so it only maintains the live-instance count. Emptying the count means every dot of ours went at once, and OnAllOffensiveInstancesGone decides pop-vs-silent by each entry's own end. forceSilent (a target death) forces silence.
+function Engine:DropAuraInstance(inst, forceSilent)
 	self.auraPending[inst] = nil
-	self.auraOrigin[inst] = nil
-	local spellID = self.auraBind[inst]
-	if not spellID then return end
-	self.auraBind[inst] = nil
+	local wasLive = self._liveInsts[inst]
+	self._liveInsts[inst] = nil
 
-	local rec = self.auraRec[spellID]
-	if rec and rec.inst == inst then
-		-- Only a dot that ran to its own end teaches a length. A dispelled or killed-off one was cut short.
-		if pop then self:LearnAuraRoll(spellID, rec, GetTime()) end
-		self.auraRec[spellID] = nil
+	if self._offTraceUntil and GetTime() < self._offTraceUntil and ns.CDM then
+		ns.CDM:Print(string.format("[offtrace] DROP inst=%s wasLive=%s", tostring(inst), tostring(wasLive)))
 	end
 
-	if pop then
-		self:QueueOffensivePop(spellID)
-	else
-		local e = self.entries[spellID]
-		if e and e._source == "offensive" then self.entries[spellID] = nil end
+	if not wasLive then return end
+	if next(self._liveInsts) == nil then self:OnAllOffensiveInstancesGone(forceSilent) end
+end
+
+
+-- Zero live instances, but identity is secret so we cannot tell how each ended. Decide per entry by its addon-computed endTime: at or past its end pops ready, still short of it is a cut-short (dispel/evade) and drops silently, a just-cast one is kept. A death forces silence. Never ClearOffensiveEntries here - it wipes the pop queue.
+function Engine:OnAllOffensiveInstancesGone(forceSilent)
+	local now = GetTime()
+	for spellID, e in pairs(self.entries) do
+		if e._source == "offensive" then
+			-- Keep a just-cast-rendered entry: its server aura has not registered in the instance list yet, so its absence here is timing, not a strip.
+			local young = e.startTime and (now - e.startTime) < CAST_BIND_WINDOW
+			if forceSilent then
+				self.entries[spellID]    = nil
+				self.auraRec[spellID]    = nil
+				self._reanchorAt[spellID] = nil
+			elseif not young then
+				if e.endTime and now >= e.endTime - EXPIRY_EPS then
+					self:QueueOffensivePop(spellID)   -- leave the entry live, FlushOffensivePops pops and deletes it
+				else
+					self.entries[spellID]    = nil
+					self.auraRec[spellID]    = nil
+					self._reanchorAt[spellID] = nil
+				end
+			end
+		end
 	end
 end
 
 
--- In combat a new debuff's spellId is secret, so identity comes from the cast that just went out plus the order the debuffs arrive in, against a mapping learned where the values read plain.
+-- In combat a debuff's spellId is secret, so nothing is rendered here: rendering is cast-driven (OnCastForAuras). The added edge only maintains the live-instance count and pends the instance so an out-of-combat read can attribute it to the cast that applied it.
 function Engine:BindAddedAuras(added, now)
 	local batch = self._auraBatch or {}
 	self._auraBatch = batch
@@ -1164,46 +1242,39 @@ function Engine:BindAddedAuras(added, now)
 		local a = added[i]
 		if a.isHarmful and a.isFromPlayerOrPlayerPet then
 			batch[#batch + 1] = a
+		elseif self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+			ns.CDM:Print(string.format("[offtrace] SKIP-added harmful=%s fromPlayer=%s",
+				tostring(PlainOrNil(a.isHarmful)), tostring(PlainOrNil(a.isFromPlayerOrPlayerPet))))
 		end
 	end
-	if #batch == 0 then return end
+	local n = #batch
+	if n == 0 then return end
 
 	local castID = self._castID
 	if castID and (now - (self._castAt or 0)) > CAST_BIND_WINDOW then castID = nil end
-	local map = castID and self.castMap[castID] or nil
+	-- Auto-learn only under a cast that was isolated (no other cast within the bind window) and applied one debuff this batch, which excludes the rotation flood that overwrites _castID. Multi-debuff casts learn through /cm offlearn.
+	local solo = castID and self._castSolo and (n == 1) or nil
 
-	for i = 1, #batch do
+	for i = 1, n do
 		local a = batch[i]
 		local inst = PlainOrNil(a.auraInstanceID)
 		if not inst then return end   -- 12.1: no plain handle, so the cast-driven core carries it alone
+		self._liveInsts[inst] = true
 
-		-- The slot counter is per CAST, not per batch: a cast's debuffs can be split across several UNIT_AURA events.
-		local idx
 		if castID then
-			self._castSeq = (self._castSeq or 0) + 1
-			idx = self._castSeq
-		end
-
-		local spellID = PlainOrNil(a.spellId)
-		if spellID then
-			if idx then self:LearnCastDebuff(castID, idx, spellID) end
-			self:BindAura(inst, spellID, a, now)
-			if idx then self.auraOrigin[inst] = { cast = castID, idx = idx } end
-		elseif idx then
-			local known = map and map[idx]
-			self.auraOrigin[inst] = { cast = castID, idx = idx }
-			-- Never hand one spell to two live instances: they collide on the same entry key and the other debuff can never render.
-			if known and not self.auraRec[known] then
-				self:BindAura(inst, known, a, now)
-			else
-				self.auraPending[inst] = { cast = castID, idx = idx }
+			local p = self.auraPending[inst]
+			if not p then p = {}; self.auraPending[inst] = p end
+			p.cast, p.solo = castID, solo
+			if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+				ns.CDM:Print(string.format("[offtrace] PEND inst=%s cast=%s solo=%s",
+					tostring(inst), tostring(GetSpellNameIcon(castID)), tostring(solo)))
 			end
 		end
 	end
 end
 
 
--- Out of combat is the only window where an instance bound blind can say which spell it was, so the cast mapping is learned (and persisted) here.
+-- Out of combat is the only window where a pended instance reads its real spellId. An already-known id just re-renders. A genuinely new id is minted into its cast's set only from a clean solo single-debuff window, else its length is banked and identity waits for a clean window or /cm offlearn.
 function Engine:ResolvePendingAuras()
 	if not next(self.auraPending) then return end
 	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID) then return end
@@ -1215,43 +1286,51 @@ function Engine:ResolvePendingAuras()
 		if ok and type(a) == "table" then
 			local spellID = PlainOrNil(a.spellId)
 			if spellID then
-				self:LearnCastDebuff(p.cast, p.idx, spellID)
-				self:BindAura(inst, spellID, a, now)
+				if self.offConfirmed[spellID] then
+					self:BindAura(inst, spellID, a, now)
+				elseif p.solo then
+					self:LearnCastDebuff(p.cast, spellID)
+					self:BindAura(inst, spellID, a, now)
+				else
+					local dur = PlainOrNil(a.duration)
+					if dur and dur > 0 and not self.trackedSpells[spellID] then
+						self:StoreAuraDuration(spellID, dur)
+					end
+				end
+				self.auraPending[inst] = nil
 			end
 		end
 	end
 end
 
 
--- The live instance list stays plain in combat on 12.0, so a missed removal edge cannot strand an icon. On 12.1 it returns a secret vector, which proves nothing and is dropped.
+-- The live instance list stays plain in combat on 12.0, so a missed removal edge cannot strand the count. Edge-triggered: only a non-empty-to-empty transition clears, so the ~1 Hz sweep landing in the gap between a cast-driven render and its aura registering cannot wipe a just-rendered dot. On 12.1 the list returns a secret vector, which proves nothing and is dropped.
 function Engine:ReconcileTargetAuras()
 	if not (C_UnitAuras and C_UnitAuras.GetUnitAuraInstanceIDs) then return end
-	if not next(self.auraBind) and not next(self.auraPending) then return end
+	if not (next(self.auraRec) or next(self.auraPending) or next(self._liveInsts)) then return end
 
 	local ok, list = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, "target", "HARMFUL|PLAYER")
 	if not ok or PlainOrNil(list) == nil or type(list) ~= "table" then return end
 
-	local live = self._auraLive or {}
-	self._auraLive = live
-	wipe(live)
+	local hadLive = next(self._liveInsts) ~= nil
+	wipe(self._liveInsts)
 	for i = 1, #list do
 		local inst = PlainOrNil(list[i])
-		if inst then live[inst] = true end
+		if inst then self._liveInsts[inst] = true end
 	end
 
-	for inst in pairs(self.auraBind) do
-		if not live[inst] then self:DropAuraInstance(inst, false) end
-	end
 	for inst in pairs(self.auraPending) do
-		if not live[inst] then self.auraPending[inst] = nil end
+		if not self._liveInsts[inst] then self.auraPending[inst] = nil end
 	end
+
+	if hadLive and next(self._liveInsts) == nil then self:OnAllOffensiveInstancesGone(false) end
 end
 
 
 function Engine:HandleTargetAuras(updateInfo)
 	if self.testActive or not self._trackedBuilt then return end
 	if not self:IsCategoryEnabled(ns.CONST.OFFENSIVE_CATEGORY) then
-		if next(self.auraBind) then self:ClearTargetAuras() end
+		if next(self.auraRec) or next(self.auraPending) or next(self._liveInsts) then self:ClearTargetAuras() end
 		return
 	end
 	if not UnitExists("target") or UnitIsDead("target") then
@@ -1259,9 +1338,9 @@ function Engine:HandleTargetAuras(updateInfo)
 		return
 	end
 
-	-- No updateInfo, or a full refresh, means the incremental stream cannot be trusted. Same unit though, so the cast origins stay valid.
+	-- No updateInfo, or a full refresh, means the incremental stream cannot be trusted, so rebuild from the full instance list.
 	if not updateInfo or updateInfo.isFullUpdate then
-		self:ReseedTargetAuras(true)
+		self:ReseedTargetAuras()
 		return
 	end
 
@@ -1274,7 +1353,7 @@ function Engine:HandleTargetAuras(updateInfo)
 		local killed = UnitIsDead("target")
 		for i = 1, #removed do
 			local inst = PlainOrNil(removed[i])
-			if inst then self:DropAuraInstance(inst, not killed) end
+			if inst then self:DropAuraInstance(inst, killed) end
 		end
 	end
 
@@ -1282,40 +1361,75 @@ function Engine:HandleTargetAuras(updateInfo)
 end
 
 
--- A refresh reuses the aura's instance, so no added edge ever fires for it. Our own recast is the only re-anchor signal, and a stack tick cannot fake it.
-function Engine:OnCastForAuras(spellID, now)
-	self._castID, self._castAt = spellID, now
-	self._castSeq = 0
+-- A debuff already mapped under some cast must not be re-learned under whatever cast happens to be current in a readable window - that is exactly how the map got polluted. Hand back the cast that already owns it. castMap is a set, so a direct key lookup finds the owner.
+function Engine:FindMappedOwner(spellID)
+	for cast, map in pairs(self.castMap) do
+		if map[spellID] then return cast end
+	end
+end
 
-	local map = self.castMap[spellID]
-	if not map then return end
-	-- pairs, not 1..#map: the slot-surrender in LearnCastDebuff and the load-time dedupe can leave a hole at index 1, and #{[2]=x} is 0 in Lua 5.1, which would skip every slot.
-	for _, id in pairs(map) do
-		local rec = self.auraRec[id]
-		local base = self:BestAuraDuration(id)
-		if rec and rec.start and base then
-			local remaining = (rec.start + (rec.duration or 0)) - now
-			if remaining < 0 then remaining = 0 end
-			local roll = self.auraRoll[id] or 0
-			if roll > remaining then roll = remaining end
-			rec.start    = now
-			rec.duration = base + roll
-			self:SyncOffensiveEntry(id, rec)
+
+-- Our own recast is the only re-anchor signal a refresh gives (it reuses the instance, so no added edge fires), and it is also what RENDERS a cast's dots: every debuff in the cast's set gets an entry, so co-applied dots (Judgment of Justice + Judgment) both show with the cast's timing and no per-instance identity is needed.
+function Engine:OnCastForAuras(spellID, now)
+	spellID = NormalizeOffensiveCast(spellID)
+
+	-- A different cast within the bind window means this one is not isolated, so a debuff arriving now cannot be safely attributed to it (the rotation-flood case) - only a solo cast auto-teaches a mapping.
+	local prev, prevAt = self._castID, self._castAt
+	self._castSolo = not (prev and prev ~= spellID and (now - (prevAt or 0)) <= CAST_BIND_WINDOW)
+	self._castID, self._castAt = spellID, now
+
+	if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+		ns.CDM:Print(string.format("[offtrace] CAST %s(%s) hasMap=%s solo=%s",
+			tostring(GetSpellNameIcon(spellID)), tostring(spellID),
+			tostring(self.castMap[spellID] ~= nil), tostring(self._castSolo)))
+	end
+
+	local set = self.castMap[spellID]
+	if not set then return end
+
+	-- Debounced (at most once a second) and forward-only (never to an end sooner than it already has) so a burst of proc/Divine-Toll recasts cannot re-stamp a live dot to now every frame and freeze it at the lane start.
+	for id in pairs(set) do
+		if not self.trackedSpells[id]
+			and self:IsSpellVisible(id, ns.CONST.OFFENSIVE_CATEGORY)
+			and not self:IsOffensiveForgotten(id) then
+			local base = self:BestAuraDuration(id)
+			if base then
+				local rec = self.auraRec[id]
+				if not (rec and rec.start) then
+					rec = rec or {}
+					self.auraRec[id] = rec
+					rec.start, rec.duration = now, base
+					self._reanchorAt[id] = now
+					self:SyncOffensiveEntry(id, rec)
+					if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+						ns.CDM:Print(string.format("[offtrace] RENDER %s(%s) by cast %s",
+							tostring(GetSpellNameIcon(id)), tostring(id), tostring(spellID)))
+					end
+				elseif (now - (self._reanchorAt[id] or 0)) >= REANCHOR_DEBOUNCE then
+					local oldEnd = rec.start + (rec.duration or 0)
+					local remaining = oldEnd - now
+					if remaining < 0 then remaining = 0 end
+					local roll = self.auraRoll[id] or 0
+					if roll > remaining then roll = remaining end
+					local newDur = base + roll
+					if now + newDur > oldEnd + REANCHOR_EPS then
+						rec.start, rec.duration = now, newDur
+						self._reanchorAt[id] = now
+						self:SyncOffensiveEntry(id, rec)
+						if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+							ns.CDM:Print(string.format("[offtrace] REANCHOR %s(%s) by cast %s",
+								tostring(GetSpellNameIcon(id)), tostring(id), tostring(spellID)))
+						end
+					end
+				end
+			end
 		end
 	end
 end
 
 
--- sameTarget means a full refresh on the unit we already watch, not a swap: after a swap the cast origins describe the previous target's instances and could teach castMap the wrong slot, which persists.
-function Engine:ReseedTargetAuras(sameTarget)
-	local origin = self._originKeep or {}
-	self._originKeep = origin
-	wipe(origin)
-	if sameTarget then
-		for inst, o in pairs(self.auraOrigin)  do origin[inst] = o end
-		for inst, p in pairs(self.auraPending) do origin[inst] = origin[inst] or p end
-	end
-
+-- A target swap or full refresh: rebuild liveness from the full instance list. Rendering is cast-driven, so nothing is drawn until we next cast - EXCEPT out of combat, where the aura reads plain and a dot we can positively claim can be rehydrated straight onto the lane on a tab-back.
+function Engine:ReseedTargetAuras()
 	self:ClearTargetAuras()
 	if self.testActive or not self._trackedBuilt then return end
 	if not self:IsCategoryEnabled(ns.CONST.OFFENSIVE_CATEGORY) then return end
@@ -1326,19 +1440,17 @@ function Engine:ReseedTargetAuras(sameTarget)
 	local ok, list = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, "target", "HARMFUL|PLAYER")
 	if not ok or PlainOrNil(list) == nil or type(list) ~= "table" then return end
 
-	-- In combat a re-targeted mob's dots cannot be identified (spellId is secret and no cast of ours explains them), so they stay anonymous and render nothing until combat drops.
 	local now = GetTime()
 	for i = 1, #list do
 		local inst = PlainOrNil(list[i])
 		if inst then
+			self._liveInsts[inst] = true
+			-- Adopt on reseed only a dot that is both cast-confirmed and still plainly flagged ours. offConfirmed alone means "a spell we have ever cast", so a second player's identical dot would ride in on a swap. A foreign copy reads isFromPlayerOrPlayerPet=false and is refused. In combat spellId is secret, so PlainOrNil skips it and nothing is adopted.
 			local ok2, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
 			if ok2 and type(a) == "table" then
 				local spellID = PlainOrNil(a.spellId)
-				if spellID then
-					local o = origin[inst]
-					if o then self:LearnCastDebuff(o.cast, o.idx, spellID) end
+				if spellID and self.offConfirmed[spellID] and PlainOrNil(a.isFromPlayerOrPlayerPet) == true then
 					self:BindAura(inst, spellID, a, now)
-					if o then self.auraOrigin[inst] = o end
 				end
 			end
 		end
@@ -1346,27 +1458,12 @@ function Engine:ReseedTargetAuras(sameTarget)
 end
 
 
--- A binding made in combat is a guess from the cast plus the slot order, so re-check it against the aura once that reads plain again or a cast whose debuffs landed out of order stays mislabelled for good.
-function Engine:VerifyBindings()
-	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID) then return end
-	if not next(self.auraBind) then return end
-	if not UnitExists("target") then return end
-
+-- Nothing time-prunes an offensive entry (the lane keeps showing it parked at the ready edge), so once its cast-anchored end passes, queue the ready pop. FlushOffensivePops (every tick) does the pop and delete, and its start-time guard suppresses one a recast re-anchored in between.
+function Engine:SweepOffensiveExpiry()
 	local now = GetTime()
-	for inst, bound in pairs(self.auraBind) do
-		local ok, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
-		if ok and type(a) == "table" then
-			local truth = PlainOrNil(a.spellId)
-			if truth and truth ~= bound then
-				local o = self.auraOrigin[inst]
-				if o then self:LearnCastDebuff(o.cast, o.idx, truth) end
-
-				local e = self.entries[bound]
-				if e and e._source == "offensive" then self.entries[bound] = nil end
-				self.auraRec[bound] = nil
-
-				self:BindAura(inst, truth, a, now)
-			end
+	for spellID, e in pairs(self.entries) do
+		if e._source == "offensive" and e.endTime and now >= e.endTime then
+			self:QueueOffensivePop(spellID)
 		end
 	end
 end
@@ -1374,12 +1471,110 @@ end
 
 function Engine:ScanOffensivesRetail()
 	if not UnitExists("target") or UnitIsDead("target") then
-		if next(self.auraBind) or next(self.auraPending) then self:ClearTargetAuras() end
+		if next(self.auraRec) or next(self.auraPending) or next(self._liveInsts) then self:ClearTargetAuras() end
 		return
 	end
 	self:ResolvePendingAuras()
-	self:VerifyBindings()
 	self:ReconcileTargetAuras()
+	self:SweepOffensiveExpiry()
+end
+
+
+-- Guided bootstrap for a multi-debuff cast the automatic path will not mint. The user declares the cast by casting it, we capture the debuffs it applies, and out of combat (where ids read plain) we set-add them - deterministic because the cast is declared. Retail-only, self-disabling on 12.1 where instance ids are secret.
+function Engine:OnOffLearnCast(spellID)
+	spellID = NormalizeOffensiveCast(spellID)
+	if self._offLearnCast then return end   -- one ability per combat: ignore stray casts so their dots are not misattributed
+	self._offLearnCast = spellID
+	wipe(self._offLearnInsts)
+	if ns.CDM then
+		ns.CDM:Print(string.format("|cff00ff00offlearn:|r watching %s. Let its dots tick, then stop and let combat drop.",
+			tostring(GetSpellNameIcon(spellID))))
+	end
+end
+
+
+function Engine:CollectOffLearnAuras(updateInfo)
+	if not (self._offLearnCast and updateInfo and updateInfo.addedAuras) then return end
+	local added = updateInfo.addedAuras
+	for i = 1, #added do
+		local a = added[i]
+		if a.isHarmful and a.isFromPlayerOrPlayerPet then
+			local inst = PlainOrNil(a.auraInstanceID)
+			if inst then
+				self._offLearnInsts[inst] = true
+			else
+				self._offLearnSawSecretInst = true   -- 12.1: no plain instance id to capture
+			end
+		end
+	end
+end
+
+
+function Engine:OnOffLearnTargetChanged()
+	self._offLearnCast = nil
+	wipe(self._offLearnInsts)
+	if ns.CDM then
+		ns.CDM:Print("offlearn: target changed mid-learn - re-cast that ability on the new target.")
+	end
+end
+
+
+function Engine:FinalizeOffLearn()
+	local cast = self._offLearnCast
+	self._offLearnCast = nil
+	if not cast then wipe(self._offLearnInsts); return end
+	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID and UnitExists("target")) then
+		wipe(self._offLearnInsts)
+		return
+	end
+
+	local learned, names = 0, nil
+	for inst in pairs(self._offLearnInsts) do
+		local ok, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
+		if ok and type(a) == "table" then
+			local spellID = PlainOrNil(a.spellId)
+			if spellID and not self.trackedSpells[spellID] then
+				self:LearnCastDebuff(cast, spellID, true)
+				local dur = PlainOrNil(a.duration)
+				if dur and dur > 0 then self:StoreAuraDuration(spellID, dur) end
+				if self.offConfirmed[spellID] then
+					learned = learned + 1
+					names = (names and names .. ", " or "") .. tostring(GetSpellNameIcon(spellID))
+				end
+			end
+		end
+	end
+	wipe(self._offLearnInsts)
+
+	local cdm = ns.CDM
+	if not cdm then return end
+	if learned > 0 then
+		if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
+		cdm:Print(string.format("|cff00ff00offlearn:|r learned %s -> %s. Still armed - cast the next ability, or /cm offlearn stop.",
+			tostring(GetSpellNameIcon(cast)), names))
+	elseif self._offLearnSawSecretInst then
+		self._offLearnArmed = false
+		self._offLearnSawSecretInst = false
+		cdm:Print("offlearn: this client keeps aura instance ids secret, so guided learning cannot read them. Disarmed.")
+	else
+		cdm:Print("offlearn: could not read that dot yet. Recast it, let it tick, then stop and let combat drop. Still armed.")
+	end
+end
+
+
+function Engine:StartOffLearn()
+	self._offLearnArmed = true
+	self._offLearnCast = nil
+	self._offLearnSawSecretInst = false
+	wipe(self._offLearnInsts)
+end
+
+
+function Engine:StopOffLearn()
+	self._offLearnArmed = false
+	self._offLearnCast = nil
+	self._offLearnSawSecretInst = false
+	wipe(self._offLearnInsts)
 end
 
 
@@ -1824,12 +2019,14 @@ function Engine:ResetOffensiveLearning()
 	local cdm = ns.CDM
 	if not (cdm and cdm.Print) then return end
 
+	self:StopOffLearn()
 	self:ClearTargetAuras()
 	wipe(self.trackedOffensives)
 	wipe(self.auraDurations)
 	wipe(self.auraObserved)
 	wipe(self.auraRoll)
 	wipe(self.castMap)
+	wipe(self.offConfirmed)
 
 	local addon = ns.CDM
 	if addon and addon.db then
@@ -1846,11 +2043,10 @@ end
 
 local function purgeCastMap(store, spellID)
 	for castID, map in pairs(store) do
-		local remaining = false
-		for idx, id in pairs(map) do
-			if id == spellID then map[idx] = nil else remaining = true end
+		if map[spellID] then
+			map[spellID] = nil
+			if not next(map) then store[castID] = nil end
 		end
-		if not remaining then store[castID] = nil end
 	end
 end
 
@@ -1871,7 +2067,6 @@ function Engine:ForgetOffensive(spellID)
 
 	-- A copy still ticking on the target gets re-read off the unit and re-adopted (and re-persisted) with no new cast, so hold this id off re-adoption until that live copy must have expired. Nothing live means no window.
 	local rec = self.auraRec[spellID]
-	local recInst = rec and rec.inst
 	if rec and rec.start and rec.duration then
 		local remaining = (rec.start + rec.duration) - GetTime()
 		if remaining > 0 then self.ignoredOffUntil[spellID] = GetTime() + remaining + 2 end
@@ -1888,19 +2083,8 @@ function Engine:ForgetOffensive(spellID)
 	if e and e._source == "offensive" then self.entries[spellID] = nil end
 
 	purgeCastMap(self.castMap, spellID)
-
-	-- Drop the live binding plus the cast-origin it re-teaches from, or the next reseed writes the mapping straight back.
-	for inst, id in pairs(self.auraBind) do
-		if id == spellID then
-			self.auraBind[inst]    = nil
-			self.auraOrigin[inst]  = nil
-			self.auraPending[inst] = nil
-		end
-	end
-	if recInst then
-		self.auraOrigin[recInst]  = nil
-		self.auraPending[recInst] = nil
-	end
+	self.offConfirmed[spellID] = nil
+	-- _liveInsts is target-wide with no identity, so it cannot be pruned per spell and is left to the next reconcile. The IsOffensiveForgotten cutoff above is what keeps a still-live copy off the lane until it expires.
 
 	for _, byID in pairs(debuffs) do byID[spellID] = nil end
 
@@ -1962,32 +2146,48 @@ function Engine:RunOffensiveDump()
 
 	if not ns.Compat.HAS_COMBAT_LOG then
 		cdm:Print("Source: |cff00ff00cast-driven|r (the combat log is forbidden on this flavor)")
+		local nLive = 0
+		for _ in pairs(self._liveInsts) do nLive = nLive + 1 end
+		cdm:Print(string.format("  live harmful-player instances on target: %d%s", nLive,
+			self._offLearnArmed and string.format("  |cff00ff00[offlearn armed, watching %s]|r",
+				self._offLearnCast and tostring(GetSpellNameIcon(self._offLearnCast)) or "next cast") or ""))
+
 		local n2 = 0
-		for inst, spellID in pairs(self.auraBind) do
+		for spellID, rec in pairs(self.auraRec) do
 			n2 = n2 + 1
-			local rec = self.auraRec[spellID]
-			cdm:Print(string.format("  bound inst=%s -> [%d] %s | start=%.1fs-ago dur=%s",
-				tostring(inst), spellID, tostring((self.trackedOffensives[spellID] or {}).name),
+			cdm:Print(string.format("  rendered [%d] %s | start=%.1fs-ago dur=%s",
+				spellID, tostring((self.trackedOffensives[spellID] or {}).name),
 				GetTime() - ((rec and rec.start) or GetTime()), tostring(rec and rec.duration)))
 		end
-		if n2 == 0 then cdm:Print("  no bound aura instances on this target") end
+		if n2 == 0 then cdm:Print("  no rendered dots on this target") end
 
 		local n3 = 0
 		for inst, p in pairs(self.auraPending) do
 			n3 = n3 + 1
-			cdm:Print(string.format("  |cffffff00unresolved|r inst=%s from cast %s (slot %s) - needs an out-of-combat look",
-				tostring(inst), tostring(p.cast), tostring(p.idx)))
+			cdm:Print(string.format("  |cffffff00unresolved|r inst=%s from cast %s solo=%s - needs an out-of-combat look",
+				tostring(inst), tostring(p.cast and GetSpellNameIcon(p.cast) or "none"), tostring(p.solo)))
 		end
-		if n3 > 0 then cdm:Print("  (unresolved instances render nothing until their spell is known)") end
+		if n3 > 0 then cdm:Print("  (unresolved instances are learnt out of combat; multi-debuff casts need /cm offlearn)") end
 
 		local n4 = 0
 		for castID, map in pairs(self.castMap) do
 			n4 = n4 + 1
 			local parts = {}
-			for idx, id in pairs(map) do parts[#parts + 1] = string.format("%s=%s", tostring(idx), tostring(id)) end
-			cdm:Print(string.format("  castMap [%s] -> %s", tostring(castID), table.concat(parts, ", ")))
+			for id in pairs(map) do parts[#parts + 1] = string.format("%s(%s)", tostring(GetSpellNameIcon(id)), tostring(id)) end
+			cdm:Print(string.format("  castMap [%s %s] -> %s", tostring(castID),
+				tostring(GetSpellNameIcon(castID)), table.concat(parts, ", ")))
 		end
-		if n4 == 0 then cdm:Print("  castMap is EMPTY (no cast has been matched to its debuffs yet)") end
+		if n4 == 0 then cdm:Print("  castMap is EMPTY (no cast has been matched to its debuffs yet - try /cm offlearn)") end
+
+		local confirmed = {}
+		for spellID in pairs(self.offConfirmed) do
+			confirmed[#confirmed + 1] = string.format("%s(%d)", tostring(GetSpellNameIcon(spellID)), spellID)
+		end
+		if #confirmed > 0 then
+			cdm:Print("  offConfirmed (cast-confirmed, allowed to render): " .. table.concat(confirmed, ", "))
+		else
+			cdm:Print("  offConfirmed is EMPTY")
+		end
 	end
 
 	local guid = (ns.Compat.HAS_COMBAT_LOG and UnitGUID) and UnitGUID("target") or nil
@@ -3309,6 +3509,16 @@ function Engine:Start(addon)
 		f:RegisterEvent("PLAYER_TARGET_CHANGED")
 		f:SetScript("OnEvent", function(_, event, unit, updateInfo)
 			if Engine._auraProbeUntil then Engine:ProbeAuraUpdate(unit, updateInfo) end
+
+			-- Guided-learn capture runs ahead of the Test Mode and category gates so a one-time bootstrap works whatever the filter state.
+			if not ns.Compat.HAS_COMBAT_LOG and Engine._offLearnCast then
+				if event == "PLAYER_TARGET_CHANGED" then
+					Engine:OnOffLearnTargetChanged()
+				else
+					Engine:CollectOffLearnAuras(updateInfo)
+				end
+			end
+
 			if Engine.testActive then return end
 
 			-- Retail reads the aura stream itself: the instance handles stay plain in combat, and they are the only edge signal left now that the combat log is forbidden.
@@ -3343,7 +3553,7 @@ function Engine:Start(addon)
 			if event == "PLAYER_REGEN_ENABLED" then
 				if not ns.Compat.HAS_COMBAT_LOG then
 					Engine:ResolvePendingAuras()
-					Engine:VerifyBindings()
+					if Engine._offLearnCast then Engine:FinalizeOffLearn() end
 					return
 				end
 				Engine:ResetAuraLog()
@@ -3408,6 +3618,7 @@ function Engine:Start(addon)
 			end
 			if isPlayer and not p.lastSecret and not ns.Compat.HAS_COMBAT_LOG then
 				Engine:OnCastForAuras(spellID, GetTime())
+				if Engine._offLearnArmed then Engine:OnOffLearnCast(spellID) end
 			end
 			ScheduleDeferredScan()
 		end)
@@ -3470,6 +3681,86 @@ function Engine:Start(addon)
 		self.tickFrame = f
 	end
 
+end
+
+
+-- Snapshot the Cooldown Viewer scan the way BuildTrackedSpells reads it, then the live tracked -> entry -> visible chain, so an intermittent missing icon can be READ instead of guessed. Run it out of combat with the target dummy up, once while both icons show and once while one is missing, and diff the two.
+function Engine:RunCooldownViewerDump()
+	local cdm = ns.CDM
+	if not (cdm and cdm.Print) then return end
+	if not ns.Compat.HAS_BLIZZ_CDM then
+		cdm:Print("cdv dump is retail-only (Classic has no Cooldown Viewer).")
+		return
+	end
+	if not (C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCategorySet
+		and C_CooldownViewer.GetCooldownViewerCooldownInfo) then
+		cdm:Print("C_CooldownViewer is unavailable.")
+		return
+	end
+
+	local function nameOf(id)
+		if not id or id == 0 then return "-" end
+		return string.format("%s(%d)", tostring(GetSpellNameIcon(id)), id)
+	end
+
+	cdm:Print("|cff00ff00--- Cooldown Viewer rows (what BuildTrackedSpells scans) ---|r")
+	-- effectiveID -> the first cooldownID that claimed the trackedSpells key. A later row landing on the same key is the one the dedupe silently drops.
+	local claimed = {}
+	local collisions = 0
+	for category = 0, 3 do
+		local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category)
+		if ok and type(ids) == "table" then
+			for _, cooldownID in ipairs(ids) do
+				local infoOk, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, cooldownID)
+				if infoOk and type(info) == "table" then
+					local spellID  = PlainOrNil(info.spellID)
+					local override = PlainOrNil(info.overrideSpellID)
+					local live
+					if spellID and C_Spell and C_Spell.GetOverrideSpell then
+						local okL, l = pcall(C_Spell.GetOverrideSpell, spellID)
+						if okL then live = PlainOrNil(l) end
+					end
+					local eff     = spellID and ResolveEffectiveID(info) or nil
+					local hidden  = IsHiddenRow(info)
+					local skipped = (info.isKnown == false) or hidden
+
+					local tags = ""
+					if info.isKnown == false then tags = tags .. " |cffff5555NOT-KNOWN|r" end
+					if hidden then tags = tags .. " |cffff5555HIDDEN|r" end
+					if eff and not skipped then
+						if claimed[eff] then
+							collisions = collisions + 1
+							tags = tags .. string.format(" |cffff5555COLLIDES w/ cd#%d -> DROPPED|r", claimed[eff])
+						else
+							claimed[eff] = cooldownID
+						end
+					end
+
+					cdm:Print(string.format("cat%d cd#%d %s ovr=%s live=%s eff=%s%s",
+						category, cooldownID, nameOf(spellID), nameOf(override), nameOf(live),
+						nameOf(eff), tags))
+				end
+			end
+		end
+	end
+	cdm:Print(string.format("Effective-ID collisions this scan: %s",
+		collisions == 0 and "|cff00ff00none|r"
+		or string.format("|cffff5555%d|r (a DROPPED row never reaches a lane)", collisions)))
+
+	cdm:Print("|cff00ff00--- live tracked -> entry -> visible ---|r")
+	local now = GetTime()
+	for id, t in pairs(self.trackedSpells) do
+		local e = self.entries[id]
+		local vis = self:IsSpellVisible(id, t.category)
+		if e then
+			cdm:Print(string.format("  %s cat=%s lane=%s vis=%s | ENTRY src=%s start=%.1fs-ago dur=%.1f ends-in=%.1f",
+				nameOf(id), tostring(t.category), tostring(e.laneIndex), tostring(vis),
+				tostring(e._source), now - (e.startTime or now), e.duration or 0, (e.endTime or now) - now))
+		else
+			cdm:Print(string.format("  %s cat=%s vis=%s | no entry",
+				nameOf(id), tostring(t.category), tostring(vis)))
+		end
+	end
 end
 
 

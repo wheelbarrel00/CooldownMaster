@@ -2010,6 +2010,27 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		top = top - 26
 	end
 
+	-- Onboarding for a /cm command (no control to hang a tooltip on), so it lives on the panel like the custom-form hint.
+	if categoryKey == "offensives" then
+		local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		title:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		title:SetText("Learning your offensives")
+		title:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+		top = top - 18
+
+		local body = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		body:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		body:SetWidth(parent:GetWidth() - pad * 2 - 20)
+		body:SetJustifyH("LEFT")
+		body:SetTextColor(0.7, 0.7, 0.7)
+		if ns.Compat.HAS_COMBAT_LOG then
+			body:SetText("Your damage-over-time effects are detected automatically as you apply them to a target - nothing to set up.")
+		else
+			body:SetText("The game hides a debuff's identity in combat, so CooldownMaster learns your dots out of combat:\n1. Type /cm offlearn\n2. Cast one dot ability, then stop and let combat end (about 6 seconds)\n3. It learns that ability's debuffs and lists them - repeat for each ability\n4. Type /cm offlearn stop when finished\nSingle dots also learn on their own after one isolated cast.")
+		end
+		top = top - (body:GetStringHeight() + 12)
+	end
+
 	local engine = ns.Engine
 	local matches = {}
 	if engine and engine.trackedSpells then
@@ -2125,6 +2146,7 @@ local function NewCustomDef()
 		durationMs  = 30000,
 		enabled     = true,
 	}
+	return id
 end
 
 
@@ -2133,6 +2155,7 @@ local function DeleteCustomDef(id)
 	if p.customCooldowns and p.customCooldowns.defs then p.customCooldowns.defs[id] = nil end
 	if p.spellOverrides then p.spellOverrides[id] = nil end
 	if ns.Engine and ns.Engine.entries then ns.Engine.entries[id] = nil end
+	if filtersState.customSelected == id then filtersState.customSelected = nil end
 end
 
 
@@ -2151,6 +2174,12 @@ local function RefreshCustomForm()
 		end
 		if filtersState._refresh and filtersState.selectedSubTab == "custom" then
 			filtersState._refresh()
+
+			-- Opening an editor (Edit or Add) scrolls to it - read after the rebuild set customEditorY - instead of holding the old position, so a long list does not leave it below the fold.
+			if filtersState.customScrollToEditor then
+				filtersState.customScrollToEditor = nil
+				if filtersState.customEditorY then offset = math.max(0, filtersState.customEditorY - 30) end
+			end
 
 			local surf = filtersState.formFrames["custom"]
 			if surf and offset > 0 then
@@ -2337,6 +2366,65 @@ local function BuildCustomDefBlock(parent, def, y)
 end
 
 
+-- One compact line per custom cooldown: icon, name, an inline on/off toggle, and Edit / delete. Edit opens its full editor below (only one at a time), so a long list of customs no longer stacks a tall editor each.
+local function BuildCustomListRow(parent, def, y, selected)
+	local W = ns.Widgets
+	local pad, rowH = 12, 22
+	local id = def.id
+
+	local icon = parent:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(rowH, rowH)
+	icon:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+	icon:SetTexture(def.icon or 134400)
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+	local del = W.CreateButton(parent, {
+		label = "X", width = 24, tooltip = "Remove this custom cooldown.",
+		onClick = function() StaticPopup_Show("COOLDOWNMASTER_DELETE_CUSTOM", nil, nil, id) end,
+	})
+	del:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -pad, y + 1)
+
+	local edit = W.CreateButton(parent, {
+		label = selected and "Editing" or "Edit", width = 62,
+		onClick = function()
+			local opening = filtersState.customSelected ~= id
+			filtersState.customSelected = opening and id or nil
+			if opening then filtersState.customScrollToEditor = true end
+			RefreshCustomForm()
+		end,
+	})
+	edit:SetPoint("TOPRIGHT", del, "TOPLEFT", -6, 0)
+
+	local toggle = W.CreateButton(parent, {
+		label = (def.enabled ~= false) and "On" or "Off", width = 42,
+		tooltip = "Toggle this custom cooldown on or off without opening it.",
+		onClick = function()
+			def.enabled = (def.enabled == false)
+			if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
+			if def.enabled == false and ns.Engine and ns.Engine.entries then ns.Engine.entries[id] = nil end
+			RefreshCustomForm()
+		end,
+	})
+	toggle:SetPoint("TOPRIGHT", edit, "TOPLEFT", -6, 0)
+
+	local name = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	name:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+	name:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
+	name:SetJustifyH("LEFT")
+	name:SetWordWrap(false)
+	name:SetText(def.name or "Custom")
+	if selected then
+		name:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
+	elseif def.enabled == false then
+		name:SetTextColor(0.5, 0.5, 0.5)
+	else
+		name:SetTextColor(1, 1, 1)
+	end
+
+	return y - rowH - 6
+end
+
+
 local function BuildFiltersCustomForm(parent)
 	local W = ns.Widgets
 	local pad, rowGap = 12, 10
@@ -2354,22 +2442,45 @@ local function BuildFiltersCustomForm(parent)
 	hint:SetJustifyH("LEFT")
 	place(hint, 32)
 
-	place(W.CreateButton(parent, {
-		label = "Add Custom Cooldown", width = 200,
-		tooltip = "Create a new custom cooldown, then set its trigger and duration below.",
-		onClick = function() NewCustomDef(); RefreshCustomForm() end,
-	}), 24)
-
 	local ids, store = SortedCustomDefs()
+
 	if #ids == 0 then
 		local none = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		none:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
-		none:SetText("No custom cooldowns yet.")
+		none:SetText("No custom cooldowns yet. Add one below.")
 		y = y - 20 - rowGap
 	else
 		for _, id in ipairs(ids) do
-			y = BuildCustomDefBlock(parent, store.defs[id], y)
+			y = BuildCustomListRow(parent, store.defs[id], y, filtersState.customSelected == id)
 		end
+		y = y - 4
+	end
+
+	place(W.CreateButton(parent, {
+		label = "Add Custom Cooldown", width = 200,
+		tooltip = "Create a new custom cooldown - its editor opens below so you can set its trigger and duration.",
+		onClick = function()
+			filtersState.customSelected = NewCustomDef()
+			filtersState.customScrollToEditor = true
+			RefreshCustomForm()
+		end,
+	}), 24)
+
+	local sel = filtersState.customSelected
+	if sel and store.defs[sel] then
+		filtersState.customEditorY = math.abs(y)
+		local divider = parent:CreateTexture(nil, "ARTWORK")
+		divider:SetHeight(1)
+		divider:SetColorTexture(1, 1, 1, 0.08)
+		divider:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		divider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -pad, y)
+		y = y - 8
+		y = BuildCustomDefBlock(parent, store.defs[sel], y)
+	elseif #ids > 0 then
+		local tip = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		tip:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
+		tip:SetText("Select a custom cooldown above to edit it.")
+		y = y - 20 - rowGap
 	end
 
 	parent:SetHeight(math.abs(y) + pad)

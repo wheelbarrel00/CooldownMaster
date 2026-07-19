@@ -329,6 +329,16 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "off arm" then
+		if ns.Compat.HAS_COMBAT_LOG then
+			self:Print("off trace is retail-only (Classic offensives run off the combat log, not the cast-driven binder).")
+		elseif ns.Engine then
+			ns.Engine._offTraceUntil = GetTime() + 20
+			self:Print("|cff00ff00off trace armed 20s.|r Run your FULL rotation on the target now. Watching CAST / RENDER / REANCHOR / PEND / DROP / BIND for the offensive binder.")
+		else
+			self:Print("Engine not loaded.")
+		end
+
 	elseif input == "tagprobe" then
 		if ns.RunTagProbe then
 			ns.RunTagProbe()
@@ -353,6 +363,26 @@ function CDM:OnSlash(input)
 	elseif input == "offreset" then
 		if ns.Engine and ns.Engine.ResetOffensiveLearning then
 			ns.Engine:ResetOffensiveLearning()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "offlearn" then
+		if ns.Compat.HAS_COMBAT_LOG then
+			self:Print("Guided offensive learning is retail-only (Classic reads debuffs straight off the combat log).")
+		elseif not ns.Engine then
+			self:Print("Engine not loaded.")
+		elseif ns.Engine.testActive then
+			self:Print("Exit Test Mode first, then run /cm offlearn.")
+		else
+			ns.Engine:StartOffLearn()
+			self:Print("|cff00ff00Offensive learn armed.|r Target a dummy, cast ONE dot ability, then STOP and let combat drop (~6s) so I can read what it applied. Repeat for each ability. A /reload or logout cancels it - just run /cm offlearn again. /cm offlearn stop to end.")
+		end
+
+	elseif input == "offlearn stop" then
+		if ns.Engine and ns.Engine.StopOffLearn then
+			ns.Engine:StopOffLearn()
+			self:Print("Offensive learn stopped.")
 		else
 			self:Print("Engine not loaded.")
 		end
@@ -401,6 +431,13 @@ function CDM:OnSlash(input)
 			ns.Engine._traceUntil = GetTime() + 12
 			wipe(ns.Engine._traceState)
 			self:Print("anchor trace armed 12s -- legend: A/a=isActive G/g=onGCD V/v=active E/e=entry M/m=multiCharge")
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "cdv" then
+		if ns.Engine and ns.Engine.RunCooldownViewerDump then
+			ns.Engine:RunCooldownViewerDump()
 		else
 			self:Print("Engine not loaded.")
 		end
@@ -491,7 +528,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | auraprobe | auraapi | offreset | tagprobe | items | buffs | anchor | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | items | buffs | anchor | cdv | spells | haste | tracking")
 	end
 end
 

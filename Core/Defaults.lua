@@ -280,7 +280,7 @@ ns.DEFAULTS = {
 	-- spellOverrides[spellID] = { visible, lane, bar, readyBox, important, pinned }. A nil field falls back to the category default.
 	spellOverrides = {},
 
-	-- castMap[castSpellID] = { debuffSpellID, ... } in land order. Learned at runtime - retail never reports which debuff a cast applied.
+	-- castMap[castSpellID] = { [debuffSpellID] = true }, an unordered set. Learned at runtime - retail never reports in combat which debuff a cast applied.
 	castMap = {},
 
 	-- auraRoll[spellID] = extra seconds a refresh adds on top of the base length. Measured at runtime, never assumed.

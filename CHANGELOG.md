@@ -1,5 +1,21 @@
 # Cooldown Master Changelog
 
+## 1.4.0 (2026-07-19) — Offensives leak fixed, guided dot learning, and a custom-cooldown list
+
+### Bug Fixes
+
+- **Offensives no longer pick up other players' damage-over-time effects.** This is the raid leak from 1.3.0's Known Issues — target a mob other people have already dotted and their Flame Shock or Ignite could land in your Filters > Offensives list. A dot now only enters your list once one of *your own* casts has claimed it, so someone else's dots stay out even on a shared target. Anything already collected clears itself on your next login, or `/cm offreset` wipes it now.
+- **Offensive dots track more cleanly under a busy rotation.** The way a dot is matched to the ability that applied it was reworked, so dots learned mid-fight no longer intermittently vanish, freeze at the start of the lane, or double up — which mostly showed on abilities that apply more than one debuff at once.
+
+### New Features
+
+- **`/cm offlearn` — a guided way to teach your dots.** Because the game hides a debuff's identity in combat, Offensives are learned out of combat. Type `/cm offlearn`, cast one dot ability, then stop and let combat end — it reads what that ability applied, learns it, and tells you what it learned. Repeat for each ability, then `/cm offlearn stop`. Especially handy for an ability that applies more than one debuff at once. Retail only — on the Classic flavors dots are still detected automatically.
+
+### Improvements
+
+- **Custom cooldowns are a clean list now.** After a few of them the old layout stacked into a long scroll. They now show as a compact list — icon, name, an on/off toggle, Edit and a delete button on each row — and only the one you're editing opens its full editor below. Adding one opens its editor straight away. Filters > Custom.
+- **The Offensives tab explains how to learn your dots**, with the `/cm offlearn` steps right there on the panel.
+
 ## 1.3.0 (2026-07-17) — Masque, ready box text, and a new default layout
 
 ### Changed Defaults
