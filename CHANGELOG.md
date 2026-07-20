@@ -1,5 +1,15 @@
 # Cooldown Master Changelog
 
+## 1.4.1 (2026-07-20) — Custom Detect fills in the buff's duration
+
+### Bug Fixes
+
+- **The Detect button on a custom cooldown now fills in the buff's real duration** instead of always defaulting to 30 seconds. It already had the value from the buff you gained — it just wasn't using it. On Classic the duration reads straight off the buff, and on retail it fills in whenever the game will let an addon read it.
+
+### Thanks
+
+- **Dr. Hangover** — for spotting that the custom Detect button was ignoring the buff's duration.
+
 ## 1.4.0 (2026-07-19) — Offensives leak fixed, guided dot learning, and a custom-cooldown list
 
 ### Bug Fixes

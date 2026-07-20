@@ -2271,15 +2271,17 @@ local function BuildCustomDefBlock(parent, def, y)
 	if isAura and ns.Engine and ns.Engine.ArmAuraCapture then
 		local detect = W.CreateButton(parent, {
 			label = "Detect", width = 90,
-			tooltip = "Click, then gain the buff in-game within 15 seconds - CDM fills in its ID, name, and icon.",
+			tooltip = "Click, then gain the buff in-game within 15 seconds - CDM fills in its ID, name, icon and duration.",
 			onClick = function(self2)
 				self2:SetLabel("Gain a buff...")
-				ns.Engine:ArmAuraCapture(function(spellID, name, icon)
+				ns.Engine:ArmAuraCapture(function(spellID, name, icon, duration)
 					def.triggerID = spellID
 					if icon then def.icon = icon end
 					if name and (not def.name or def.name == "" or def.name == "New Custom") then
 						def.name = name
 					end
+					-- 0 is a permanent buff, so only a real timer overrides the default
+					if duration and duration > 0 then def.durationMs = math.floor(duration * 1000 + 0.5) end
 					RefreshCustomForm()
 				end)
 				C_Timer.After(15, function()

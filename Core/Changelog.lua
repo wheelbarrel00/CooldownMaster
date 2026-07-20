@@ -2,6 +2,18 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.4.1",
+		date = "2026-07-20",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"The Detect button on a custom cooldown now fills in the buff's real duration instead of always defaulting to 30 seconds. It already had the value from the buff you gained, it just was not using it. On Classic the duration reads straight off the buff, and on retail it fills in whenever the game will let an addon read it.",
+			} },
+			{ head = "Thanks", items = {
+				"Dr. Hangover - for spotting that the custom Detect button was ignoring the buff's duration.",
+			} },
+		},
+	},
+	{
 		version = "1.4.0",
 		date = "2026-07-19",
 		sections = {

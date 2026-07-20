@@ -3276,12 +3276,12 @@ function Engine:PollAuraCapture()
 	local snap = self._auraCaptureSnap
 	local i = 1
 	while true do
-		local present, name, spellID, _, icon = GetPlayerBuff(i)
+		local present, name, spellID, duration, icon = GetPlayerBuff(i)
 		if not present then break end
 		if spellID and not (snap and snap[spellID]) then
 			local cb = self._auraCaptureCb
 			self:CancelAuraCapture()
-			if cb then cb(spellID, name, icon) end
+			if cb then cb(spellID, name, icon, duration) end
 			return
 		end
 		i = i + 1
