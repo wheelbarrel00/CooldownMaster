@@ -166,6 +166,10 @@ function CDM:ApplyProfile()
 	if ns.Engine and ns.Engine.RebuildOffensiveEntries then
 		ns.Engine:RebuildOffensiveEntries()
 	end
+	-- The tracked set is spellbook-derived so a profile switch never rebuilds it, which would leave the old profile's buff trackers behind. Reconcile them against the new profile (Classic-gated inside).
+	if ns.Engine and ns.Engine.ApplyBuffTracking then
+		ns.Engine:ApplyBuffTracking()
+	end
 	for i = 1, 3 do
 		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
 		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
@@ -344,6 +348,25 @@ function CDM:OnSlash(input)
 			ns.RunTagProbe()
 		else
 			self:Print("Tags not loaded.")
+		end
+
+	elseif input == "masque" then
+		if not ns.Masque_Report then
+			self:Print("Masque module not loaded.")
+		else
+			local r = ns.Masque_Report()
+			if not r.hasMasque then
+				self:Print("Masque not detected. Enable Masque (it must load before CooldownMaster), then /reload.")
+			else
+				self:Print("Masque detected. Groups:")
+				for _, s in ipairs({ "lane", "ready", "bar" }) do
+					local g = r.groups[s]
+					if g then
+						self:Print(("  %s - %s (%d buttons)"):format(g.name, g.created and "registered" or "not created", g.buttons))
+					end
+				end
+				self:Print("Open Masque and look for CooldownMaster under Skin Settings.")
+			end
 		end
 
 	elseif input == "auraprobe" then
@@ -528,7 +551,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | items | buffs | anchor | cdv | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | buffs | anchor | cdv | spells | haste | tracking")
 	end
 end
 

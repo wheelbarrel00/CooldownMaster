@@ -1841,6 +1841,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if info.kind == "item" then
 			if info.link then GameTooltip:SetHyperlink(info.link) else GameTooltip:SetItemByID(spellID) end
+		elseif info.buffSpellID then
+			GameTooltip:SetSpellByID(info.buffSpellID)
 		elseif spellID >= ns.CONST.CUSTOM_ID_BASE then
 			GameTooltip:SetText(info.name or "Cooldown", 1, 1, 1)
 			GameTooltip:AddLine("Custom cooldown", 0.6, 0.6, 0.6)
@@ -1952,6 +1954,22 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		del:SetPoint("LEFT", fdd.box, "RIGHT", 8, 0)   -- to fdd.box, not fdd - the dropdown's box sits below its label, so the padded frame center rides high
 	end
 
+	-- Classic only: a cooldown spell that also grants a self-buff can show a second icon that times the buff. Retail buffs are secret in combat, so the option is not offered there.
+	if not ns.Compat.HAS_BLIZZ_CDM and (info.category == 0 or info.category == 1) then
+		local bcb = W.CreateCheckbox(row, {
+			label = "",
+			checked = (override and override.trackBuff) and true or false,
+			tooltip = "Also track this spell's buff. Adds a second icon that counts down how long the buff lasts, separate from the cooldown. Off by default - leave it off for spells that do not give you a buff.",
+			onChange = function(v)
+				SetSpellOverride(spellID, "trackBuff", v or nil)
+				if ns.Engine and ns.Engine.RefreshBuffTracking then ns.Engine:RefreshBuffTracking(spellID) end
+			end,
+		})
+		bcb:SetPoint("LEFT", fdd.box, "RIGHT", 8, 0)
+		-- Same hit-rect trap as the Show box: a tooltip'd checkbox widens its hit rect across the row unless pinned back.
+		if bcb._cb then bcb._cb:SetHitRectInsets(0, 0, 0, 0) end
+	end
+
 	-- Register item rows (keyed by itemID == spellID by convention) so the async ItemMixin load can update name/icon in place. Spells are always cached by build time.
 	if info.kind == "item" then
 		filtersState.itemRows = filtersState.itemRows or {}
@@ -1980,6 +1998,11 @@ local function BuildFiltersColumnHeader(parent, yPos, categoryKey)
 		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		fs:SetPoint("LEFT", row, "LEFT", 786, 0)
 		fs:SetText("Remove")
+		fs:SetTextColor(Y.r, Y.g, Y.b)
+	elseif not ns.Compat.HAS_BLIZZ_CDM and (categoryKey == "spells" or categoryKey == "items") then
+		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		fs:SetPoint("LEFT", row, "LEFT", 786, 0)
+		fs:SetText("Buff")
 		fs:SetTextColor(Y.r, Y.g, Y.b)
 	end
 end

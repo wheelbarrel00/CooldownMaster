@@ -777,6 +777,8 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if self._cdItemID then
 			GameTooltip:SetItemByID(self._cdItemID)
+		elseif self._cdBuffSpell then
+			GameTooltip:SetSpellByID(self._cdBuffSpell)
 		elseif self._cdCustom then
 			GameTooltip:SetText(self._cdName or "Cooldown", 1, 1, 1)
 			if self._cdSpellID < ns.CONST.TEST_ID_BASE then
@@ -1537,6 +1539,7 @@ local function RefreshBody(laneIndex)
 			btn._cdSpellID = e.spellID
 			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
 			btn._cdCustom  = (e.spellID or 0) >= ns.CONST.CUSTOM_ID_BASE
+			btn._cdBuffSpell = e.buffSpellID   -- a buff riding a cooldown spell; its real spell for the tooltip
 			btn._cdName    = e.name
 			btn._cdStart   = e.startTime
 			btn._cdGen     = e._feedGen

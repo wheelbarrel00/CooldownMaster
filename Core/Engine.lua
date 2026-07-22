@@ -792,6 +792,70 @@ function Engine:BuildTrackedSpellsClassic()
 	end
 
 	self:AddTrackedPetSpells()
+	self:ApplyBuffTracking()
+end
+
+
+-- Reconcile the opt-in buff trackers with the current profile - drop stale synthetic keys, add opted-in ones.
+-- A profile switch never rebuilds the spellbook-derived tracked set, so this also runs from ApplyProfile. Classic only.
+function Engine:ApplyBuffTracking()
+	if ns.Compat.HAS_BLIZZ_CDM then return end
+	local p = ns.CDM and ns.CDM.db and ns.CDM.db.profile
+	local overrides = p and p.spellOverrides
+	-- Removing the currently-iterated key is safe under pairs; only the buff key is ever removed.
+	for id, t in pairs(self.trackedSpells) do
+		if t.buffSpellID then
+			local ov = overrides and overrides[t.buffSpellID]
+			local src = self.trackedSpells[t.buffSpellID]
+			if not (ov and ov.trackBuff) or not (src and src.category ~= 2) then
+				self.trackedSpells[id] = nil
+				self.entries[id] = nil
+			end
+		end
+	end
+	if not overrides then return end
+	for id, ov in pairs(overrides) do
+		if ov.trackBuff then
+			local src = self.trackedSpells[id]
+			if src and src.category ~= 2 then
+				local buffKey = ns.CONST.BUFF_ID_BASE + id
+				if not self.trackedSpells[buffKey] then
+					self.trackedSpells[buffKey] = {
+						name        = src.name,
+						icon        = src.icon,
+						category    = 2,
+						buffSpellID = id,
+					}
+				end
+			end
+		end
+	end
+end
+
+
+-- Live toggle from the Filters checkbox - the caller wrote the override, this matches the tracked state to it.
+function Engine:RefreshBuffTracking(spellID)
+	if ns.Compat.HAS_BLIZZ_CDM then return end
+	local p = ns.CDM and ns.CDM.db and ns.CDM.db.profile
+	if not p then return end
+	local buffKey = ns.CONST.BUFF_ID_BASE + spellID
+	local ov = p.spellOverrides and p.spellOverrides[spellID]
+	if ov and ov.trackBuff then
+		local src = self.trackedSpells[spellID]
+		if src and src.category ~= 2 and not self.trackedSpells[buffKey] then
+			self.trackedSpells[buffKey] = {
+				name        = src.name,
+				icon        = src.icon,
+				category    = 2,
+				buffSpellID = spellID,
+			}
+		end
+	else
+		self.trackedSpells[buffKey] = nil
+		self.entries[buffKey] = nil
+		if p.spellOverrides then p.spellOverrides[buffKey] = nil end
+	end
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 end
 
 
@@ -898,6 +962,32 @@ function Engine:ScanBuffs()
 						e.endTime   = expiration
 					end
 				end
+			else
+				-- An opted-in buff rides a synthetic key so it and the cooldown coexist as two icons.
+				local buffKey = ns.CONST.BUFF_ID_BASE + spellID
+				if self.trackedSpells[buffKey] and self:IsSpellVisible(buffKey, 2) then
+					seen[buffKey] = true
+					local e = self.entries[buffKey]
+					if not e then
+						self.entries[buffKey] = {
+							spellID     = buffKey,
+							buffSpellID = spellID,
+							name        = name,
+							icon        = icon,
+							startTime   = expiration - duration,
+							duration    = duration,
+							endTime     = expiration,
+							laneIndex   = self:ResolveLaneIndex(buffKey, 2),
+							barIndex    = self:ResolveBarIndex(buffKey, 2),
+							category    = 2,
+							_source     = "buff",
+						}
+					elseif e._source == "buff" then
+						e.startTime = expiration - duration
+						e.duration  = duration
+						e.endTime   = expiration
+					end
+				end
 			end
 		end
 	end
@@ -914,7 +1004,8 @@ function Engine:ScanBuffs()
 		end
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
-			if self:IsSpellVisible(spellID, 2) and ns.ReadyFrames_OnReadyTransition then
+			-- A buff riding a cooldown spell just wore off, which is not the spell coming ready, so it leaves quietly with no ready pop.
+			if not e.buffSpellID and self:IsSpellVisible(spellID, 2) and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
 			self.entries[spellID] = nil

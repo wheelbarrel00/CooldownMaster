@@ -45,3 +45,32 @@ function ns.Masque_ReSkin(owner)
 	if not (owner and owner._msqSkinned and owner._msqGroup) then return end
 	owner._msqGroup:ReSkin(owner._msqFrame)
 end
+
+
+-- Register every group up front so CooldownMaster is listed in Masque even before any icon has been drawn.
+-- Masque adds a group's options node the moment the group exists (zero buttons is fine), and creating a
+-- group before PLAYER_LOGIN is supported - it self-queues and reskins on its own OnEnable.
+local function EnsureGroups()
+	if not MSQ then return end
+	GetGroup("lane")
+	GetGroup("ready")
+	GetGroup("bar")
+end
+
+pcall(EnsureGroups)
+
+
+function ns.Masque_Report()
+	local out = { hasLib = LibStub ~= nil, hasMasque = MSQ ~= nil, groups = {} }
+	if MSQ then
+		for surface, name in pairs(GROUP_NAME) do
+			local g = groups[surface]
+			local count = 0
+			if g and g.Buttons then
+				for _ in pairs(g.Buttons) do count = count + 1 end
+			end
+			out.groups[surface] = { name = name, created = (g ~= nil), buttons = count }
+		end
+	end
+	return out
+end

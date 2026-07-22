@@ -1,5 +1,23 @@
 # Cooldown Master Changelog
 
+## 1.5.0 (2026-07-22) — Track a cooldown's buff, and a Masque visibility fix
+
+### New Features
+
+- **Track a spell's buff alongside its cooldown.** On the Classic flavors, a spell that has a cooldown *and* gives you a buff — Icy Veins, Arcane Power, and the like — can now show a second icon that counts down the buff itself, separate from the cooldown timer. Tick **Buff** on the spell's row under Filters > Spells, then set where it goes (its own lane, a bar) under Filters > Buffs. Off by default, so nothing new appears until you ask for it. (Retail surfaces tracked buffs through Blizzard's own list already, so this is Classic-only.)
+
+### Bug Fixes
+
+- **Cooldown Master shows up in Masque even with an empty timeline.** It was only registering its skinnable groups once an icon had been drawn, so opening Masque before any cooldown appeared left "CooldownMaster" missing from the Skin Settings list. Its three groups — Lane Icons, Ready Icons, Bar Icons — are now registered up front.
+
+### Compatibility
+
+- **Updated for Burning Crusade Classic 2.5.6.**
+
+### Thanks
+
+- **Dr. Hangover** — for the idea of tracking a cooldown's buff as its own icon.
+
 ## 1.4.1 (2026-07-20) — Custom Detect fills in the buff's duration
 
 ### Bug Fixes

@@ -4,7 +4,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.4.1",
+	VERSION          = "1.5.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -68,6 +68,9 @@ ns.CONST = {
 
 	-- Entries are keyed by spellID, so test entries need their own id range or duplicates would collapse into one.
 	TEST_ID_BASE     = 95000000,
+
+	-- A cooldown spell that also grants a buff is tracked twice - the cooldown keeps its real id, its buff rides this offset so both coexist as separate entries. buffKey = BUFF_ID_BASE + spellID.
+	BUFF_ID_BASE     = 200000000,
 
 	-- Offensives and Custom are omitted - no donor pool to demo from, and a fake Custom would look like a live timer.
 	TEST_TYPES = {
