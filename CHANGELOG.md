@@ -1,5 +1,11 @@
 # Cooldown Master Changelog
 
+## 1.5.1 (2026-07-22) — Classic Era 1.15.9 compatibility
+
+### Compatibility
+
+- **Updated for Classic Era 1.15.9.**
+
 ## 1.5.0 (2026-07-22) — Track a cooldown's buff, and a Masque visibility fix
 
 ### New Features

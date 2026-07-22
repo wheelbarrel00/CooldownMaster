@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.5.1",
+		date = "2026-07-22",
+		sections = {
+			{ head = "Compatibility", items = {
+				"Updated for Classic Era 1.15.9.",
+			} },
+		},
+	},
+	{
 		version = "1.5.0",
 		date = "2026-07-22",
 		sections = {
