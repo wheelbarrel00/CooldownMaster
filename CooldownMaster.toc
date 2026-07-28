@@ -1,8 +1,8 @@
-## Interface: 120100, 120005, 120007
+﻿## Interface: 120100, 120005, 120007
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker. Designed to complement Blizzard's built-in Cooldown Manager.
 ## Author: Wheelbarrel00
-## Version: 1.5.1
+## Version: 1.6.0
 ## SavedVariables: CooldownMasterDB
 ## IconTexture: Interface\AddOns\CooldownMaster\media\minimap
 ## OptionalDeps: Masque, Titan, Bazooka, ChocolateBar

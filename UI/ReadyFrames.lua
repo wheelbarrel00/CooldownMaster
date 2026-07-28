@@ -391,7 +391,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -250)
 	if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 	f:SetClampedToScreen(true)
-	f:EnableMouse(true)
+	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only - RefreshUnlockState keeps it in sync
 	f.index     = index
 	f.cfg       = cfg
 	f.iconPool  = {}
@@ -636,6 +636,50 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	local important = override and override.important == true
 	local pinned    = override and override.pinned == true
 
+	local g = addon.db.profile.global
+
+	-- One icon per cooldown: a charge blip can pop the same spell twice inside the display window (see
+	-- CHARGE_TRACK_DELAY in Core/Engine.lua). Before the maxIcons cap, so a repeat pop evicts nobody.
+	local sharedName = (g.detectSharedCD and entry._source ~= "test" and entry.itemID == nil)
+		and entry.name or nil
+	-- Only when shown - a hidden box must fall through so the normal path runs RelayoutReadyFrame.
+	if target:IsShown() then
+		for i = 1, #target.iconPool do
+			local b = target.iconPool[i]
+			if b and b:IsShown()
+				and (b._spellID == spellID
+					or (sharedName and b._itemID == nil
+						and b._tagSnap and b._tagSnap.name == sharedName)) then
+				b._spellID   = spellID
+				b._itemID    = entry.itemID
+				b._pinned    = pinned
+				b._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
+				-- Not ICON_FADE_IN: restarting the fade drops alpha to 0 and reads as a flicker.
+				b._fadeIn    = nil
+				b.tex:SetTexture(entry.icon or "")
+				b:SetAlpha(cfg.iconAlpha or 1)
+				ns.StyleIcon(b, spellID, entry.itemID, g)
+
+				local rsnap = b._tagSnap
+				if not rsnap then
+					rsnap = {}
+					b._tagSnap = rsnap
+				end
+				rsnap.name, rsnap.category = entry.name, entry.category
+				rsnap.endTime = nil
+				UpdateReadyIconTag(target, b, cfg)
+
+				if b.pulse then
+					b.pulse:Stop()
+					b.pulse:Play()
+				end
+				ApplyIconHighlight(b, cfg, important)
+				PlayReadySound(important and cfg.highlightSound or cfg.normalSound)
+				return
+			end
+		end
+	end
+
 	-- Cap concurrent pops for this box: at the limit, recycle the non-pinned icon closest to
 	-- fading so the freshest ready always surfaces; drop the new pop if all slots are pinned.
 	local maxIcons = cfg.maxIcons or 10
@@ -709,8 +753,10 @@ function ns.ReadyFrames_RefreshUnlockState(addon)
 	for i = 1, 3 do
 		local f = addon.readyFrames and addon.readyFrames[i]
 		if f then
+			local unlocked = addon.db.profile.global.unlockFrames
+			-- A locked box has no drag to serve, so leaving the mouse on would silently eat world clicks.
+			f:EnableMouse(unlocked)
 			if f.label then
-				local unlocked = addon.db.profile.global.unlockFrames
 				local lta = (f.cfg and f.cfg.labelColor and f.cfg.labelColor.a) or 1
 				f.label:SetAlpha((unlocked and 0.6 or 0) * lta)
 			end
@@ -723,7 +769,9 @@ end
 -- Re-evaluate each box's shown state after an autohide toggle. Relayout shows a box that
 -- should now stay up (autohide off); one that should now hide when empty is left to the
 -- OnUpdate box-fade, which runs while it is still shown.
-function ns.ReadyFrames_RefreshVisibility(addon)
+function ns.ReadyFrames_RefreshVisibility()
+	local addon = ns.CDM
+	if not addon then return end
 	for i = 1, 3 do
 		local f = addon.readyFrames and addon.readyFrames[i]
 		if f then RelayoutReadyFrame(f) end
@@ -829,6 +877,8 @@ function ns.ReadyFrames_RebuildOne(index)
 		if pooled then
 			ClearReadyIcons(pooled)
 			pooled.cfg = cfg   -- a profile switch swaps in a different box cfg table
+			-- RefreshUnlockState skips a disabled box, so a pooled one comes back with a stale mouse state.
+			pooled:EnableMouse(addon.db.profile.global.unlockFrames)
 			addon.readyFrames[index] = pooled
 			ns.ReadyFrames_ApplyConfig(index)
 		else

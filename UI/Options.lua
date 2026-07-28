@@ -17,6 +17,7 @@ local panel
 local tabButtons = {}
 local tabContents = {}
 local currentTabID
+local optionsStale
 
 
 local function BuildPanel()
@@ -107,13 +108,23 @@ end
 function ns.Options_SelectTab(id)
 	if not panel then return end
 	currentTabID = id
+	-- A rebuild deferred while the panel was closed lands here once, on the next open. Clearing the
+	-- flag first keeps Options_Rebuild's own tail call from re-entering.
+	if optionsStale then
+		optionsStale = nil
+		ns.Options_Rebuild()
+		return
+	end
 	for _, def in ipairs(TABS) do
 		local btn = tabButtons[def.id]
 		if btn then btn:SetSelected(def.id == id) end
 		local frame = tabContents[def.id]
 		if frame then frame:Hide() end
 	end
-	GetOrCreateTabContent(id):Show()
+	local frame = GetOrCreateTabContent(id)
+	-- A cached tab can hold controls that went stale while it was hidden (see BuildGlobalTab).
+	if frame._reseed then frame._reseed() end
+	frame:Show()
 end
 
 
@@ -173,6 +184,7 @@ end
 local function BuildGlobalTab(content)
 	local CDM = ns.CDM
 	local pad = Theme.PANEL.CONTENT_PAD
+	local checks = {}
 
 	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
 	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
@@ -200,22 +212,17 @@ local function BuildGlobalTab(content)
 		fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
 		fs:SetText(label)
 		cb:SetChecked(CDM.db.profile.global[key])
+		checks[#checks + 1] = { cb = cb, key = key }
 		cb:SetScript("OnClick", function(self)
 			CDM.db.profile.global[key] = self:GetChecked() and true or false
 			-- Per-tick config apply is gone, so push the drag-label repaint explicitly.
 			if key == "unlockFrames" then
-				if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(CDM) end
-				if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(CDM) end
-				if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(CDM) end
-			elseif key == "enabledAlways" or key == "autohide" then
+				ns.ForEachSurface("RefreshUnlockState", CDM)
+			elseif key == "autohide" then
+				ns.ForEachSurface("RefreshVisibility")
+			elseif key == "enabledAlways" then
+				-- Lanes only: the In Group / In Instance gate does not apply to boxes or bars.
 				if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
-
-				if key == "autohide" and ns.ReadyFrames_RefreshVisibility then
-					ns.ReadyFrames_RefreshVisibility(CDM)
-				end
-				if key == "autohide" and ns.Bars_RefreshVisibility then
-					ns.Bars_RefreshVisibility()
-				end
 			end
 		end)
 		AttachTip(cb, label, tooltip, hitExtend)
@@ -230,6 +237,7 @@ local function BuildGlobalTab(content)
 	local fsg = cbGroup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	fsg:SetPoint("LEFT", cbGroup, "RIGHT", 4, 0); fsg:SetText("In Group")
 	cbGroup:SetChecked(CDM.db.profile.global.enabledGroup)
+	checks[#checks + 1] = { cb = cbGroup, key = "enabledGroup" }
 	cbGroup:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledGroup = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
@@ -243,6 +251,7 @@ local function BuildGlobalTab(content)
 	local fsi = cbInst:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	fsi:SetPoint("LEFT", cbInst, "RIGHT", 4, 0); fsi:SetText("In Instance")
 	cbInst:SetChecked(CDM.db.profile.global.enabledInstance)
+	checks[#checks + 1] = { cb = cbInst, key = "enabledInstance" }
 	cbInst:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
@@ -261,6 +270,16 @@ local function BuildGlobalTab(content)
 	}
 	for _, t in ipairs(toggles) do
 		prev = MakeCheck(t[1], t[2], prev, 0, t[3])
+	end
+
+	-- The tab frame is cached, but unlockFrames and autohide also change from the minimap button and
+	-- /cm lock|unlock. A stale tick swallows the next click, because OnClick writes the toggle of
+	-- what is drawn rather than of what is stored. Options_SelectTab re-seeds on every show.
+	content._reseed = function()
+		local g = ns.CDM.db.profile.global
+		for i = 1, #checks do
+			checks[i].cb:SetChecked(g[checks[i].key] and true or false)
+		end
 	end
 
 	local W = ns.Widgets
@@ -571,12 +590,12 @@ local function RebuildLane(laneIndex)
 end
 
 
-local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet)
+local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet, tip)
 	local W = ns.Widgets
 
 	local eb = W.CreateEditBox(parent, {
 		label = labelText or "Text", value = sub.text or "", width = 200, maxLetters = 120,
-		tooltip = ns.TAG_HELP,
+		tooltip = tip or ns.TAG_HELP,
 		onChange = function(t) sub.text = t; apply() end,
 	})
 
@@ -625,7 +644,7 @@ local function BuildStatusLineSection(parent, place, pad, cfg, apply)
 		tooltip = "Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - the next cooldown coming up, how many are on cooldown, or your target's name.",
 		onChange = function(v) cfg.statusText.enabled = v; apply() end,
 	}))
-	BuildTagTextRow(parent, place, cfg.statusText, apply, "Text", ns.TAG_PICKER_GLOBAL)
+	BuildTagTextRow(parent, place, cfg.statusText, apply, "Text", ns.TAG_PICKER_GLOBAL, ns.TAG_HELP_STATUS)
 
 	place(W.CreateDropdown(parent, {
 		label = "Position", value = cfg.statusText.anchor or "BOTTOM",
@@ -1781,8 +1800,7 @@ function ns.Options_UpdateTrackedItemDisplay(itemID, displayName, displayIcon)
 end
 
 
--- Drop cached per-category list surfaces after Engine rebuilds the spell/item registries; without this each list is a one-time snapshot (stale after spec swap, "No spells discovered yet" sticking forever). Defaults stays cached as it only reflects saved settings.
-function ns.Options_InvalidateFilterLists()
+local function DropFilterListSurfaces()
 	for key, surf in pairs(filtersState.formFrames) do
 		if key ~= "defaults" then
 			surf:Hide()
@@ -1790,10 +1808,21 @@ function ns.Options_InvalidateFilterLists()
 		end
 	end
 	if filtersState.itemRows then wipe(filtersState.itemRows) end
-	-- Only rebuild while the panel is actually open: a closed-panel rebuild just orphans the old
-	-- surface's frames (WoW never GCs them) on every spec/talent/spellbook change all session. The
-	-- caches cleared above rebuild lazily the next time the Filters tab is shown.
-	if panel and panel:IsShown() and filtersState._refresh then filtersState._refresh() end
+end
+
+
+-- Drop cached per-category list surfaces after Engine rebuilds the spell/item registries - without
+-- this each list is a one-time snapshot (stale after a spec swap, "No spells discovered yet" sticking
+-- forever). Defaults stays cached, it only reflects saved settings.
+function ns.Options_InvalidateFilterLists()
+	-- Dropping orphans the old surface's frames (WoW never GCs them), and bag loot fires this every
+	-- couple of seconds. Mark it stale instead - ShowFiltersSubTab drops once on the next view.
+	if not (panel and panel:IsShown()) then
+		filtersState._listsStale = true
+		return
+	end
+	DropFilterListSurfaces()
+	if filtersState._refresh then filtersState._refresh() end
 end
 
 
@@ -2535,6 +2564,10 @@ end
 
 
 local function ShowFiltersSubTab(panelArea, subTabKey)
+	if filtersState._listsStale then
+		filtersState._listsStale = nil
+		DropFilterListSurfaces()
+	end
 	for _, surf in pairs(filtersState.formFrames) do surf:Hide() end
 
 	local surf = filtersState.formFrames[subTabKey]
@@ -2613,6 +2646,12 @@ local function BuildFiltersTab(content)
 
 	filtersState._refresh = function()
 		ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
+	end
+
+	-- Reopening reuses the cached tab frame without re-running this builder, so a discovery that
+	-- landed while the panel was shut would leave the stale list up until a rail row was clicked.
+	content._reseed = function()
+		if filtersState._listsStale then filtersState._refresh() end
 	end
 
 	ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
@@ -2710,17 +2749,34 @@ for _, def in ipairs(TABS) do
 end
 
 
--- Profile import/export via the embedded AceSerializer + LibDeflate. Serializing db.profile
--- captures only its non-default keys (AceDB defaults live on a metatable), so an import merges
--- over the recipient's defaults and reproduces the sender's effective settings.
+-- Profile import/export via the embedded AceSerializer + LibDeflate. AceDB's copyDefaults rawsets
+-- every default straight into the profile table instead of leaving them on a metatable, so
+-- db.profile is a complete tree rather than a sparse set of non-default keys.
+
+-- Learned runtime state is per character, not a setting: it bloats the export string and would hand
+-- the recipient another character's cooldown and dot learning. Stripped on the way out, and the
+-- recipient's own copy is preserved on the way in.
+local LEARNED_KEYS = {
+	knownDurations    = true,
+	observedDurations = true,
+	auraDurations     = true,
+	auraObserved      = true,
+	castMap           = true,
+	auraRoll          = true,
+}
+
 local function ProfileExportString()
 	local ser = LibStub("AceSerializer-3.0", true)
 	local def = LibStub("LibDeflate", true)
 	if not (ser and def and ns.CDM) then return nil end
+	local settings = {}
+	for k, v in pairs(ns.CDM.db.profile) do
+		if not LEARNED_KEYS[k] then settings[k] = v end
+	end
 	local payload = ser:Serialize({
 		addon   = ns.CONST.ADDON_NAME,
 		version = ns.CONST.VERSION,
-		profile = ns.CDM.db.profile,
+		profile = settings,
 	})
 	return def:EncodeForPrint(def:CompressDeflate(payload, { level = 9 }))
 end
@@ -2743,12 +2799,28 @@ local function ProfileDecode(str)
 	return data.profile
 end
 
--- Replace (not merge) the current profile's stored keys, then rebuild from it. Wiping
--- keeps the same table reference AceDB tracks; cleared keys fall back to defaults.
+-- The real profile nests 5 deep at most (lanes -> [1] -> highlight -> color -> r), so the cap only
+-- ever trips on a hand-edited string, where dropping the branch beats overflowing the Lua stack.
+local function OverlayProfile(dst, src, depth)
+	if depth > 12 then return end
+	for k, v in pairs(src) do
+		if type(v) == "table" and type(dst[k]) == "table" then
+			OverlayProfile(dst[k], v, depth + 1)
+		else
+			dst[k] = v
+		end
+	end
+end
+
+-- ResetProfile, not wipe: AceDB rawsets defaults into the profile, so a wiped key is gone for good
+-- rather than falling back to one. Callbacks off - OnProfileReset would rebuild on bare defaults first.
 local function ApplyImportedProfile(prof)
 	local p = ns.CDM.db.profile
-	wipe(p)
-	for k, v in pairs(prof) do p[k] = v end
+	local keep = {}
+	for k in pairs(LEARNED_KEYS) do keep[k] = p[k] end
+	ns.CDM.db:ResetProfile(nil, true)
+	OverlayProfile(p, prof, 1)
+	for k, v in pairs(keep) do p[k] = v end
 	ns.CDM:ApplyProfile()
 end
 
@@ -2780,6 +2852,12 @@ StaticPopupDialogs["COOLDOWNMASTER_DELETE_PROFILE"] = {
 	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
 }
 
+-- Retail 12.0's GameDialog rewrite renamed the popup's box to EditBox and dropped the lowercase
+-- alias the Classic flavors still use. Reading the old name alone errors the dialog open.
+local function PopupEditBox(popup)
+	return popup and (popup.EditBox or popup.editBox)
+end
+
 StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
 	text = "Paste an exported string to overwrite the current profile \"%s\".",
 	button1 = "Import",
@@ -2787,12 +2865,15 @@ StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
 	hasEditBox = true,
 	editBoxWidth = 350,
 	OnShow = function(self)
-		self.editBox:SetText("")
-		self.editBox:SetMaxLetters(0)   -- import strings are long; never truncate
-		self.editBox:SetFocus()
+		local eb = PopupEditBox(self)
+		if not eb then return end
+		eb:SetText("")
+		eb:SetMaxLetters(0)   -- import strings are long, never truncate
+		eb:SetFocus()
 	end,
 	OnAccept = function(self)
-		local prof, err = ProfileDecode(self.editBox:GetText())
+		local eb = PopupEditBox(self)
+		local prof, err = ProfileDecode(eb and eb:GetText())
 		if not prof then
 			ns.CDM:Print("Import failed: " .. (err or "invalid string"))
 			return
@@ -2801,7 +2882,8 @@ StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
 		ns.CDM:Print("Imported into profile \"" .. ns.CDM.db:GetCurrentProfile() .. "\".")
 	end,
 	EditBoxOnEnterPressed = function(self) self:ClearFocus() end,
-	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	-- By name, not self:GetParent():Hide() - that assumes the box is a direct child of the popup.
+	EditBoxOnEscapePressed = function() StaticPopup_Hide("COOLDOWNMASTER_IMPORT_PROFILE") end,
 	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
 }
 
@@ -2977,6 +3059,13 @@ end
 
 function ns.Options_Rebuild()
 	if not panel then return end
+	-- Tearing a tab down orphans its frames (WoW never destroys a frame), so rebuilding with the
+	-- panel closed leaks a whole tree on every profile switch, spec change and talent edit, all
+	-- session. Defer to the next open, which rebuilds once - Options_SelectTab consumes this.
+	if not panel:IsShown() then
+		optionsStale = true
+		return
+	end
 	-- Keep profile-independent tabs (About) cached; recreating them only leaks frames
 	-- (never GC'd) since their content doesn't depend on db.profile.
 	for _, def in ipairs(TABS) do

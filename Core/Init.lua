@@ -171,13 +171,9 @@ function CDM:ApplyProfile()
 		ns.Engine:ApplyBuffTracking()
 	end
 	for i = 1, 3 do
-		if ns.Lanes_RebuildOne then ns.Lanes_RebuildOne(i) end
-		if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
-		if ns.Bars_RebuildOne then ns.Bars_RebuildOne(i) end
+		ns.ForEachSurface("RebuildOne", i)
 	end
-	if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
-	if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
-	if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
+	ns.ForEachSurface("RefreshUnlockState", self)
 	if ns.DataBroker_ApplyProfile then ns.DataBroker_ApplyProfile(self) end
 	-- Defer to next frame: ApplyProfile can run from the Active-profile dropdown's onChange, and
 	-- Options_Rebuild SetParent(nil)s that dropdown mid-callback; letting the callback unwind first
@@ -247,13 +243,10 @@ function CDM:OnEnteringWorld()
 	-- A /reload mid-combat misses PLAYER_REGEN_DISABLED, so seed combat from the
 	-- live API before the first visibility pass (the autohide gate reads self.combat).
 	self.combat = InCombatLockdown()
-	if ns.Lanes_Build then ns.Lanes_Build(self) end
-	if ns.ReadyFrames_Build then ns.ReadyFrames_Build(self) end
-	if ns.Bars_Build then ns.Bars_Build(self) end
+	ns.ForEachSurface("Build", self)
 	-- Build is idempotent and won't re-evaluate existing lanes, so refresh the
 	-- In Instance / In Group gate explicitly on every world enter.
-	if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
-	if ns.Bars_RefreshVisibility then ns.Bars_RefreshVisibility() end
+	ns.ForEachSurface("RefreshVisibility")
 
 	if ns.Events and ns.Events.Register and not self._eventsWired then
 		ns.Events.Register(self)
@@ -281,16 +274,12 @@ function CDM:OnSlash(input)
 	elseif input == "lock" then
 		self.db.profile.global.unlockFrames = false
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "locked|r.")
-		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
-		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
-		if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
+		ns.ForEachSurface("RefreshUnlockState", self)
 
 	elseif input == "unlock" then
 		self.db.profile.global.unlockFrames = true
 		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "unlocked|r.")
-		if ns.Lanes_RefreshUnlockState then ns.Lanes_RefreshUnlockState(self) end
-		if ns.ReadyFrames_RefreshUnlockState then ns.ReadyFrames_RefreshUnlockState(self) end
-		if ns.Bars_RefreshUnlockState then ns.Bars_RefreshUnlockState(self) end
+		ns.ForEachSurface("RefreshUnlockState", self)
 
 	elseif input == "test" then
 		self:ToggleTestMode()
@@ -567,7 +556,7 @@ function CDM:ToggleTestMode()
 	else
 		engine:StartTestMode()
 	end
-	if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
+	ns.ForEachSurface("RefreshVisibility")
 	self:Print("Test mode: " .. (engine.testActive and "|cff00ff00on|r" or "|cffff5555off|r"))
 end
 

@@ -1,5 +1,29 @@
 # Cooldown Master Changelog
 
+## 1.6.0 (2026-07-28) — Ignore Threshold works on Classic, plus a long list of fixes
+
+### New Features
+
+- **Ignore Threshold now works on the Classic flavors** — and on every flavor for potions and trinkets. The slider under Filters has always promised to stop tracking anything whose full cooldown runs longer than the number you set, but on Era, TBC and MoP it never had a length to compare against, so it quietly did nothing at all. It now learns each ability's real cooldown the first time you use it and remembers that between sessions.
+  - **Heads up:** with the default threshold of 1800 seconds, abilities longer than 30 minutes will now start dropping off your lanes where they used to show. Shaman Reincarnation is the usual example. Tick **Show** on the spell's row under Filters to keep any of them.
+
+### Bug Fixes
+
+- **Ready icons no longer double or triple up for abilities with charges.** On retail, spending one charge of something like Blade of Justice looks briefly identical to the ability going on cooldown, and under a fast rotation that could pop a ready box for a cooldown that hadn't finished — sometimes two or three times over. The false pops are gone, and a ready box now shows one icon per cooldown regardless.
+- **The profile import window opens again on retail.** Midnight renamed part of Blizzard's popup dialog, which made the Import window throw an error the instant it appeared, so importing a profile was impossible. Exporting was never affected.
+- **The color picker's opacity slider runs the right way round on retail.** It was treating the value as transparency where Midnight reports opacity, so the slider opened at the inverse of your real setting and dragging it to full made things disappear. Cancel now restores the transparency you started with, too.
+- **Bar frames no longer vanish part-way through a cooldown.** If the estimated length came in short, a bar could disappear while the lane still showed the same spell running. It now holds until the cooldown genuinely ends, matching the lanes.
+- **Locked ready boxes and bar frames stop swallowing mouse clicks.** Both kept taking the mouse after you locked your frames, so clicking where an invisible box sat did nothing in the world behind it. The lanes already handled this correctly.
+- **Importing a profile no longer risks breaking your settings.** An import built from an older version could permanently drop any setting that string didn't carry, which left blanks behind and could error. An import now starts from a clean set of defaults and layers the imported values over it, so anything the string omits simply keeps its default.
+- **Right-clicking the minimap icon now unlocks bar frames too**, and **Test Mode brings your ready boxes up straight away** instead of leaving them hidden until a sample expired.
+- **The Unlock Frames checkbox no longer ignores your first click** after you'd locked or unlocked from the minimap button or `/cm lock`. The Options panel was showing a stale tick.
+- **The Options panel no longer leaks frames while it's closed.** Looting, changing spec or switching profiles rebuilt hidden option lists every time, and those frames stack up for the rest of your session. Rebuilds now wait until the panel is actually open.
+
+### Improvements
+
+- **Profile exports no longer carry per-character learning.** Exported strings were including the cooldown lengths and dot attribution your character had picked up, which is personal runtime data rather than a setting. Exports are smaller now, and importing someone's profile leaves your own learning untouched.
+- **The frame Status Line explains what it can't do.** Per-cooldown tags like `[cd.name]` have no single cooldown to name on a frame-wide line, so they render blank there. The box now says so — put those on an Icon Label instead.
+
 ## 1.5.1 (2026-07-22) — Classic Era 1.15.9 compatibility
 
 ### Compatibility

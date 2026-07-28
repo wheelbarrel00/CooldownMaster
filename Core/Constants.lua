@@ -1,10 +1,10 @@
-local ADDON_NAME, ns = ...
+﻿local ADDON_NAME, ns = ...
 
 ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.5.1",
+	VERSION          = "1.6.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -72,6 +72,9 @@ ns.CONST = {
 	-- A cooldown spell that also grants a buff is tracked twice - the cooldown keeps its real id, its buff rides this offset so both coexist as separate entries. buffKey = BUFF_ID_BASE + spellID.
 	BUFF_ID_BASE     = 200000000,
 
+	-- Item entries are keyed by itemID, which overlaps the real spellID range (5512 is both a spellID and an itemID), so a learned item duration rides this offset to stay clear of the spell keyspace.
+	ITEM_ID_BASE     = 300000000,
+
 	-- Offensives and Custom are omitted - no donor pool to demo from, and a fake Custom would look like a live timer.
 	TEST_TYPES = {
 		{ value = "mixed",     text = "Mixed",      category = nil },
@@ -103,6 +106,17 @@ ns.CONST = {
 		{ key = "custom",     label = "Custom"     },
 	},
 }
+
+-- Resolved by name at call time, so the UI files may load after this one.
+ns.SURFACES = { "Lanes", "ReadyFrames", "Bars" }
+
+function ns.ForEachSurface(suffix, ...)
+	for i = 1, #ns.SURFACES do
+		local fn = ns[ns.SURFACES[i] .. "_" .. suffix]
+		if fn then fn(...) end
+	end
+end
+
 
 function ns.Colorize(hex, text)
 	return string.format("|cff%s%s|r", hex, tostring(text))

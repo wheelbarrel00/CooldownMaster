@@ -66,11 +66,13 @@ local READY_MAX_POPS_PER_SCAN = 3   -- more ready edges than this in one scan = 
 local SHARED_CD_TOL = 0.5
 
 -- Same start+end alone is NOT a shared cooldown: two independent same-duration abilities fired
--- together (e.g. Arcane Power + Icy Veins) must not merge. Items match on itemID, spells on name.
+-- together (e.g. Arcane Power + Icy Veins) must not merge. Spells match on name, items on exact start.
 function ns.IsSameSharedCD(a, b)
 	-- Test entries are seeded together and recycle donor names, so they would merge into one icon.
 	if a._source == "test" or b._source == "test" then return false end
-	if a.itemID and b.itemID then return true end
+	-- Not an unconditional true: the callers' start bound is a tolerance now, so two different
+	-- trinkets fired moments apart would reach here and collapse into one icon.
+	if a.itemID and b.itemID then return a.startTime == b.startTime end
 	if a.itemID or b.itemID then return false end
 	return a.name ~= nil and a.name == b.name
 end
@@ -468,6 +470,17 @@ function Engine:SavePersistedDuration(spellID, duration)
 	if not (addon and addon.db) then return end
 	addon.db.profile.knownDurations = addon.db.profile.knownDurations or {}
 	addon.db.profile.knownDurations[spellID] = duration
+end
+
+
+-- Classic spells and items report a plain full duration, so they learn directly - the retail spell
+-- path cannot. No upper bound: a 30-minute Hearthstone is what the Ignore Threshold exists to hide.
+function Engine:LearnPlainDuration(key, duration)
+	if type(key) ~= "number" or type(duration) ~= "number" then return end
+	if duration < MIN_TRUSTED_DURATION then return end
+	if self.knownDurations[key] == duration then return end
+	self.knownDurations[key] = duration
+	self:SavePersistedDuration(key, duration)
 end
 
 
@@ -875,6 +888,7 @@ function Engine:ScanSpellsClassic()
 		-- A real cooldown, not the shared 1.5s GCD every spell reports while one is running.
 		if start and duration and start > 0 and duration > 1.5 then
 			seen[spellID] = true
+			self:LearnPlainDuration(spellID, duration)
 			local endTime = start + duration
 			local e = self.entries[spellID]
 			if not e then
@@ -2448,10 +2462,16 @@ function Engine:IsSpellVisible(spellID, category)
 	-- maxTime display window. Only when the length is known; an explicit override above wins.
 	local thr = fcfg.ignoreThreshold
 	if thr and spellID then
-		-- An offensive is timed by aura length, which lives in its own store, so the cooldown store reads nil for one and the threshold would silently do nothing.
-		local dur = (category == ns.CONST.OFFENSIVE_CATEGORY)
-			and self:BestAuraDuration(spellID)
-			or self:BestDuration(spellID)
+		local dur
+		if category == ns.CONST.OFFENSIVE_CATEGORY then
+			-- An offensive is timed by aura length, which lives in its own store, so the cooldown store reads nil for one and the threshold would silently do nothing.
+			dur = self:BestAuraDuration(spellID)
+		elseif category == ns.CONST.POTION_CATEGORY or category == ns.CONST.TRINKET_CATEGORY then
+			-- Item entries pass their itemID as spellID, and learned item durations ride ITEM_ID_BASE to stay clear of the spell keyspace.
+			dur = self:BestDuration(ns.CONST.ITEM_ID_BASE + spellID)
+		else
+			dur = self:BestDuration(spellID)
+		end
 		if dur and dur > thr then return false end
 	end
 
@@ -2867,6 +2887,7 @@ function Engine:ScanSpells()
 					dObj      = dObj,
 					-- Trust the span for learning only if we saw this spell ready first.
 					_fresh    = self._seenReady[spellID] or false,
+					_bornAt   = now,
 					_source   = "isactive",
 				}
 				if self._traceUntil and ns.CDM then
@@ -2932,7 +2953,8 @@ function Engine:ScanSpells()
 				if e then
 					for k = w, 1, -1 do
 						local kept = self.entries[edges[k]]
-						if not kept or kept.startTime ~= e.startTime then break end
+						-- Tolerance, not equality - sorted ascending, so this stays a monotone bound.
+						if not kept or ((e.startTime or 0) - (kept.startTime or 0)) > SHARED_CD_TOL then break end
 						if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL
 							and ns.IsSameSharedCD(e, kept) then
 							dup = true
@@ -2958,13 +2980,18 @@ function Engine:ScanSpells()
 			-- partial span from a cooldown that ended only because we stopped tracking it).
 			if not massVanish and self.trackedSpells and self.trackedSpells[spellID] then
 				local e = self.entries[spellID]
-				-- _fresh: only learn from a cooldown whose start we actually saw, so the
-				-- wall-clock span is the real length (see ObserveDuration / _seenReady).
-				if e and e._fresh and e._source == "isactive" and e.startTime then
-					self:ObserveDuration(spellID, now - e.startTime)
-				end
-				if ns.ReadyFrames_OnReadyTransition then
-					ns.ReadyFrames_OnReadyTransition(spellID, e)
+				-- Falling edge of the CHARGE_TRACK_DELAY guard: a partial charge use blips isActive for
+				-- about a GCD, and an entry that short never tracked a real cooldown.
+				local blip = e and e._bornAt and (now - e._bornAt) < CHARGE_TRACK_DELAY
+				if not blip then
+					-- _fresh: only learn from a cooldown whose start we actually saw, so the
+					-- wall-clock span is the real length (see ObserveDuration / _seenReady).
+					if e and e._fresh and e._source == "isactive" and e.startTime then
+						self:ObserveDuration(spellID, now - e.startTime)
+					end
+					if ns.ReadyFrames_OnReadyTransition then
+						ns.ReadyFrames_OnReadyTransition(spellID, e)
+					end
 				end
 			end
 			if self._traceUntil and self._traceState[spellID] and ns.CDM then
@@ -2996,6 +3023,7 @@ function Engine:PollOneItem(itemID, tracked)
 	local endTime = startTime + duration
 	if endTime <= GetTime() then return false end
 
+	self:LearnPlainDuration(ns.CONST.ITEM_ID_BASE + itemID, duration)
 	return true, startTime, duration, endTime
 end
 
@@ -3155,8 +3183,10 @@ function Engine:StartTestMode()
 		if def.value == g.testType then typeDef = def; break end
 	end
 
-	if ns.ReadyFrames_ClearAll then ns.ReadyFrames_ClearAll() end
+	-- Flag first: ClearAll ends in a relayout, and ReadyBoxKeepShown reads testActive - a clear with
+	-- the flag down hides the box for good.
 	self.testActive = true
+	if ns.ReadyFrames_ClearAll then ns.ReadyFrames_ClearAll() end
 	-- Never wipe() the whole table here: customs have no live source to re-read, so they would be lost for good.
 	for id, entry in pairs(self.entries) do
 		if entry._source ~= "custom" then self.entries[id] = nil end

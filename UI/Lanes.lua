@@ -1502,7 +1502,8 @@ local function RefreshBody(laneIndex)
 			local dup = false
 			for k = w, 1, -1 do
 				local kept = visible[k]
-				if kept.startTime ~= e.startTime then break end
+				-- Tolerance, not equality - starts differing by a hair must still compare (see Core/Engine.lua).
+				if ((e.startTime or 0) - (kept.startTime or 0)) > SHARED_CD_TOL then break end
 				if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL
 					and ns.IsSameSharedCD(e, kept) then
 					dup = true

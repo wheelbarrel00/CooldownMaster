@@ -380,6 +380,12 @@ function Widgets.CreateDropdown(parent, cfg)
 end
 
 
+-- The picker's `opacity` field and GetColorAlpha are TRANSPARENCY (1 - alpha) on the Classic
+-- flavors and on the legacy OpacitySliderFrame, but TRUE alpha on retail. No API reports which
+-- convention a client uses, so gate on the flavor the way Ace3 does (WOW_PROJECT_MAINLINE).
+local INVERTED_ALPHA = not ns.Compat.IS_RETAIL
+
+
 function Widgets.CreateColorPicker(parent, cfg)
 	cfg = cfg or {}
 	local hasAlpha = cfg.hasAlpha ~= false
@@ -413,10 +419,9 @@ function Widgets.CreateColorPicker(parent, cfg)
 
 	local function buildPickerInfo()
 		local startR, startG, startB, startA =
-			root._color.r, root._color.g, root._color.b, root._color.a
-		-- Color picker `opacity` is TRANSPARENCY (1 - alpha) on both the legacy slider and 12.0's
-		-- GetColorAlpha, so invert it going in and coming back out. Both callbacks re-read the whole
-		-- color because the modern frame does not reliably fire opacityFunc on an opacity-only drag.
+			root._color.r, root._color.g, root._color.b, root._color.a or 1
+		-- Both callbacks re-read the whole color because the modern frame does not reliably fire
+		-- opacityFunc on an opacity-only drag.
 		local function readColor()
 			local r, g, b
 			if ColorPickerFrame.GetColorRGB then
@@ -432,28 +437,27 @@ function Widgets.CreateColorPicker(parent, cfg)
 				elseif _G.OpacitySliderFrame and _G.OpacitySliderFrame.GetValue then
 					t = _G.OpacitySliderFrame:GetValue()
 				end
-				if t ~= nil then root._color.a = 1 - t end
+				if t ~= nil then
+					root._color.a = INVERTED_ALPHA and (1 - t) or t
+				end
 			end
 			applySwatchColor(root._color)
 			fire()
 		end
 		local info = {
 			r = startR, g = startG, b = startB,
-			opacity = 1 - (startA or 1),
+			opacity = INVERTED_ALPHA and (1 - startA) or startA,
 			hasOpacity = hasAlpha,
 			swatchFunc = readColor,
 			opacityFunc = readColor,
-			cancelFunc = function(prev)
-				if prev then
-					root._color.r = prev.r
-					root._color.g = prev.g
-					root._color.b = prev.b
-					if hasAlpha and prev.opacity ~= nil then
-						root._color.a = 1 - prev.opacity
-					end
-					applySwatchColor(root._color)
-					fire()
-				end
+			-- Restore the captured start values rather than the frame's own previousValues: the
+			-- modern picker puts alpha in `.a` and the legacy one used `.opacity`, so reading either
+			-- field silently misses on the other client and Cancel would keep the dragged alpha.
+			cancelFunc = function()
+				root._color.r, root._color.g, root._color.b = startR, startG, startB
+				if hasAlpha then root._color.a = startA end
+				applySwatchColor(root._color)
+				fire()
 			end,
 		}
 		return info

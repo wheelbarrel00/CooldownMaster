@@ -356,7 +356,7 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 	f:SetPoint(cfg.anchor or "CENTER", UIParent, cfg.anchor or "CENTER", cfg.x or 0, cfg.y or -300)
 	if ns.GetFrameScale then f:SetScale(ns.GetFrameScale()) end
 	f:SetClampedToScreen(true)
-	f:EnableMouse(true)
+	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only - RefreshUnlockState keeps it in sync
 	f.index      = index
 	f.cfg        = cfg
 	f.barPool    = {}
@@ -508,8 +508,9 @@ local function RefreshBarBody(index)
 				and (e.barIndex or 0) == index
 				and engine:IsSpellVisible(e.spellID, e.category) then
 				-- An entry past its extrapolated end would draw an empty bar, so drop it and let the engine confirm ready.
-				-- Offensives are exempt: they are only removed on the real fall-off edge, so an underestimated duration must sit empty rather than vanish mid-dot.
-				if e.endTime - now > 0 or e._source == "offensive" then
+				-- isactive and offensive entries are removed on the real edge, so keep them past the
+				-- extrapolated end rather than vanishing mid-cooldown. Mirrors the lane.
+				if e.endTime - now > 0 or e._source == "isactive" or e._source == "offensive" then
 					visible[#visible + 1] = e
 				end
 			end
@@ -525,7 +526,8 @@ local function RefreshBarBody(index)
 			local dup = false
 			for k = w, 1, -1 do
 				local kept = visible[k]
-				if kept.startTime ~= e.startTime then break end
+				-- Tolerance, not equality - starts differing by a hair must still compare (see Core/Engine.lua).
+				if ((e.startTime or 0) - (kept.startTime or 0)) > SHARED_CD_TOL then break end
 				if math.abs((e.endTime or 0) - (kept.endTime or 0)) <= SHARED_CD_TOL
 					and ns.IsSameSharedCD(e, kept) then
 					dup = true
@@ -726,6 +728,8 @@ function ns.Bars_RebuildOne(index)
 		if pooled then
 			ClearBars(pooled)
 			pooled.cfg = cfg
+			-- RefreshUnlockState skips a disabled frame, so a pooled one comes back with a stale mouse state.
+			pooled:EnableMouse(addon.db.profile.global.unlockFrames)
 			addon.barFrames[index] = pooled
 			ns.Bars_ApplyConfig(index)
 		else
@@ -746,9 +750,12 @@ function ns.Bars_RefreshUnlockState(addon)
 	for i = 1, 3 do
 		local f = addon.barFrames and addon.barFrames[i]
 		if f then
+			local unlocked = addon.db.profile.global.unlockFrames
+			-- A locked bar frame has no drag to serve, so leaving the mouse on would silently eat world clicks.
+			f:EnableMouse(unlocked)
 			if f.label then
 				local lta = (f.cfg and f.cfg.labelColor and f.cfg.labelColor.a) or 1
-				f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * lta)
+				f.label:SetAlpha((unlocked and 0.6 or 0) * lta)
 			end
 			RelayoutBarFrame(f)
 		end
