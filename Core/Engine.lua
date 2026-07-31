@@ -41,15 +41,32 @@ Engine._readyBlackoutUntil = 0
 Engine._probe = { seen = 0, matched = 0, anchored = 0, aliasHit = 0 }
 Engine._traceState = {}   -- per-spell last state string for the /cm anchor arm tracer
 
--- C_CooldownViewer enumerates spells only, so potion itemIDs are listed here as a
--- baseline and read via C_Container.GetItemCooldown; BuildTrackedItems also bag-scans.
-local POTION_ITEMS = {
-	241308, 241304, 241309, 241323, 258318,
-}
-
 -- Blizzard ItemConsumableSubclass IDs: 1 = Potion, 2 = Elixir, 3 = Flask/Phial.
 local TRACKED_CONSUMABLE_SUBCLASS = { [1] = true, [2] = true, [3] = true }
 local TRINKET_SLOTS = { 13, 14 }
+
+-- Conjured items sit in consumable buckets that also hold fishing lures, quest items and food,
+-- with no API field separating them (measured on retail and TBC), so they are matched by id.
+local ALWAYS_BAG_ITEMS = {
+	-- Mage mana gems, Agate through Emerald plus the merged modern Mana Gem
+	[5513] = true, [5514] = true, [8007] = true, [8008] = true, [22044] = true, [36799] = true,
+	-- Warlock healthstones: base ranks, the ten Improved variants, and TBC's Master ranks
+	[5509] = true, [5510] = true, [5511] = true, [5512] = true, [9421] = true,
+	[19004] = true, [19005] = true, [19006] = true, [19007] = true, [19008] = true,
+	[19009] = true, [19010] = true, [19011] = true, [19012] = true, [19013] = true,
+	[22103] = true, [22104] = true, [22105] = true,
+}
+
+-- Shared with /cm bagscan so the diagnostic can never disagree with what discovery did.
+local function ClassifyBagItem(itemID)
+	if ALWAYS_BAG_ITEMS[itemID] then return true, "conjured item list" end
+	if not (C_Item and C_Item.GetItemInfoInstant) then return false, "no item API" end
+	local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+	local consumableClass = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0
+	if classID ~= consumableClass then return false, "not a consumable" end
+	if TRACKED_CONSUMABLE_SUBCLASS[subclassID] then return true, "potion/elixir/flask" end
+	return false, "consumable subclass not tracked"
+end
 
 Engine.readyCurve      = nil
 Engine.progressCurve   = nil
@@ -2076,6 +2093,206 @@ function Engine:RunItemDump()
 end
 
 
+-- string.format on a secret throws, so every value is issecretvalue-checked before formatting.
+local function FormatCooldownRead(start, duration, enable)
+	local issecret = _G.issecretvalue
+	if issecret and (issecret(start) or issecret(duration) or issecret(enable)) then
+		return "|cffff5555SECRET|r"
+	end
+	if type(start) ~= "number" or type(duration) ~= "number" then
+		return "start=" .. SafeStr(start) .. " dur=" .. SafeStr(duration)
+	end
+	return string.format("%.1f/%.1f enable=%s(%s)", start, duration, SafeStr(enable), type(enable))
+end
+
+
+local function IsLiveCooldownRead(start, enable)
+	local issecret = _G.issecretvalue
+	if issecret and (issecret(start) or issecret(enable)) then return true end
+	return (type(start) == "number" and start > 0) or enable == 0
+end
+
+
+function Engine:RunBagScan()
+	local cdm = ns.CDM
+	if not (cdm and cdm.Print) then return end
+	if not (C_Container and C_Container.GetContainerItemID and C_Item and C_Item.GetItemInfoInstant) then
+		cdm:Print("Bag API unavailable on this flavor.")
+		return
+	end
+
+	cdm:Print("===== Bag scan (what discovery sees) =====")
+	cdm:Print("Rule: potions, elixirs and flasks, plus conjured items matched by id.")
+	cdm:Print(string.format("In combat: %s   GetItemSpell: %s",
+		InCombatLockdown() and "|cff00ff00YES|r" or "no",
+		C_Item.GetItemSpell and "present" or "|cffff5555absent|r"))
+	cdm:Print("legend: enable is Blizzard's own display flag, printed for diagnosis - the poll ignores it")
+
+	local seen, shown, skipped, taken = {}, 0, 0, 0
+	for bag = 0, (NUM_BAG_SLOTS or 4) do
+		for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
+			local itemID = C_Container.GetContainerItemID(bag, slot)
+			if itemID and not seen[itemID] then
+				seen[itemID] = true
+				local track, why = ClassifyBagItem(itemID)
+				local tracked = self.trackedItems[itemID]
+				local useSpell
+				if C_Item.GetItemSpell then
+					local _, sid = C_Item.GetItemSpell(itemID)
+					useSpell = sid
+				end
+				-- An on-use item outside the consumable class still prints, in case the
+				-- tracked-subclass guess is the thing that is wrong.
+				if why == "not a consumable" and not tracked and not useSpell then
+					skipped = skipped + 1
+				else
+					shown = shown + 1
+					if track then taken = taken + 1 end
+					local _, itemType, itemSubType, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+					cdm:Print(string.format("  [%d] %s | %s/%s (class %s sub %s) spell=%s -> %s (%s)%s",
+						itemID, tostring(C_Item.GetItemInfo(itemID) or "?"),
+						tostring(itemType), tostring(itemSubType),
+						tostring(classID), tostring(subclassID), tostring(useSpell),
+						track and "|cff00ff00TAKE|r" or "|cffff5555SKIP|r", why,
+						tracked and " |cff00ff00[tracked]|r" or ""))
+					local start, duration, enable = C_Container.GetItemCooldown(itemID)
+					if track or tracked or IsLiveCooldownRead(start, enable) then
+						local spellRead, baseRead = "-", "-"
+						if useSpell then
+							spellRead = FormatCooldownRead(ns.Compat.GetSpellCooldown(useSpell))
+							local ok, secs = pcall(ReadBaseCooldownSeconds, useSpell)
+							baseRead = (ok and secs) and string.format("%.1fs", secs) or "none"
+						end
+						cdm:Print(string.format("      item %s | spell %s | spell base %s",
+							FormatCooldownRead(start, duration, enable), spellRead, baseRead))
+					end
+				end
+			end
+		end
+	end
+	if shown == 0 then cdm:Print("  no consumables or tracked items in the bags") end
+	cdm:Print(string.format("  %d taken of %d listed, %d inert bag items skipped",
+		taken, shown, skipped))
+
+	if GetInventoryItemID and GetInventoryItemCooldown then
+		cdm:Print("--- equipped trinkets (same poll path, not narrowed by the bag rule) ---")
+		for _, eslot in ipairs(TRINKET_SLOTS) do
+			local itemID = GetInventoryItemID("player", eslot)
+			if itemID then
+				cdm:Print(string.format("  slot %d [%d] %s | %s | tracked: %s",
+					eslot, itemID, tostring(C_Item.GetItemInfo(itemID) or "?"),
+					FormatCooldownRead(GetInventoryItemCooldown("player", eslot)),
+					self.trackedItems[itemID] and "|cff00ff00YES|r" or "|cffff5555no|r"))
+			else
+				cdm:Print(string.format("  slot %d: empty", eslot))
+			end
+		end
+	end
+end
+
+
+-- Takes an explicit id, so it still answers for an item that has already left the bags.
+function Engine:RunItemCooldownProbe(arg)
+	local cdm = ns.CDM
+	if not (cdm and cdm.Print) then return end
+	local itemID = tonumber(arg)
+	if not itemID then
+		cdm:Print("Usage: /cm itemcd <itemID> - reads one item whether or not you still carry it.")
+		return
+	end
+	if not (C_Container and C_Container.GetItemCooldown and C_Item and C_Item.GetItemInfoInstant) then
+		cdm:Print("Item API unavailable on this flavor.")
+		return
+	end
+
+	cdm:Print("===== Item cooldown probe: " .. itemID .. " =====")
+	local _, itemType, itemSubType, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+	if not classID then
+		cdm:Print("|cffff5555No such item id.|r")
+		return
+	end
+	cdm:Print(string.format("%s | %s/%s (class %s sub %s)",
+		tostring(C_Item.GetItemInfo(itemID) or "?"),
+		tostring(itemType), tostring(itemSubType), tostring(classID), tostring(subclassID)))
+
+	local track, why = ClassifyBagItem(itemID)
+	cdm:Print(string.format("discovery: %s (%s) | tracked: %s | live entry: %s",
+		track and "|cff00ff00TAKE|r" or "|cffff5555SKIP|r", why,
+		self.trackedItems[itemID] and "|cff00ff00YES|r" or "|cffff5555no|r",
+		self.entries[itemID] and "|cff00ff00YES|r" or "|cffff5555no|r"))
+
+	-- Mirrors PollOneItem exactly, or the verdict below would contradict the poll it explains.
+	local tracked = self.trackedItems[itemID]
+	local start, duration, enable
+	if tracked and tracked.slot and GetInventoryItemCooldown then
+		start, duration, enable = GetInventoryItemCooldown("player", tracked.slot)
+	else
+		start, duration, enable = C_Container.GetItemCooldown(itemID)
+	end
+	cdm:Print("item cd: " .. FormatCooldownRead(start, duration, enable))
+
+	local useSpell
+	if C_Item.GetItemSpell then
+		local _, sid = C_Item.GetItemSpell(itemID)
+		useSpell = sid
+	end
+	if useSpell then
+		local ok, secs = pcall(ReadBaseCooldownSeconds, useSpell)
+		cdm:Print(string.format("use spell %s | spell cd %s | spell base %s",
+			tostring(useSpell), FormatCooldownRead(ns.Compat.GetSpellCooldown(useSpell)),
+			(ok and secs) and string.format("%.1fs", secs) or "none"))
+	else
+		cdm:Print("|cffff5555no use spell|r")
+	end
+	cdm:Print("lastUsedSpell = " .. tostring(self.lastUsedSpell)
+		.. ((useSpell and self.lastUsedSpell == useSpell) and " |cff00ff00(this item)|r" or ""))
+
+	local viaSpell
+	if (type(start) ~= "number" or start <= 0) and useSpell and not ns.Compat.HAS_BLIZZ_CDM then
+		local ss, sd = ns.Compat.GetSpellCooldown(useSpell)
+		if type(ss) == "number" and ss > 0 and type(sd) == "number" then
+			start, duration, viaSpell = ss, sd, true
+		end
+	end
+
+	local category = (tracked and tracked.category) or ns.CONST.POTION_CATEGORY
+	local verdict
+	if type(start) ~= "number" or type(duration) ~= "number" then
+		verdict = "|cffff5555the API returned no numbers|r"
+	elseif start <= 0 or duration <= 0 then
+		verdict = "|cffff5555no cooldown reported, so there is nothing to draw|r"
+	elseif duration <= 1.5 then
+		verdict = "|cffff5555GCD length, filtered out|r"
+	elseif start + duration <= GetTime() then
+		verdict = "|cffff5555already expired|r"
+	elseif not self:IsSpellVisible(itemID, category) then
+		verdict = "|cffff5555hidden by Filters|r"
+	else
+		verdict = "|cff00ff00would show|r"
+	end
+	cdm:Print("poll verdict: " .. verdict
+		.. (viaSpell and " |cff00ff00(off the use spell, Classic fallback)|r" or ""))
+
+	cdm:Print("--- tracked items on cooldown now (one shared start = one icon) ---")
+	local n = 0
+	for otherID, t in pairs(self.trackedItems) do
+		local s, d
+		if t.slot and GetInventoryItemCooldown then
+			s, d = GetInventoryItemCooldown("player", t.slot)
+		else
+			s, d = C_Container.GetItemCooldown(otherID)
+		end
+		if type(s) == "number" and s > 0 then
+			n = n + 1
+			cdm:Print(string.format("  [%d] %s start=%.1f dur=%.1f%s",
+				otherID, tostring(t.name), s, type(d) == "number" and d or 0,
+				self.entries[otherID] and " |cff00ff00<- holds the icon|r" or ""))
+		end
+	end
+	if n == 0 then cdm:Print("  none") end
+end
+
+
 function Engine:RunBuffProbe()
 	local cdm = ns.CDM
 	if not (cdm and cdm.Print) then return end
@@ -2344,6 +2561,10 @@ function Engine:BuildTrackedItems()
 
 	local function addItem(itemID, category, slot)
 		if not itemID or self.trackedItems[itemID] then return end
+		-- A nil here means the id does not exist, and it would sit in Filters as a nameless row.
+		if C_Item and C_Item.GetItemInfoInstant and not C_Item.GetItemInfoInstant(itemID) then
+			return
+		end
 		local name, icon = GetItemNameIcon(itemID)
 		self.trackedItems[itemID] = {
 			name     = name or ("Item " .. itemID),
@@ -2356,7 +2577,7 @@ function Engine:BuildTrackedItems()
 		-- ItemMixin fills real name/icon/link once the item data loads (or now if cached).
 		if Item and Item.CreateFromItemID then
 			local item = Item:CreateFromItemID(itemID)
-			-- An id Blizzard has retired never loads, so it would sit in Filters forever as a nameless "Item 258318" that can never fire.
+			-- Required precondition: ContinueOnItemLoad asserts on an empty item.
 			if item:IsItemEmpty() then
 				self.trackedItems[itemID] = nil
 				return
@@ -2378,25 +2599,14 @@ function Engine:BuildTrackedItems()
 		end
 	end
 
-	-- Retail Midnight potion IDs; absent on Classic/TBC, so there the bag scan below is the only source.
-	if ns.Compat.HAS_BLIZZ_CDM then
-		for _, itemID in ipairs(POTION_ITEMS) do
-			addItem(itemID, ns.CONST.POTION_CATEGORY)
-		end
-	end
-
-	-- Auto-discover carried potions/flasks from the bags (reagent bag excluded).
-	local consumableClass = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0
+	-- Bags are the only bulk source (C_CooldownViewer enumerates spells only). Reagent bag excluded.
 	if C_Item and C_Item.GetItemInfoInstant then
 		for bag = 0, (NUM_BAG_SLOTS or 4) do
 			local numSlots = C_Container.GetContainerNumSlots(bag) or 0
 			for slot = 1, numSlots do
 				local itemID = C_Container.GetContainerItemID(bag, slot)
-				if itemID then
-					local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
-					if classID == consumableClass and TRACKED_CONSUMABLE_SUBCLASS[subclassID] then
-						addItem(itemID, ns.CONST.POTION_CATEGORY)
-					end
+				if itemID and ClassifyBagItem(itemID) then
+					addItem(itemID, ns.CONST.POTION_CATEGORY)
 				end
 			end
 		end
@@ -3016,6 +3226,21 @@ function Engine:PollOneItem(itemID, tracked)
 		return false
 	end
 
+	-- Do not suppress on these APIs' third `enable` return: every 0 measured was already
+	-- zero-duration, which the checks below drop anyway, and acting on it can hide a real cooldown.
+
+	-- A conjured item (mana gem) can carry its cooldown on the use spell instead of the item, so
+	-- the item read comes back idle while it is unusable. Retail's spell reads are secret in combat.
+	if (not startTime or startTime <= 0) and not ns.Compat.HAS_BLIZZ_CDM then
+		local useSpell = self.itemUseSpell[itemID]
+		if useSpell then
+			local spellStart, spellDuration = ns.Compat.GetSpellCooldown(useSpell)
+			if spellStart and spellDuration and spellStart > 0 then
+				startTime, duration = spellStart, spellDuration
+			end
+		end
+	end
+
 	if not startTime or not duration then return false end
 	if duration <= 1.5 then return false end   -- skip GCD-length cooldowns
 	if startTime <= 0 then return false end
@@ -3064,18 +3289,44 @@ function Engine:PollAllItems()
 	local cdSeen = self._cdSeen
 	wipe(cdSeen)
 
+	-- A potion drunk to its last leaves the bags mid-cooldown. Claiming the shared start HERE, ahead
+	-- of the carried potions, keeps the icon you actually drank. A trinket you unequipped is not a
+	-- use, and neither is a hidden item, so both drop out instead of riding on to a ready pop.
+	local now = GetTime()
+	for itemID, entry in pairs(self.entries) do
+		if entry.kind == "item" and not self.trackedItems[itemID] then
+			if entry.category ~= ns.CONST.POTION_CATEGORY
+				or not self:IsSpellVisible(itemID, entry.category) then
+				self.entries[itemID] = nil
+			elseif entry.startTime and (entry.endTime or 0) > now then
+				cdSeen[entry.startTime] = true
+				seen[itemID] = true
+			end
+		end
+	end
+
 	for _, itemID in ipairs(order) do
 		local tracked = self.trackedItems[itemID]
 		local active, startTime, duration, endTime = self:PollOneItem(itemID, tracked)
-		if tracked and active and not cdSeen[startTime] then
+		-- Hidden items stay out of the shared-cooldown dedupe: without this, unticking Show on one
+		-- potion blanks the visible potion sharing its cooldown instead of just hiding this one.
+		local hidden = tracked
+			and not self:IsSpellVisible(itemID, tracked.category or ns.CONST.POTION_CATEGORY)
+		if hidden then
+			-- itemIDs overlap the spellID range, so only clear an entry this item actually owns.
+			local e = self.entries[itemID]
+			if e and e.kind == "item" then self.entries[itemID] = nil end
+		elseif tracked and active and not cdSeen[startTime] then
 			cdSeen[startTime] = true
 			seen[itemID] = true
+			-- itemIDs overlap the spellID range (5512 is both), so a spell already on this key keeps it.
 			local existing = self.entries[itemID]
+			if existing and existing.kind ~= "item" then existing = nil end
 			if existing then
 				existing.startTime = startTime
 				existing.duration  = duration
 				existing.endTime   = endTime
-			else
+			elseif not self.entries[itemID] then
 				local cat = tracked.category or ns.CONST.POTION_CATEGORY
 				self.entries[itemID] = {
 					spellID    = itemID,
@@ -3095,11 +3346,12 @@ function Engine:PollAllItems()
 		end
 	end
 
-	local blackout = self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0)
+	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
 	for itemID, entry in pairs(self.entries) do
 		if entry.kind == "item" and not seen[itemID] and not blackout then
-			-- untracked (used up / unequipped) = silent removal, not a ready edge
-			if self.trackedItems[itemID] and ns.ReadyFrames_OnReadyTransition then
+			-- A used-up potion is held above until its cooldown finishes, so it pops under the name
+			-- that held the icon. Anything that left inventory another way was dropped up there.
+			if ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(itemID, entry)
 			end
 			self.entries[itemID] = nil

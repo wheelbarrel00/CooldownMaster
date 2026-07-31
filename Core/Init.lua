@@ -406,6 +406,20 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
+	elseif input == "bagscan" then
+		if ns.Engine and ns.Engine.RunBagScan then
+			ns.Engine:RunBagScan()
+		else
+			self:Print("Engine not loaded.")
+		end
+
+	elseif input == "itemcd" or input:match("^itemcd%s") then
+		if ns.Engine and ns.Engine.RunItemCooldownProbe then
+			ns.Engine:RunItemCooldownProbe(input:match("^itemcd%s+(%d+)$"))
+		else
+			self:Print("Engine not loaded.")
+		end
+
 	elseif input == "buffs" then
 		if ns.Engine and ns.Engine.RunBuffProbe then
 			ns.Engine:RunBuffProbe()
@@ -540,7 +554,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | buffs | anchor | cdv | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | bagscan | itemcd <id> | buffs | anchor | cdv | spells | haste | tracking")
 	end
 end
 

@@ -1,5 +1,22 @@
 # Cooldown Master Changelog
 
+## 1.7.0 (2026-07-31) — Conjured items, and a tidier potion list
+
+### New Features
+
+- **Conjured mana gems and healthstones are now tracked.** A Mage's Mana Agate through Mana Emerald, and a Warlock's healthstones including the Improved and Master ranks, now appear under Filters > Potions without you adding them by hand. CDM only recognised what Blizzard files as a potion, elixir or flask, and conjured items sit outside all three — so they were invisible to it. They also tend to carry their cooldown on the spell they cast rather than on the item itself, which CDM now reads as well. Thanks to Dr. Hangover for the report.
+  - **Heads up:** if you play a Warlock, your healthstone will start appearing where it didn't before. Untick **Show** on its row under Filters > Potions if you'd rather it stayed hidden.
+
+### Bug Fixes
+
+- **Retail: the Potions list no longer shows potions you aren't carrying.** CDM was seeding a small built-in set of retail potion IDs on top of scanning your bags. One of them no longer exists in the game and appeared as a nameless "Item 258318" row that could never do anything; two others were alternate versions sharing a name with potions you'd actually have, so Light's Potential and Flask of the Magisters each showed up twice. Your bags are the only source now, on every flavor.
+- **Hiding one potion no longer hides another.** All combat potions share a single cooldown, and unticking Show on one could leave a potion you hadn't hidden with no icon, no bar and no ready box at all. Hidden items now step aside instead of claiming the shared cooldown, which is how spells have always behaved.
+- **Using the last of a potion no longer loses its icon.** Drinking your final one removes the item from your bags, and the timer used to vanish with it about half a second later — or hand the countdown to a different potion, so a mana potion you drank would finish its run wearing another potion's name. It now runs to the end as itself and pops a ready box when the cooldown is up.
+
+### Improvements
+
+- **Two new diagnostics for "why isn't this item showing".** `/cm bagscan` lists every consumable in your bags with what CDM decided about it and why, and `/cm itemcd <itemID>` reads a single item's cooldown even after you've used your last one.
+
 ## 1.6.0 (2026-07-28) — Ignore Threshold works on Classic, plus a long list of fixes
 
 ### New Features
