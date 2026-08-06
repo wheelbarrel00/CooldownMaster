@@ -1,5 +1,23 @@
 # Cooldown Master Changelog
 
+## 1.8.0 (2026-08-03) — Ready boxes land on time, plus a batch of fixes
+
+### Bug Fixes
+
+- **Retail: ready boxes no longer pop before the cooldown is actually up.** When a cooldown's last second ran out underneath the global cooldown, the game reported it identically to a spell that was already ready, and Cooldown Master read that as the cooldown ending. The ready box fired early and the lane icon vanished before finishing its travel. Measured at 0.7 to 0.9 seconds early on a 9.3 second cooldown. Any cooldown whose real length has been learned now holds until it genuinely finishes.
+- **Lane time markers line up with the icons again.** The 25% and 75% labels sat about 9 pixels off the icons they were labelling, in opposite directions. Markers measured across the whole lane, while an icon travels across the lane minus its own width. All five markers ship switched on, so every lane showed this out of the box. They now stay aligned at any icon size.
+- **Frame Scale no longer knocks your frames out of place.** Rescaling rewrites every lane, box and bar offset so they hold their position on screen, and at smaller scales those numbers could run past what the X and Y Offset sliders were able to represent. The next nudge of one of those sliders then clamped your frame somewhere else entirely. Those sliders now widen as the scale shrinks, so the value always fits.
+- **Turning off a Masque group gives Cooldown Master its icon zoom and border back.** Unticking Enabled on one of its groups in Masque left the icons stripped of the skin *and* of Cooldown Master's own zoom and border, with no way to recover them. Masque re-skins a disabled group with its default skin rather than releasing it, which was being read as still skinned.
+- **Your pet dying no longer pops a ready box for each of its abilities.** A dead pet stops reporting its cooldowns all at once, which read as every pet ability coming off cooldown together. They now leave quietly while the pet is down.
+- **Classic: dying no longer pops a ready box for every buff you were tracking.** Death strips your buffs in a single pass, and each one fired its own box and sound, filling the display and pushing out anything real. They now clear silently.
+- **Hovering a stacked lane icon no longer drops it underneath its neighbours.** Moving the mouse away returned the icon to the bottom of the stack instead of its own layer, where it stayed until its position in the stack happened to change. Needs Stacking and Raise On Mouseover, both off by default.
+- **A frame that hides mid-drag no longer chases your cursor.** If a lane, ready box or bar frame hid while you were dragging it, it kept believing the drag was still going and snapped to wherever your cursor had reached by the time it reappeared.
+- **A dragged lane's border is crisp again.** Dropping a lane left it sitting between physical pixels, which smears a one-pixel border across two rows until some unrelated setting changed. Lanes, ready boxes and bar frames all re-align the moment you let go now.
+
+### Improvements
+
+- **Sharper diagnostics for cooldown timing.** `/cm anchor arm` now takes a length and a spell name, so `/cm anchor arm 30 blade of justice` traces one spell for 30 seconds instead of your entire tracked set, short enough to read and to paste into a bug report. `/cm masque` reports a group you have disabled in Masque and no longer claims a failed group registered fine, and `/cm petprobe` reports whether your pet is alive.
+
 ## 1.7.0 (2026-07-31) — Conjured items, and a tidier potion list
 
 ### New Features

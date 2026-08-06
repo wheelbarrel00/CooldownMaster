@@ -351,7 +351,9 @@ function CDM:OnSlash(input)
 				for _, s in ipairs({ "lane", "ready", "bar" }) do
 					local g = r.groups[s]
 					if g then
-						self:Print(("  %s - %s (%d buttons)"):format(g.name, g.created and "registered" or "not created", g.buttons))
+						local state = g.created and (g.disabled and "registered, disabled in Masque" or "registered")
+							or "not created"
+						self:Print(("  %s - %s (%d buttons)"):format(g.name, state, g.buttons))
 					end
 				end
 				self:Print("Open Masque and look for CooldownMaster under Skin Settings.")
@@ -448,15 +450,37 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
-	elseif input == "anchor arm" then
+	elseif input == "anchor arm" or input:match("^anchor arm%s") then
 		if not ns.Compat.HAS_BLIZZ_CDM then
 			-- The tracer lives in the retail ScanSpells loop; Classic dispatch never reaches it,
 			-- so arming here would print the banner and then nothing, forever.
 			self:Print("anchor trace is retail-only (Classic scans real cooldown numbers directly).")
 		elseif ns.Engine then
-			ns.Engine._traceUntil = GetTime() + 12
+			local rest = input:match("^anchor arm%s+(.-)%s*$") or ""
+			local secs = tonumber(rest:match("^%d+"))
+			local filter
+			if secs then
+				filter = rest:match("^%d+%s+(.+)$")
+			elseif rest ~= "" then
+				filter = rest
+			end
+			secs = secs or 12
+			if secs < 5 then secs = 5 elseif secs > 60 then secs = 60 end
+
+			local traceID, traceName
+			if filter then
+				traceID, traceName = ns.Engine:ResolveTraceFilter(filter)
+				if not traceID then
+					self:Print(string.format("no tracked spell matches '%s' - try /cm spells for the list.", filter))
+					return
+				end
+			end
+			ns.Engine._traceUntil = GetTime() + secs
+			ns.Engine._traceID = traceID
 			wipe(ns.Engine._traceState)
-			self:Print("anchor trace armed 12s -- legend: A/a=isActive G/g=onGCD V/v=active E/e=entry M/m=multiCharge")
+			self:Print(string.format(
+				"anchor trace armed %ds%s - legend: A/a=isActive G/g=onGCD V/v=active E/e=entry M/m=multiCharge H/h=gcdHold",
+				secs, traceName and (" on " .. traceName) or ""))
 		else
 			self:Print("Engine not loaded.")
 		end
@@ -554,7 +578,7 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | bagscan | itemcd <id> | buffs | anchor | cdv | spells | haste | tracking")
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | bagscan | itemcd <id> | buffs | anchor [arm [secs] [spell]] | cdv | spells | haste | tracking")
 	end
 end
 

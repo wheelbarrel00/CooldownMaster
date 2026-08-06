@@ -377,7 +377,7 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 		self._isDragging      = true
 	end)
 
-	f:SetScript("OnMouseUp", function(self, button)
+	local function FinalizeDrag(self)
 		if not self._isDragging then return end
 		self._isDragging = false
 		local point, _, _, x, y = self:GetPoint()
@@ -388,7 +388,13 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 			bcfg.x = math.floor(x + 0.5)
 			bcfg.y = math.floor(y + 0.5)
 		end
-	end)
+		-- Same reason as the ready boxes: the relayout's snap only runs when the bar set changes.
+		if ns.SnapFrameToPixelGrid then ns.SnapFrameToPixelGrid(self) end
+	end
+
+	f:SetScript("OnMouseUp", FinalizeDrag)
+	-- An ancestor hide (UIParent) or a pooling hide eats the mouse-up, so finalize here too.
+	f:SetScript("OnHide", FinalizeDrag)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
 		if self._isDragging then

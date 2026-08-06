@@ -216,7 +216,10 @@ function Widgets.CreateSlider(parent, cfg)
 
 	local initialV = cfg.value
 	if type(initialV) ~= "number" then initialV = minV end
+	-- Seeding clamps a stored value outside min/max, so hold the guard or that clamp is written back.
+	syncing = true
 	slider:SetValue(initialV)
+	syncing = false
 	edit:SetText(fmt(initialV))
 
 	root._onChange = cfg.onChange

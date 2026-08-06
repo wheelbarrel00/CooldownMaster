@@ -411,7 +411,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		self._isDragging      = true
 	end)
 
-	f:SetScript("OnMouseUp", function(self, button)
+	local function FinalizeDrag(self)
 		if not self._isDragging then return end
 		self._isDragging = false
 		local point, _, _, x, y = self:GetPoint()
@@ -422,7 +422,14 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			rfCfg.x = math.floor(x + 0.5)
 			rfCfg.y = math.floor(y + 0.5)
 		end
-	end)
+		-- The relayout snaps too, but it only runs when the icon set changes, so a box dragged and
+		-- left alone would sit off the pixel grid until its next pop.
+		if ns.SnapFrameToPixelGrid then ns.SnapFrameToPixelGrid(self) end
+	end
+
+	f:SetScript("OnMouseUp", FinalizeDrag)
+	-- An ancestor hide (UIParent) or a pooling hide eats the mouse-up, so finalize here too.
+	f:SetScript("OnHide", FinalizeDrag)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
 		if self._isDragging then

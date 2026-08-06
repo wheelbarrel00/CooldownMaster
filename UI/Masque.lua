@@ -20,8 +20,15 @@ local function GetGroup(surface)
 end
 
 
+-- Disabling a group in Masque re-skins its buttons with the DEFAULT skin rather than releasing
+-- them (Group.lua __Disable), which resets the icon TexCoord and leaves our border zeroed. Nothing
+-- re-asserts either, so a disabled group has to read as unskinned or Icon Zoom and the icon border
+-- options stay dead for the rest of the session. Disabling the parent cascades this flag to us.
 function ns.Masque_IsSkinned(owner)
-	return (owner and owner._msqSkinned) == true
+	if not (owner and owner._msqSkinned) then return false end
+	local group = owner._msqGroup
+	if group and group.db and group.db.Disabled then return false end
+	return true
 end
 
 
@@ -69,7 +76,14 @@ function ns.Masque_Report()
 			if g and g.Buttons then
 				for _ in pairs(g.Buttons) do count = count + 1 end
 			end
-			out.groups[surface] = { name = name, created = (g ~= nil), buttons = count }
+			-- A failed Group() call caches as false, so a nil test would report it as registered -
+			-- degrading the one diagnostic that exists for a group failing to register.
+			out.groups[surface] = {
+				name     = name,
+				created  = (g and true) or false,
+				disabled = (g and g.db and g.db.Disabled) and true or false,
+				buttons  = count,
+			}
 		end
 	end
 	return out

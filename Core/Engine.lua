@@ -653,6 +653,15 @@ function Engine:DropPetSpells()
 end
 
 
+-- A dead or dismissed pet stops answering for its abilities, so every one of them leaves the scan
+-- at once and the ready sweep reads that as the whole set coming off cooldown. A state test, not
+-- an event: a dead pet keeps its GUID and can keep its spell count, so the UNIT_PET / PET_BAR_UPDATE
+-- handler's guid-and-count compare misses the death entirely.
+local function PetIsGone()
+	return not UnitExists("pet") or UnitIsDead("pet")
+end
+
+
 -- A pet's filler attack (Bite, Claw, Smack) sits on a real 3s cooldown, so the player scan's
 -- "cooldown longer than the GCD" gate would put a permanently cycling icon on the lane.
 local MIN_PET_COOLDOWN_MS = 5000
@@ -941,9 +950,15 @@ function Engine:ScanSpellsClassic()
 				edges[#edges + 1] = spellID
 			end
 		end
+		-- No mass-vanish backstop here on purpose, unlike the retail sweep: Preparation, Readiness
+		-- and Cold Snap end four or more cooldowns in one scan by design, and that is exactly when
+		-- the pops matter most.
+		local petGone = PetIsGone()
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
-			if self.trackedSpells[spellID] and ns.ReadyFrames_OnReadyTransition then
+			local tracked = self.trackedSpells[spellID]
+			if tracked and petGone and tracked.category == ns.CONST.PET_CATEGORY then tracked = nil end
+			if tracked and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
 			self.entries[spellID] = nil
@@ -1033,10 +1048,14 @@ function Engine:ScanBuffs()
 				edges[#edges + 1] = spellID
 			end
 		end
+		-- Dying strips every buff in one pass, and more edges than this at once is a mass vanish
+		-- rather than that many buffs genuinely expiring together. Reconcile the entries, pop nothing.
+		local silent = #edges > 0 and (#edges > READY_MAX_POPS_PER_SCAN or UnitIsDeadOrGhost("player"))
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
 			-- A buff riding a cooldown spell just wore off, which is not the spell coming ready, so it leaves quietly with no ready pop.
-			if not e.buffSpellID and self:IsSpellVisible(spellID, 2) and ns.ReadyFrames_OnReadyTransition then
+			if not silent and not e.buffSpellID and self:IsSpellVisible(spellID, 2)
+				and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
 			self.entries[spellID] = nil
@@ -2761,6 +2780,12 @@ local KNOWN_TRUST_MIN = MIN_TRUSTED_DURATION
 -- persisted past this, so just a real full-depletion recharge (far longer) shows. > base GCD.
 local CHARGE_TRACK_DELAY = 1.6
 
+-- A cooldown whose remaining time falls under the running GCD is reported AS the GCD, so
+-- isOnGCD reads identically to a ready spell being blipped and the entry would pop up to a GCD
+-- early (measured 0.7-0.9s on a 9.3s cooldown). Hold it to its learned end, but only inside this
+-- window: outside it the flip cannot be GCD masking, so a wrong duration can never park an entry.
+local GCD_MASK_HOLD = 1.6
+
 function Engine:LearnDuration(spellID, dObj)
 	if not dObj then return end
 	if InCombatLockdown() then return end
@@ -2867,7 +2892,7 @@ function Engine:OnTrackedCast(spellID)
 			e.dObj      = nil
 			e._fresh    = true
 			p.anchored, p.lastAnchorAt, p.lastAnchorID = p.anchored + 1, now, spellID
-			if self._traceUntil and ns.CDM then
+			if self:Tracing(spellID) then
 				ns.CDM:Print(string.format("[trace] %s ANCHORED (charge cast)", tostring(tracked.name)))
 			end
 		end
@@ -2883,10 +2908,38 @@ function Engine:OnTrackedCast(spellID)
 		e.dObj      = nil
 		e._fresh    = true
 		p.anchored, p.lastAnchorAt, p.lastAnchorID = p.anchored + 1, now, spellID
-		if self._traceUntil and ns.CDM then
+		if self:Tracing(spellID) then
 			ns.CDM:Print(string.format("[trace] %s ANCHORED (cast)", tostring(tracked.name)))
 		end
 	end
+end
+
+
+function Engine:Tracing(spellID)
+	return self._traceUntil ~= nil and (not self._traceID or spellID == self._traceID) and ns.CDM ~= nil
+end
+
+
+-- Resolve an "anchor arm" filter to one tracked spellID up front, so the tracer only ever
+-- compares numbers on the scan path. A bare number is a spellID, anything else a name.
+function Engine:ResolveTraceFilter(text)
+	local id = tonumber(text)
+	if id then
+		local tracked = self.trackedSpells and self.trackedSpells[id]
+		if tracked then return id, tracked.name or tostring(id) end
+		return nil
+	end
+	local needle = text:lower()
+	local subID, subName
+	for spellID, tracked in pairs(self.trackedSpells or {}) do
+		local name = tracked.name
+		if name then
+			local lower = name:lower()
+			if lower == needle then return spellID, name end
+			if not subID and lower:find(needle, 1, true) then subID, subName = spellID, name end
+		end
+	end
+	return subID, subName
 end
 
 
@@ -3023,18 +3076,38 @@ function Engine:ScanSpells()
 			end
 		end
 
-		-- /cm anchor arm: 12s state tracer. Prints only on transitions, so chat stays readable;
-		-- one nil-check per spell per scan when disarmed.
+		-- Hold through the GCD-masked tail (see GCD_MASK_HOLD). Only a duration learned out of
+		-- combat off the exact game value earns it - a baseline or the 30s default would park the
+		-- entry well past the real cooldown, and outside the window the flip cannot be masking.
+		local gcdHeld = false
+		---@diagnostic disable-next-line: undefined-field
+		if not active and rawActive and ok and info and info.isOnGCD then
+			local e = self.entries[spellID]
+			local known = self.knownDurations[spellID]
+			if e and e.endTime and known and known > KNOWN_TRUST_MIN then
+				local left = e.endTime - now
+				if left > 0 and left <= GCD_MASK_HOLD then
+					seen[spellID] = true
+					gcdHeld = true
+				end
+			end
+		end
+
+		-- /cm anchor arm: state tracer. Prints only on transitions, so chat stays readable. One
+		-- nil-check per spell per scan when disarmed.
 		if self._traceUntil then
 			if now > self._traceUntil then
 				self._traceUntil = nil
+				self._traceID = nil
 				if ns.CDM then ns.CDM:Print("anchor trace done.") end
-			elseif rawActive or self.entries[spellID] or self._traceState[spellID] then
+			elseif (not self._traceID or spellID == self._traceID)
+				and (rawActive or self.entries[spellID] or self._traceState[spellID]) then
 				local st = (rawActive and "A" or "a")
 					.. ((ok and info and info.isOnGCD) and "G" or "g")
 					.. (active and "V" or "v")
 					.. (self.entries[spellID] and "E" or "e")
 					.. (multiCharge and "M" or "m")
+					.. (gcdHeld and "H" or "h")
 				if st ~= self._traceState[spellID] then
 					self._traceState[spellID] = st
 					local e2 = self.entries[spellID]
@@ -3100,7 +3173,7 @@ function Engine:ScanSpells()
 					_bornAt   = now,
 					_source   = "isactive",
 				}
-				if self._traceUntil and ns.CDM then
+				if self:Tracing(spellID) then
 					ns.CDM:Print(string.format("[trace] %s ENTRY CREATED start=%.1fs-ago dur=%.1f",
 						tostring(tracked.name), now - startTime, duration))
 				end
@@ -3183,12 +3256,17 @@ function Engine:ScanSpells()
 		end
 	end
 
+	local petGone = PetIsGone()
 	for _, spellID in ipairs(edges) do
 		if not blackout then
 			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell
 			-- discards it silently rather than popping a false ready (or learning a
 			-- partial span from a cooldown that ended only because we stopped tracking it).
-			if not massVanish and self.trackedSpells and self.trackedSpells[spellID] then
+			local tracked = self.trackedSpells and self.trackedSpells[spellID]
+			-- Dropping the pet is not its abilities coming off cooldown, and learning a span from
+			-- one would bank the time until it died as the cooldown's real length.
+			if tracked and petGone and tracked.category == ns.CONST.PET_CATEGORY then tracked = nil end
+			if not massVanish and tracked then
 				local e = self.entries[spellID]
 				-- Falling edge of the CHARGE_TRACK_DELAY guard: a partial charge use blips isActive for
 				-- about a GCD, and an entry that short never tracked a real cooldown.
@@ -3205,8 +3283,12 @@ function Engine:ScanSpells()
 				end
 			end
 			if self._traceUntil and self._traceState[spellID] and ns.CDM then
-				ns.CDM:Print(string.format("[trace] %s ENTRY REMOVED (ready edge, popped=%s)",
-					tostring(spellID), tostring(not massVanish)))
+				-- age well short of dur on a G state = the cooldown was masked by the GCD, not finished.
+				local e = self.entries[spellID]
+				ns.CDM:Print(string.format("[trace] %s ENTRY REMOVED (ready edge, popped=%s) age=%s dur=%s",
+					tostring(spellID), tostring(not massVanish),
+					e and string.format("%.1f", now - (e.startTime or now)) or "-",
+					e and string.format("%.1f", e.duration or 0) or "-"))
 			end
 			self.entries[spellID] = nil
 		end
@@ -4428,6 +4510,8 @@ function Engine:RunPetProbe()
 
 	local petOut = UnitExists and UnitExists("pet")
 	cdm:Print("Pet out: " .. (petOut and yes or no))
+	cdm:Print("Pet dead or absent: " .. (PetIsGone()
+		and "|cffff5555yes - pet ready pops suppressed|r" or "|cff00ff00no|r"))
 	if not petOut then
 		cdm:Print("|cffff5555Summon a pet, put an ability on cooldown, then re-run.|r")
 	end

@@ -435,6 +435,17 @@ local function BuildGlobalTab(content)
 	})
 	frameScaleSlider:SetPoint("TOPLEFT", scaleHeader, "BOTTOMLEFT", 0, -8)
 
+	-- The rescale above rewrote every offset, so cached Appearance forms hold stale values and
+	-- stale offset-slider bounds. Drop them on release, never per drag step - each drop orphans a
+	-- form tree that WoW never collects.
+	local dropForms = function() ns.Options_DropAppearanceForms() end
+	if frameScaleSlider._slider then
+		frameScaleSlider._slider:HookScript("OnMouseUp", dropForms)
+	end
+	if frameScaleSlider._edit then
+		frameScaleSlider._edit:HookScript("OnEditFocusLost", dropForms)
+	end
+
 	-- Applied on RELEASE, never live. This slider is a child of the panel it scales, so scaling
 	-- mid-drag moves the slider track under the cursor and the value oscillates (the flashing and
 	-- wrong sizes). onChange only records the value; the hooks below apply it once the drag ends.
@@ -457,6 +468,16 @@ end
 
 for _, def in ipairs(TABS) do
 	if def.id == "global" then def.builder = BuildGlobalTab end
+end
+
+
+-- Offsets are stored in each frame's own scaled units, so the slider has to reach further as the
+-- frames shrink or Frame Scale can park a value it cannot represent. Keeps a constant screen reach.
+local function OffsetLimit()
+	local s = (ns.GetFrameScale and ns.GetFrameScale()) or 1
+	-- Never narrower than the old fixed range, or a pre-1.8.0 profile sitting at a scale above 1
+	-- could hold an offset this slider can no longer represent, and clamp it on the first nudge.
+	return math.max(500, math.floor(500 / s + 0.5))
 end
 
 
@@ -875,12 +896,12 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 		onChange = function(v) cfg.height = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -500, max = 500, step = 1,
+		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1,
 		value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -500, max = 500, step = 1,
+		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1,
 		value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; RefreshLane(laneIndex) end,
 	}))
@@ -1472,6 +1493,14 @@ local function BuildLanesTab(content)
 	end
 
 	ShowLaneSection(formArea, lanesState.laneIndex, lanesState.sectionID)
+	-- Frame Scale drops cached Appearance forms while this tab is hidden, and showing a cached tab
+	-- re-creates nothing, so without this the pane comes back empty with its rail row still lit.
+	content._reseed = function()
+		local sections = lanesState.formFrames[lanesState.laneIndex]
+		if not (sections and sections[lanesState.sectionID]) then
+			ShowLaneSection(formArea, lanesState.laneIndex, lanesState.sectionID)
+		end
+	end
 end
 
 for _, def in ipairs(TABS) do
@@ -3431,11 +3460,11 @@ local function BuildReadyAppearanceForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -500, max = 500, step = 1, value = cfg.x, width = 240,
+		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -500, max = 500, step = 1, value = cfg.y, width = 240,
+		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; ReadyApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
@@ -3807,6 +3836,12 @@ local function BuildReadyTab(content)
 	end
 
 	ShowReadySection(formArea, readyState.boxIndex, readyState.sectionID)
+	content._reseed = function()
+		local sections = readyState.formFrames[readyState.boxIndex]
+		if not (sections and sections[readyState.sectionID]) then
+			ShowReadySection(formArea, readyState.boxIndex, readyState.sectionID)
+		end
+	end
 end
 
 for _, def in ipairs(TABS) do
@@ -3837,6 +3872,21 @@ local barsState = {
 	railRows   = {},
 	formFrames = {},
 }
+
+-- Every X/Y Offset slider lives in an Appearance form, so Frame Scale only has to invalidate
+-- those three. Declared here because it is the first point all three state tables exist.
+function ns.Options_DropAppearanceForms()
+	for _, state in ipairs({ lanesState, readyState, barsState }) do
+		for _, sections in pairs(state.formFrames) do
+			local surf = sections["appearance"]
+			if surf then
+				surf:Hide()
+				sections["appearance"] = nil
+			end
+		end
+	end
+end
+
 
 local function GetBarCfg(i) return ns.CDM.db.profile.barFrames[i] end
 
@@ -3915,11 +3965,11 @@ local function BuildBarAppearanceForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -500, max = 500, step = 1, value = cfg.x, width = 240,
+		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -500, max = 500, step = 1, value = cfg.y, width = 240,
+		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
@@ -4275,6 +4325,12 @@ local function BuildBarsTab(content)
 	end
 
 	ShowBarSection(formArea, barsState.frameIndex, barsState.sectionID)
+	content._reseed = function()
+		local sections = barsState.formFrames[barsState.frameIndex]
+		if not (sections and sections[barsState.sectionID]) then
+			ShowBarSection(formArea, barsState.frameIndex, barsState.sectionID)
+		end
+	end
 end
 
 for _, def in ipairs(TABS) do

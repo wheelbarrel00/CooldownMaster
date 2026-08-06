@@ -515,7 +515,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 		self._isDragging      = true
 	end)
 
-	f:SetScript("OnMouseUp", function(self, button)
+	local function FinalizeDrag(self)
 		if not self._isDragging then return end
 		self._isDragging = false
 
@@ -527,8 +527,17 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 			laneCfg.x = math.floor(x + 0.5)
 			laneCfg.y = math.floor(y + 0.5)
 		end
+		-- A drag ends on an arbitrary sub-pixel position, and the refresh below is RefreshBody,
+		-- which deliberately skips ApplyConfig where the snap normally lives - so without this the
+		-- border stays smeared across two pixel rows until some unrelated option change.
+		ns.SnapFrameToPixelGrid(self)
 		if ns.Lanes_Refresh then ns.Lanes_Refresh(self.laneIndex) end
-	end)
+	end
+
+	f:SetScript("OnMouseUp", FinalizeDrag)
+	-- A mid-drag hide (the visibility gate) strands _isDragging, and the OnUpdate then walks the
+	-- frame to the cursor the moment it re-shows.
+	f:SetScript("OnHide", FinalizeDrag)
 
 	f:SetScript("OnUpdate", function(self, elapsed)
 		if TRACKING_ENABLED and self._track and not self._chromeHidden then UpdateTracking(self) end
@@ -770,6 +779,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		-- Raise above stack-mates so an occluded stacked icon can be hovered; only
 		-- meaningful when stacking overlaps icons, so gate it on the toggle.
 		if self._cfg and self._cfg.stackRaiseHover and self:GetParent() then
+			self._hoverRaised = true
 			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 50)
 		end
 		local cdm = ns.CDM
@@ -790,8 +800,14 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		GameTooltip:Show()
 	end)
 	btn:SetScript("OnLeave", function(self)
-		if self._cfg and self._cfg.stackRaiseHover and self:GetParent() then
-			self:SetFrameLevel(self:GetParent():GetFrameLevel() + 1)
+		-- Keyed off the raise actually happening, not the toggle: flipping the option off mid-hover
+		-- would otherwise strand the icon at +50. Restore the level the stacking pass assigned - a
+		-- flat parent+1 drops the icon under its stack-mates, and the memo reads as unchanged so
+		-- nothing puts it back until its sort index happens to move.
+		if self._hoverRaised then
+			self._hoverRaised = nil
+			local parent = self:GetParent()
+			self:SetFrameLevel(self._stackLevel or (parent and parent:GetFrameLevel() + 1) or 1)
 		end
 		GameTooltip:Hide()
 	end)
@@ -877,6 +893,16 @@ local function ClearLaneIcon(btn)
 	btn._stackOff    = nil
 	btn._spreadShift = nil
 	btn._isActive    = nil
+	-- OnLeave is not guaranteed to fire when a frame hides under the cursor, and an icon whose
+	-- cooldown ends mid-hover does exactly that. Put the level back to the lane's base and drop
+	-- both memos, or the slot returns to the pool stuck above its stack-mates with the raise
+	-- latched on, which would then suppress every future SetFrameLevel for it.
+	if btn._hoverRaised or btn._stackLevel then
+		btn._hoverRaised = nil
+		btn._stackLevel  = nil
+		local parent = btn:GetParent()
+		if parent then btn:SetFrameLevel(parent:GetFrameLevel() + 1) end
+	end
 	if btn._tinted and btn.tex then
 		btn._tinted = nil
 		btn.tex:SetVertexColor(1, 1, 1)
@@ -947,6 +973,10 @@ function ns.StyleIcon(btn, spellID, itemID, g)
 			local inset = (1 - ICON_BASE_VISIBLE / zoom) * 0.5
 			tex:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
 		end
+	elseif btn._zoom then
+		-- Forget the crop we applied while the group was disabled, or re-disabling it later reads
+		-- as already-applied and the skin's crop stays.
+		btn._zoom = nil
 	end
 
 	local tint, desat = g.notUsableTint, g.notUsableDesaturate
@@ -993,7 +1023,12 @@ function ns.ApplyIconBorder(btn, cfg)
 	local b = btn.border
 	if not b then return end
 	-- Handed to Masque as the Normal region, which hides it and draws the skin's ring instead.
-	if ns.Masque_IsSkinned(btn) then return end
+	if ns.Masque_IsSkinned(btn) then
+		-- Drop the memo for the same reason as the zoom above: retaking the border has to re-run
+		-- the full apply, not short-circuit on values it set the last time the group was disabled.
+		btn._bOn = nil
+		return
+	end
 	if not cfg.iconBorder then
 		if btn._bOn ~= false then
 			btn._bOn = false
@@ -1013,6 +1048,9 @@ function ns.ApplyIconBorder(btn, cfg)
 	b:ClearAllPoints()
 	b:SetPoint("TOPLEFT", btn, "TOPLEFT", -sz, sz)
 	b:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", sz, -sz)
+	-- Masque zeroes the region alpha when it adopts this as its Normal region, and never restores
+	-- it, so taking the border back after a group is disabled needs this or it draws invisibly.
+	b:SetAlpha(1)
 	b:SetColorTexture(c.r, c.g, c.b, a)
 	b:Show()
 end
@@ -1153,23 +1191,27 @@ local function ApplyConfigBody(laneIndex)
 					if cfg.reversed then pos = 1 - pos end
 					-- Labels at the extremes pin to the lane end (inset) so they don't clip;
 					-- everything between centers on its position.
+					-- A marker uses the ICON's mapping, not the raw lane length: an icon is placed by
+					-- its leading edge across (lane - iconSize), so its center sits half an icon in.
+					local iconSize = cfg.iconSize or 40
+					local half     = iconSize / 2
 					if cfg.vertical then
-						local laneH = cfg.height or 400
+						local usableH = math.max(1, (cfg.height or 400) - iconSize)
 						if pos <= 0.02 then
 							m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
 						elseif pos >= 0.98 then
 							m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
 						else
-							m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * laneH)
+							m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * usableH + half)
 						end
 					else
-						local laneW = cfg.width or 400
+						local usable = math.max(1, (cfg.width or 400) - iconSize)
 						if pos <= 0.02 then
 							m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
 						elseif pos >= 0.98 then
 							m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
 						else
-							m:SetPoint("CENTER", laneFrame, "LEFT", pos * laneW, 0)
+							m:SetPoint("CENTER", laneFrame, "LEFT", pos * usable + half, 0)
 						end
 					end
 					m:Show()
@@ -1284,6 +1326,15 @@ local function ResetStackLevel(btn, base)
 	end
 end
 
+
+-- Records the level even while a hover holds the icon raised, so OnLeave restores the level the
+-- icon owns NOW. Pushing the level down mid-hover would re-occlude the icon the raise uncovered.
+local function SetStackLevel(btn, lvl)
+	if btn._stackLevel == lvl then return end
+	btn._stackLevel = lvl
+	if not btn._hoverRaised then btn:SetFrameLevel(lvl) end
+end
+
 -- Stacking placement. GROUPED packs overlaps into perpendicular rows and OFFSET fans every icon
 -- across stackHeight (both write _stackOff, the stable cross-axis offset); SPREAD pushes icons
 -- apart along the lane (_spreadShift). Extracted so the 60 Hz lane OnUpdate can re-run SPREAD
@@ -1370,8 +1421,7 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 			if center then o = o - height / 2 else o = o * dirSign end
 			btn._stackOff    = o
 			btn._spreadShift = 0
-			local lvl = base + i
-			if btn._stackLevel ~= lvl then btn._stackLevel = lvl; btn:SetFrameLevel(lvl) end
+			SetStackLevel(btn, base + i)
 		end
 		return
 	end
@@ -1403,8 +1453,7 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 		if center then btn._stackOff = rowOff - centerShift
 		else btn._stackOff = rowOff * dirSign end
 		btn._spreadShift = 0
-		local lvl = base + i
-		if btn._stackLevel ~= lvl then btn._stackLevel = lvl; btn:SetFrameLevel(lvl) end
+		SetStackLevel(btn, base + i)
 	end
 end
 
