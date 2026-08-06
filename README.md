@@ -90,15 +90,20 @@ secret too; see `docs/EXPERIMENTS.md`.)
 - **Custom cooldowns** — define your own tracked cooldown from a fixed duration
   plus a trigger (a spell you cast, or a buff you gain). Runs on a purely local
   timer, so it works for anything the cooldown API doesn't expose. Aura triggers
-  have a **Detect** button that captures the next buff you gain, so you never have
-  to go hunting for an aura ID.
+  have a **Detect** button that captures the next buff you gain and fills in its
+  ID, name, icon and duration, so you never have to go hunting for an aura ID.
 - **Per-category filters** (spells, utility, buff bars, buffs, potions, trinkets,
   offensives, pet spells, custom) with per-spell overrides for visibility, lane, bar,
   ready box, important, and pinned — plus **Set All** buttons to bulk-apply a
   category's routing to every cooldown in it at once. Every category is tracked by
   default except **offensives**, which is opt-in.
-- **Consumables and trinkets** — potions/flasks are auto-discovered from your
-  bags and equipped on-use trinkets (slots 13/14) are tracked.
+- **Consumables and trinkets** — potions, flasks and elixirs are auto-discovered
+  from your bags, conjured items (mana gems, healthstones) are recognized by ID on
+  every flavor, and equipped on-use trinkets (slots 13/14) are tracked.
+- **Buff tracking on Classic** — a cooldown spell that also grants a self-buff
+  (Icy Veins, Arcane Power) can show that buff as its own second icon, via a
+  per-spell **Buff** checkbox under Filters > Spells. Opt-in; retail surfaces
+  tracked buffs through Blizzard's own category sets instead.
 - **Pet spells** — your pet's abilities (Spell Lock, Axe Toss, Gnaw, Freeze and the
   rest) are discovered from the pet spellbook and tracked like any other cooldown.
 - **Offensives** — your damage-over-time effects on your current target, timed by
@@ -141,7 +146,11 @@ secret too; see `docs/EXPERIMENTS.md`.)
 
 ## Planned
 
-- Classic offensive (dot) tracking — Offensives is retail-only today.
+- **More tracking indicator types** (Classic) — the per-lane secondary tracking
+  covers the GCD and your main-hand swing timer today; further indicator types are
+  on the list.
+- **Conditional autohide** — hide frames on resource level or stealth state,
+  alongside the existing out-of-combat and group/instance visibility rules.
 
 ## Getting it running locally
 
@@ -186,8 +195,13 @@ directory and `/reload`.
 `/cdmaster` and `/cooldownmaster` are the long forms of `/cm` — each works with
 every subcommand above (e.g. `/cdmaster lock`). A set of diagnostic subcommands
 exists for troubleshooting the engine: `debug`, `api`, `spells`, `haste`,
-`tracking`, `anchor`, `seedtest`, `curvetest`, `items`, `buffs`, `petprobe`, and
-the offensives probes (`off`, `offprobe`, `offreset`, `auraprobe`, `auraapi`).
+`tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`,
+`buffs`, `petprobe`, `tagprobe`, `masque`, and the offensives probes (`off`,
+`offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`).
+
+`anchor` reports the cast-to-re-anchor pipeline, and `anchor arm [seconds] [spell]`
+traces one spell's live cooldown state — the quickest way to show what the engine is
+actually seeing when reporting a timing bug.
 
 ## Panel addon integration
 
