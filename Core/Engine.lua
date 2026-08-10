@@ -43,6 +43,11 @@ Engine._traceState = {}   -- per-spell last state string for the /cm anchor arm 
 
 -- Blizzard ItemConsumableSubclass IDs: 1 = Potion, 2 = Elixir, 3 = Flask/Phial.
 local TRACKED_CONSUMABLE_SUBCLASS = { [1] = true, [2] = true, [3] = true }
+-- Era alone reports no consumable subclass - a potion, an elixir, food and drink all read back class
+-- 0 sub 0 there - so 1/2/3 matches nothing and food rides along. TBC and MoP classify properly.
+if ns.Compat.IS_CLASSIC then
+	TRACKED_CONSUMABLE_SUBCLASS[0] = true
+end
 local TRINKET_SLOTS = { 13, 14 }
 
 -- Conjured items sit in consumable buckets that also hold fishing lures, quest items and food,
@@ -55,16 +60,21 @@ local ALWAYS_BAG_ITEMS = {
 	[19004] = true, [19005] = true, [19006] = true, [19007] = true, [19008] = true,
 	[19009] = true, [19010] = true, [19011] = true, [19012] = true, [19013] = true,
 	[22103] = true, [22104] = true, [22105] = true,
+	-- Fishliver Oil, measured at a real 120s item cooldown. Attuned Dampener (12650) has one too and
+	-- is left out on purpose - it works on one raid boss, so it would be noise on every other pull.
+	[1322] = true,
 }
 
 -- Shared with /cm bagscan so the diagnostic can never disagree with what discovery did.
 local function ClassifyBagItem(itemID)
-	if ALWAYS_BAG_ITEMS[itemID] then return true, "conjured item list" end
+	if ALWAYS_BAG_ITEMS[itemID] then return true, "matched by id" end
 	if not (C_Item and C_Item.GetItemInfoInstant) then return false, "no item API" end
 	local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
 	local consumableClass = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0
 	if classID ~= consumableClass then return false, "not a consumable" end
-	if TRACKED_CONSUMABLE_SUBCLASS[subclassID] then return true, "potion/elixir/flask" end
+	if TRACKED_CONSUMABLE_SUBCLASS[subclassID] then
+		return true, subclassID == 0 and "Era catch-all, no subclass to narrow on" or "potion/elixir/flask"
+	end
 	return false, "consumable subclass not tracked"
 end
 
@@ -407,6 +417,22 @@ function Engine:LoadPersistedDurations()
 			self.auraRoll[spellID] = roll
 		elseif type(spellID) == "number" then
 			addon.db.profile.auraRoll[spellID] = nil
+		end
+	end
+
+	-- Retail only, once: every mapping in the old map was minted off an edge that could not prove
+	-- ownership, so groupmates' debuffs rode in. It relearns from the first solo cast.
+	if not ns.Compat.HAS_COMBAT_LOG and not addon.db.profile.castMapPurged then
+		addon.db.profile.castMapPurged = true
+		if type(addon.db.profile.castMap) == "table" and next(addon.db.profile.castMap) then
+			wipe(addon.db.profile.castMap)
+			-- Only for someone who actually had learning to lose, and deferred because this runs
+			-- before the chat frame is up at login.
+			C_Timer.After(10, function()
+				if ns.CDM then
+					ns.CDM:Print("Offensives: the learned dot list was reset this update, to clear other players' dots that had been picked up by mistake. Your own dots relearn as you cast them.")
+				end
+			end)
 		end
 	end
 
@@ -1217,7 +1243,24 @@ local function NormalizeOffensiveCast(id)
 end
 
 
+-- Out of combat, the only window a mint can happen in, sourceUnit reads plain "player".
+-- isFromPlayerOrPlayerPet is NOT a fallback - it reads plain in combat and still returns true for a
+-- groupmate's dot, which is exactly how Agony got minted under Divine Hammer.
+local function AuraIsOurs(a)
+	if type(a) ~= "table" then return false end
+	local src = PlainOrNil(a.sourceUnit)
+	if type(src) ~= "string" then return false end
+	return UnitIsUnit(src, "player") == true or UnitIsUnit(src, "pet") == true
+end
+
+
 function Engine:ClearTargetAuras()
+	-- A pend discarded here never reaches the out-of-combat resolve, so learning silently never happens. Worth seeing in the trace before blaming the mint gate.
+	if self._offTraceUntil and GetTime() < self._offTraceUntil and ns.CDM and next(self.auraPending) then
+		local n = 0
+		for _ in pairs(self.auraPending) do n = n + 1 end
+		ns.CDM:Print(string.format("[offtrace] CLEAR dropped %d pending instance(s)", n))
+	end
 	wipe(self.auraPending)
 	wipe(self.auraRec)
 	wipe(self._reanchorAt)
@@ -1264,12 +1307,18 @@ function Engine:LearnCastDebuff(castID, spellID, force)
 end
 
 
--- Called only out of combat now (resolve, reseed, offlearn), where the aura reads plain. In-combat rendering is cast-driven and never touches an aura.
+-- Called only out of combat now (resolve, reseed), where the aura reads plain. In-combat rendering is cast-driven and never touches an aura.
 function Engine:BindAura(inst, spellID, aura, now)
-	-- HARMFUL|PLAYER does not actually mean "cast by me" (sourceUnit is secret), so without this another player's dots on a shared target get adopted. Both booleans stay plain in 12.0 and 12.1.
-	if aura and (aura.isHarmful == false or aura.isFromPlayerOrPlayerPet == false) then return end
+	-- HARMFUL|PLAYER does not actually mean "cast by me", so a dot binds only on positive proof. Testing for "not false" fails open, because a secret reads truthy and every foreign dot on a shared target sails through it.
+	if not aura or PlainOrNil(aura.isHarmful) == false or not AuraIsOurs(aura) then
+		if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+			ns.CDM:Print(string.format("[offtrace] REJECT-foreign %s(%s)",
+				tostring(GetSpellNameIcon(spellID)), tostring(spellID)))
+		end
+		return
+	end
 
-	-- The real ours-only gate: the guard above fails open on a swapped-in target's re-read aura, so a dot is adopted only once one of our casts has claimed it (offConfirmed, set in LearnCastDebuff). Every legit path confirms before it binds here.
+	-- Second gate on top of the source check: an id renders only once one of our own casts has claimed it (offConfirmed, set in LearnCastDebuff), so a dot we can read but never applied stays off the lane.
 	if not self.offConfirmed[spellID] then
 		if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
 			ns.CDM:Print(string.format("[offtrace] REJECT-unconfirmed %s(%s)",
@@ -1379,6 +1428,7 @@ function Engine:BindAddedAuras(added, now)
 	self._auraBatch = batch
 	wipe(batch)
 
+	-- Deliberately loose: in combat these prove nothing (they let a groupmate's dots through), and tightening it here would only pend less without pending right. It is a candidate filter - ownership is proven on the out-of-combat re-read in ResolvePendingAuras.
 	for i = 1, #added do
 		local a = added[i]
 		if a.isHarmful and a.isFromPlayerOrPlayerPet then
@@ -1426,8 +1476,26 @@ function Engine:ResolvePendingAuras()
 		local ok, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
 		if ok and type(a) == "table" then
 			local spellID = PlainOrNil(a.spellId)
+			-- In combat the id stays secret and this loop runs at 1 Hz, so the waiting pass prints once per instance instead of burying the CAST and PEND lines the trace exists to show.
+			if self._offTraceUntil and now < self._offTraceUntil and ns.CDM
+				and (spellID or not p.tracedWait) then
+				p.tracedWait = not spellID
+				ns.CDM:Print(string.format("[offtrace] RESOLVE inst=%s id=%s src=%s fromPlayer=%s cast=%s solo=%s",
+					tostring(inst), spellID and tostring(spellID) or "|cffff5555SECRET|r",
+					tostring(PlainOrNil(a.sourceUnit) or "|cffff5555SECRET/nil|r"),
+					tostring(PlainOrNil(a.isFromPlayerOrPlayerPet) == nil
+						and "|cffff5555SECRET/nil|r" or PlainOrNil(a.isFromPlayerOrPlayerPet)),
+					tostring(p.cast), tostring(p.solo)))
+			end
 			if spellID then
-				if self.offConfirmed[spellID] then
+				-- A cast that applies no debuff of its own is always solo, so any dot landing near it
+				-- looks like its own - that is how Divine Hammer came to own a groupmate's Agony.
+				if not AuraIsOurs(a) then
+					if self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+						ns.CDM:Print(string.format("[offtrace] REJECT-foreign %s(%s)",
+							tostring(GetSpellNameIcon(spellID)), tostring(spellID)))
+					end
+				elseif self.offConfirmed[spellID] then
 					self:BindAura(inst, spellID, a, now)
 				elseif p.solo then
 					self:LearnCastDebuff(p.cast, spellID)
@@ -1586,11 +1654,11 @@ function Engine:ReseedTargetAuras()
 		local inst = PlainOrNil(list[i])
 		if inst then
 			self._liveInsts[inst] = true
-			-- Adopt on reseed only a dot that is both cast-confirmed and still plainly flagged ours. offConfirmed alone means "a spell we have ever cast", so a second player's identical dot would ride in on a swap. A foreign copy reads isFromPlayerOrPlayerPet=false and is refused. In combat spellId is secret, so PlainOrNil skips it and nothing is adopted.
+			-- Adopt on reseed only a dot that is both cast-confirmed and provably ours. offConfirmed alone means "a spell we have ever cast", so a second player's identical dot would ride in on a swap. In combat spellId is secret, so PlainOrNil skips it and nothing is adopted.
 			local ok2, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
 			if ok2 and type(a) == "table" then
 				local spellID = PlainOrNil(a.spellId)
-				if spellID and self.offConfirmed[spellID] and PlainOrNil(a.isFromPlayerOrPlayerPet) == true then
+				if spellID and self.offConfirmed[spellID] and AuraIsOurs(a) then
 					self:BindAura(inst, spellID, a, now)
 				end
 			end
@@ -1637,6 +1705,7 @@ end
 function Engine:CollectOffLearnAuras(updateInfo)
 	if not (self._offLearnCast and updateInfo and updateInfo.addedAuras) then return end
 	local added = updateInfo.addedAuras
+	-- Loose for the same reason as BindAddedAuras: these are candidates, and FinalizeOffLearn proves ownership on the plain read before any of them is minted.
 	for i = 1, #added do
 		local a = added[i]
 		if a.isHarmful and a.isFromPlayerOrPlayerPet then
@@ -1674,7 +1743,8 @@ function Engine:FinalizeOffLearn()
 		local ok, a = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", inst)
 		if ok and type(a) == "table" then
 			local spellID = PlainOrNil(a.spellId)
-			if spellID and not self.trackedSpells[spellID] then
+			-- offlearn mints with force, which moves an id off its rightful owner, so it has to prove ownership here or a groupmate's dot landing inside the learn window is handed the declared cast.
+			if spellID and not self.trackedSpells[spellID] and AuraIsOurs(a) then
 				self:LearnCastDebuff(cast, spellID, true)
 				local dur = PlainOrNil(a.duration)
 				if dur and dur > 0 then self:StoreAuraDuration(spellID, dur) end
@@ -2141,7 +2211,9 @@ function Engine:RunBagScan()
 	end
 
 	cdm:Print("===== Bag scan (what discovery sees) =====")
-	cdm:Print("Rule: potions, elixirs and flasks, plus conjured items matched by id.")
+	cdm:Print(ns.Compat.IS_CLASSIC
+		and "Rule: every consumable, plus conjured items matched by id. Era reports no consumable subclass to narrow on."
+		or "Rule: potions, elixirs and flasks, plus conjured items matched by id.")
 	cdm:Print(string.format("In combat: %s   GetItemSpell: %s",
 		InCombatLockdown() and "|cff00ff00YES|r" or "no",
 		C_Item.GetItemSpell and "present" or "|cffff5555absent|r"))
@@ -2266,14 +2338,6 @@ function Engine:RunItemCooldownProbe(arg)
 	cdm:Print("lastUsedSpell = " .. tostring(self.lastUsedSpell)
 		.. ((useSpell and self.lastUsedSpell == useSpell) and " |cff00ff00(this item)|r" or ""))
 
-	local viaSpell
-	if (type(start) ~= "number" or start <= 0) and useSpell and not ns.Compat.HAS_BLIZZ_CDM then
-		local ss, sd = ns.Compat.GetSpellCooldown(useSpell)
-		if type(ss) == "number" and ss > 0 and type(sd) == "number" then
-			start, duration, viaSpell = ss, sd, true
-		end
-	end
-
 	local category = (tracked and tracked.category) or ns.CONST.POTION_CATEGORY
 	local verdict
 	if type(start) ~= "number" or type(duration) ~= "number" then
@@ -2289,8 +2353,7 @@ function Engine:RunItemCooldownProbe(arg)
 	else
 		verdict = "|cff00ff00would show|r"
 	end
-	cdm:Print("poll verdict: " .. verdict
-		.. (viaSpell and " |cff00ff00(off the use spell, Classic fallback)|r" or ""))
+	cdm:Print("poll verdict: " .. verdict)
 
 	cdm:Print("--- tracked items on cooldown now (one shared start = one icon) ---")
 	local n = 0
@@ -3311,18 +3374,6 @@ function Engine:PollOneItem(itemID, tracked)
 	-- Do not suppress on these APIs' third `enable` return: every 0 measured was already
 	-- zero-duration, which the checks below drop anyway, and acting on it can hide a real cooldown.
 
-	-- A conjured item (mana gem) can carry its cooldown on the use spell instead of the item, so
-	-- the item read comes back idle while it is unusable. Retail's spell reads are secret in combat.
-	if (not startTime or startTime <= 0) and not ns.Compat.HAS_BLIZZ_CDM then
-		local useSpell = self.itemUseSpell[itemID]
-		if useSpell then
-			local spellStart, spellDuration = ns.Compat.GetSpellCooldown(useSpell)
-			if spellStart and spellDuration and spellStart > 0 then
-				startTime, duration = spellStart, spellDuration
-			end
-		end
-	end
-
 	if not startTime or not duration then return false end
 	if duration <= 1.5 then return false end   -- skip GCD-length cooldowns
 	if startTime <= 0 then return false end
@@ -3573,7 +3624,10 @@ function Engine:StopTestMode()
 	-- Repopulate immediately: the tick sweep runs at 1 Hz, so without this the
 	-- lanes would sit empty for up to a second after leaving test mode.
 	self:ScanSpells()
+	-- Rebuild, do not just poll: DeferredItemRebuild clears its pending flag before the testActive bail, so anything looted or drunk during the test was swallowed and trackedItems is stale until an unrelated bag event.
+	self:BuildTrackedItems()
 	self:PollAllItems()
+	if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 	self:RebuildOffensiveEntries()
 	self:ScanOffensives()
 end
@@ -4057,20 +4111,24 @@ function Engine:Start(addon)
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 		f:SetScript("OnEvent", function(_, _, unit, _, spellID)
-			if Engine.testActive then return end
 			-- Pet abilities are tracked spells too, but their casts arrive on the "pet" unit.
 			local isPlayer = unit == "player"
 			if not isPlayer and unit ~= "pet" then return end
+			local iss = _G.issecretvalue
+			local secret = (iss and iss(spellID)) or false
+
+			-- Recorded ahead of the Test Mode bail: this id is what decides which potion owns the shared cooldown, so a real drink during a test would otherwise leave the wrong potion's icon locked in for the rest of that cooldown.
+			if isPlayer and not secret and Engine.itemSpells[spellID] then
+				Engine.lastUsedSpell = spellID
+			end
+			if Engine.testActive then return end
+
 			local p = Engine._probe
 			p.seen, p.lastSeenAt, p.lastID = p.seen + 1, GetTime(), spellID
-			local iss = _G.issecretvalue
-			p.lastSecret = (iss and iss(spellID)) or false
+			p.lastSecret = secret
 			Engine:OnTrackedCast(spellID)
 			-- Never index a table with a secret spellID (Midnight) - it would not match a plain-number key anyway.
 			if isPlayer and not p.lastSecret then Engine:FireCustomSpellTrigger(spellID) end
-			if isPlayer and not p.lastSecret and Engine.itemSpells[spellID] then
-				Engine.lastUsedSpell = spellID
-			end
 			if isPlayer and not p.lastSecret and not ns.Compat.HAS_COMBAT_LOG then
 				Engine:OnCastForAuras(spellID, GetTime())
 				if Engine._offLearnArmed then Engine:OnOffLearnCast(spellID) end
@@ -4311,6 +4369,7 @@ local function ProbeClassify(issecret, fn, ...)
 	local t = type(v)
 	if t == "number" then return string.format("%.3f", v) end
 	if t == "boolean" then return tostring(v) end
+	if t == "string" then return v end   -- unit tokens are the whole point of probing sourceUnit
 	return t
 end
 
@@ -4687,11 +4746,12 @@ function Engine:RunOffensiveProbe()
 		local ok, d = pcall(C_UnitAuras.GetAuraDataByIndex, "target", i, "HARMFUL")
 		if not ok or not d then break end
 		nAll = nAll + 1
-		cdm:Print(string.format("  [%s] %s | isHarmful=%s isFromPlayerOrPlayerPet=%s filteredOut(H|P)=%s",
+		cdm:Print(string.format("  [%s] %s | isHarmful=%s isFromPlayerOrPlayerPet=%s src=%s filteredOut(H|P)=%s",
 			ProbeClassify(issecret, function() return d.spellId end),
 			ProbeClassify(issecret, function() return d.name end),
 			ProbeClassify(issecret, function() return d.isHarmful end),
 			ProbeClassify(issecret, function() return d.isFromPlayerOrPlayerPet end),
+			ProbeClassify(issecret, function() return d.sourceUnit end),
 			C_UnitAuras.IsAuraFilteredOutByInstanceID
 				and ProbeClassify(issecret, C_UnitAuras.IsAuraFilteredOutByInstanceID,
 					"target", d.auraInstanceID, "HARMFUL|PLAYER")

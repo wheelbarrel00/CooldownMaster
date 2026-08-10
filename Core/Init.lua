@@ -322,12 +322,15 @@ function CDM:OnSlash(input)
 			self:Print("Engine not loaded.")
 		end
 
-	elseif input == "off arm" then
+	elseif input == "off arm" or input:match("^off arm%s") then
 		if ns.Compat.HAS_COMBAT_LOG then
 			self:Print("off trace is retail-only (Classic offensives run off the combat log, not the cast-driven binder).")
 		elseif ns.Engine then
-			ns.Engine._offTraceUntil = GetTime() + 20
-			self:Print("|cff00ff00off trace armed 20s.|r Run your FULL rotation on the target now. Watching CAST / RENDER / REANCHOR / PEND / DROP / BIND for the offensive binder.")
+			-- Learning finishes AFTER combat drops, so the default has to outlast the ~6s regen delay.
+			local secs = tonumber(input:match("^off arm%s+(%d+)$")) or 45
+			if secs < 5 then secs = 5 elseif secs > 180 then secs = 180 end
+			ns.Engine._offTraceUntil = GetTime() + secs
+			self:Print(string.format("|cff00ff00off trace armed %ds.|r Cast your dot, then let combat drop with the dot still up. Watching CAST / PEND / RENDER / REANCHOR / DROP / BIND / REJECT.", secs))
 		else
 			self:Print("Engine not loaded.")
 		end

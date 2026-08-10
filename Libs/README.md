@@ -1,6 +1,6 @@
 # Libs
 
-This folder is intentionally empty in the source repo. Libraries are either:
+This folder is empty in the source repo. Libraries are either:
 
 1. Pulled in by the BigWigs packager via `.pkgmeta` at the repo root, or
 2. Copied here manually for local development.
@@ -13,18 +13,16 @@ This folder is intentionally empty in the source repo. Libraries are either:
 - `AceEvent-3.0/`
 - `AceConsole-3.0/`
 - `AceDB-3.0/`
-- `AceDBOptions-3.0/`
-- `AceGUI-3.0/`
-- `AceConfig-3.0/` (with sub-libs `AceConfigCmd-3.0`, `AceConfigDialog-3.0`, `AceConfigRegistry-3.0`)
 - `AceSerializer-3.0/`
 - `LibSharedMedia-3.0/`
-- `AceGUI-3.0-SharedMediaWidgets/`
 - `LibDeflate/` (single `.lua` file)
 - `LibDataBroker-1.1/`
 - `LibDBIcon-1.0/`
 
+The options panel is hand-rolled, so AceGUI, AceConfig and AceDBOptions are
+deliberately not embedded.
+
 ## Quick local setup
 
-If you already have CooldownTimeline2 installed, the easiest path is to copy
-its entire `Libs/` folder over here, then download just `LibDataBroker-1.1/`
-and `LibDBIcon-1.0/` from CurseForge.
+Download each of the above from CurseForge, or let the packager fetch them by
+running a build from `.pkgmeta`.

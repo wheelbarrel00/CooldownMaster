@@ -240,6 +240,25 @@ function Widgets.CreateSlider(parent, cfg)
 end
 
 
+-- Draws a row in the very font it names. A font file that fails to load leaves the FontString with
+-- NO font and it renders nothing at all, and SetFont's return value is only documented for EditBox,
+-- so success is read back with GetFont. The restore is an explicit SetFont rather than
+-- SetFontObject, which does not undo an earlier SetFont.
+local function applyPreviewFont(fs, path)
+	local file, size, flags = GameFontNormal:GetFont()
+	size = size or 12
+	if path and path ~= "" then
+		fs:SetFont(path, size, flags)
+		if fs:GetFont() then return end
+	end
+	if file then
+		fs:SetFont(file, size, flags)
+	else
+		fs:SetFontObject(GameFontNormal)
+	end
+end
+
+
 function Widgets.CreateDropdown(parent, cfg)
 	cfg = cfg or {}
 	local width = cfg.width or 180
@@ -295,16 +314,41 @@ function Widgets.CreateDropdown(parent, cfg)
 		return tostring(value or "")
 	end
 
-	btnText:SetText(findOptionLabel(root._currentValue))
+	local function findOptionFont(value)
+		for _, opt in ipairs(options) do
+			if opt.value == value then return opt.font end
+		end
+	end
+
+	-- Only a font list carries a path per option. Decided once for the whole dropdown rather than per
+	-- call, so a font whose file will not resolve falls back to the default instead of leaving the
+	-- previously previewed face on the box.
+	local hasFontPreview = false
+	for _, opt in ipairs(options) do
+		if opt.font then
+			hasFontPreview = true
+			break
+		end
+	end
+
+	local function setButtonText(value)
+		btnText:SetText(findOptionLabel(value))
+		if hasFontPreview then applyPreviewFont(btnText, findOptionFont(value)) end
+	end
+
+	setButtonText(root._currentValue)
 
 	local function selectValue(value)
 		root._currentValue = value
-		btnText:SetText(findOptionLabel(value))
+		setButtonText(value)
 		list:Hide()
 		if root._onChange then root._onChange(value) end
 	end
 
 	local rowH = 20
+	-- A label can be wider than the caller's box ("Lane 3 (off)" in an 84px column), so the open list is measured and widened on its own and no caller's layout moves.
+	local rowTexts, listW = {}, width
+	local MAX_LIST_W = 320
 	for i, opt in ipairs(options) do
 		local row = CreateFrame("Button", nil, content,
 			BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -316,6 +360,12 @@ function Widgets.CreateDropdown(parent, cfg)
 		rt:SetPoint("LEFT", row, "LEFT", 6, 0)
 		rt:SetText(opt.text)
 		rt:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+		-- Safe per row because these are built once per dropdown and never pooled across lists.
+		if hasFontPreview then applyPreviewFont(rt, opt.font) end
+		-- Measured after the preview face is on, or a wide font would still overrun.
+		rowTexts[i] = rt
+		local textW = rt:GetStringWidth() + 14
+		if textW > listW then listW = math.min(MAX_LIST_W, textW) end
 
 		row:SetScript("OnEnter", function(self)
 			self:SetBackdropColor(YELLOW.r, YELLOW.g, YELLOW.b, 1)
@@ -328,6 +378,21 @@ function Widgets.CreateDropdown(parent, cfg)
 		row:SetScript("OnClick", function() selectValue(opt.value) end)
 
 		root._optionRows[i] = row
+	end
+
+	if listW > width then
+		list:SetWidth(listW)
+		content:SetWidth(listW)
+		for i = 1, #root._optionRows do
+			root._optionRows[i]:SetWidth(listW)
+		end
+	end
+	-- Giving the string a width is what makes justification apply, and GameFontNormal is centered, so
+	-- the explicit LEFT is load-bearing here.
+	for i = 1, #rowTexts do
+		rowTexts[i]:SetPoint("RIGHT", root._optionRows[i], "RIGHT", -6, 0)
+		rowTexts[i]:SetJustifyH("LEFT")
+		rowTexts[i]:SetWordWrap(false)
 	end
 
 	local fullH = rowH * math.max(1, #options)
@@ -376,7 +441,7 @@ function Widgets.CreateDropdown(parent, cfg)
 	function root:GetValue() return root._currentValue end
 	function root:SetValue(v)
 		root._currentValue = v
-		btnText:SetText(findOptionLabel(v))
+		setButtonText(v)
 	end
 
 	return root

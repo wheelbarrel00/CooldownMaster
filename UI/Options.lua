@@ -533,7 +533,8 @@ local function BuildFontOptions()
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 	if LSM then
 		for _, key in ipairs(LSM:List("font")) do
-			opts[#opts + 1] = { value = key, text = key }
+			-- Silent fetch: a font registered by an addon that is no longer installed resolves to nil, and the row falls back to the default face rather than rendering blank.
+			opts[#opts + 1] = { value = key, text = key, font = LSM:Fetch("font", key, true) }
 		end
 	end
 	if #opts == 0 then
@@ -2792,6 +2793,10 @@ local LEARNED_KEYS = {
 	auraObserved      = true,
 	castMap           = true,
 	auraRoll          = true,
+	-- Not learned state but a migration marker, and it belongs here for the same reason: an import
+	-- resets the profile, and losing the flag would re-run the one-time castMap purge on the
+	-- recipient's own learning.
+	castMapPurged     = true,
 }
 
 local function ProfileExportString()

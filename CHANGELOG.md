@@ -1,5 +1,26 @@
 # Cooldown Master Changelog
 
+## 1.9.0 (2026-08-08) — Offensives learn the right dots, and Classic Era finds your potions
+
+### Bug Fixes
+
+- **Retail: other players' damage-over-time effects no longer end up in your Offensives list.** Cooldown Master learns which of your abilities applies which dot by watching what lands right after you cast. In a group, a teammate's dot landing at that moment could be attributed to one of your abilities instead — and once learned it stayed learned, so their dot appeared on your lanes as if it were yours. The game reports a debuff as coming from you even when it doesn't, and that was what the check relied on; it now confirms the source directly and refuses anything it cannot positively tie to you.
+  - **Heads up:** because every existing mapping was learned through the faulty check, the learned dot list is cleared once on your first login after updating. Filters > Offensives will be empty until your own dots relearn, which happens as you cast them. Anything you had set up for those dots is kept — a dot you routed to Lane 3, sent to a particular bar or ready box, or unticked Show on, comes straight back to that setting the moment it is relearned. Cooldown Master tells you in chat when the reset happens. Retail only, and only if you turned Offensives on.
+- **Classic Era: your potions are tracked at all now.** Era doesn't tell addons whether a consumable is a potion, an elixir or a piece of food — everything comes back as simply "consumable" — so the filter that picks out potions matched nothing and Filters > Potions was permanently empty. Every consumable is now listed on Era.
+  - **Heads up:** food and drink are listed there too, because Era gives nothing to tell them apart. They have no cooldown, so they never draw an icon or a ready box. Untick **Show** on their rows if you'd rather not see them in the list.
+- **TBC: Fishliver Oil is tracked.** It carries a real two minute cooldown, but Blizzard files it outside the potion and elixir categories, so it was never picked up.
+- **Items looted or used during Test Mode are picked up when you leave it.** Anything you looted or drank while Test Mode was running was ignored until an unrelated bag change happened to trigger a rescan. Drinking a potion during Test Mode could also hand its cooldown to the wrong potion's icon for the rest of that cooldown.
+
+### New Features
+
+- **Font dropdowns show each font in its own typeface.** Every font list in the options now draws each name in the font it names, and the closed dropdown previews your current choice, so you can see what you are picking before you apply it.
+
+### Improvements
+
+- **The download is about 728 KB smaller.** Four bundled libraries — AceGUI, AceConfig, AceDBOptions and the shared-media widgets — were being loaded on every login without anything using them. The options panel is hand-built and never needed them.
+- **Dropdown lists size themselves to their longest entry.** Options like "Lane 3 (off)" no longer run past the edge of the list they sit in.
+- **Better diagnostics.** `/cm off arm` now takes a length, so `/cm off arm 45` traces long enough to cover combat ending, which is when dot learning actually happens, and it reports exactly why a dot was learned or refused. `/cm bagscan` and `/cm itemcd` now describe the rule your flavor uses.
+
 ## 1.8.0 (2026-08-03) — Ready boxes land on time, plus a batch of fixes
 
 ### Bug Fixes
