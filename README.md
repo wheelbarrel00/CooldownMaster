@@ -99,7 +99,10 @@ secret too; see `docs/EXPERIMENTS.md`.)
   default except **offensives**, which is opt-in.
 - **Consumables and trinkets** — potions, flasks and elixirs are auto-discovered
   from your bags, conjured items (mana gems, healthstones) are recognized by ID on
-  every flavor, and equipped on-use trinkets (slots 13/14) are tracked.
+  every flavor, and equipped on-use trinkets (slots 13/14) are tracked. Classic Era
+  reports every consumable under one category with nothing to tell a potion from a
+  sandwich, so there it lists them all — food and drink carry no cooldown and never
+  draw anything, and can be hidden from the list.
 - **Buff tracking on Classic** — a cooldown spell that also grants a self-buff
   (Icy Veins, Arcane Power) can show that buff as its own second icon, via a
   per-spell **Buff** checkbox under Filters > Spells. Opt-in; retail surfaces
@@ -111,9 +114,10 @@ secret too; see `docs/EXPERIMENTS.md`.)
   box when it falls off and wants recasting. Discovered as you apply them; refreshes
   re-anchor. Tracking follows your target, so swapping targets clears the lane. On
   retail this is **cast-driven** — a target's auras are secret in combat, so identity
-  comes from `UNIT_SPELLCAST_SUCCEEDED` rather than from reading the target. A
-  per-spell **Remove (X)** button clears a dot that got learned off a shared target
-  dummy.
+  comes from `UNIT_SPELLCAST_SUCCEEDED` rather than from reading the target. A dot is
+  only ever learned once its source can be positively confirmed as you, so a
+  groupmate's dots on a shared target stay off your lanes. A per-spell **Remove (X)**
+  button drops one you no longer want tracked.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
 
@@ -125,7 +129,8 @@ secret too; see `docs/EXPERIMENTS.md`.)
   what you'll get in combat.
 - **Full media control** — every bar, background, border, and font is fed by
   LibSharedMedia, so your own SharedMedia packs work throughout. Ships with a few
-  original CDM textures (Gradient, Glass, Soft Edge).
+  original CDM textures (Gradient, Glass, Soft Edge). Font dropdowns draw each name
+  in the font it names, and preview your current pick on the closed dropdown.
 - **Appearance** — per-lane icon borders, icon zoom, unusable-icon tint/desaturate,
   cooldown-swipe tint, and configurable fonts/colors for countdowns, lane markers,
   icon labels, status lines, and frame name tags.
@@ -171,11 +176,16 @@ If you've got the packager installed:
 This produces `.release/CooldownMaster/` with all libraries fetched into
 `Libs/`. Copy that folder into your `World of Warcraft/_retail_/Interface/AddOns/`.
 
-### Option B — Reuse libraries from CooldownTimeline2
+### Option B — Fetch the libraries by hand
 
-If you have a copy of CDTL2 already, copy its entire `Libs/` folder into this
-addon's `Libs/` folder, then add `LibDataBroker-1.1/` and `LibDBIcon-1.0/`
-from CurseForge. Same library names, same load order, no version conflicts.
+Download each library into `Libs/`, matching the load order in `embeds.xml`:
+`LibStub`, `CallbackHandler-1.0`, `AceAddon-3.0`, `AceEvent-3.0`,
+`AceConsole-3.0`, `AceDB-3.0`, `AceSerializer-3.0`, `LibSharedMedia-3.0`,
+`LibDeflate`, `LibDataBroker-1.1`, `LibDBIcon-1.0`.
+
+The options panel is hand-built rather than driven by an AceConfig options
+table, so AceGUI, AceConfig and AceDBOptions are deliberately **not** embedded —
+don't add them.
 
 After either option, drop the `CooldownMaster/` folder into your AddOns
 directory and `/reload`.
@@ -201,7 +211,8 @@ exists for troubleshooting the engine: `debug`, `api`, `spells`, `haste`,
 
 `anchor` reports the cast-to-re-anchor pipeline, and `anchor arm [seconds] [spell]`
 traces one spell's live cooldown state — the quickest way to show what the engine is
-actually seeing when reporting a timing bug.
+actually seeing when reporting a timing bug. `off arm [seconds]` does the same for the
+offensives binder, showing why each dot was learned or refused.
 
 ## Panel addon integration
 
