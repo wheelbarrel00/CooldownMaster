@@ -1428,14 +1428,18 @@ function Engine:BindAddedAuras(added, now)
 	self._auraBatch = batch
 	wipe(batch)
 
-	-- Deliberately loose: in combat these prove nothing (they let a groupmate's dots through), and tightening it here would only pend less without pending right. It is a candidate filter - ownership is proven on the out-of-combat re-read in ResolvePendingAuras.
+	-- Deliberately loose: in combat these prove nothing (they let a groupmate's dots through), and tightening it here would only pend less without pending right. It is a candidate filter - ownership is proven on the out-of-combat re-read in ResolvePendingAuras. A flag that reads secret still fails closed, because an aura we cannot classify must not reach the mint.
 	for i = 1, #added do
-		local a = added[i]
-		if a.isHarmful and a.isFromPlayerOrPlayerPet then
+		local a = PlainOrNil(added[i])
+		local harmful, ours
+		if type(a) == "table" then
+			harmful, ours = PlainOrNil(a.isHarmful), PlainOrNil(a.isFromPlayerOrPlayerPet)
+		end
+		if harmful and ours then
 			batch[#batch + 1] = a
 		elseif self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
 			ns.CDM:Print(string.format("[offtrace] SKIP-added harmful=%s fromPlayer=%s",
-				tostring(PlainOrNil(a.isHarmful)), tostring(PlainOrNil(a.isFromPlayerOrPlayerPet))))
+				tostring(harmful), tostring(ours)))
 		end
 	end
 	local n = #batch
@@ -1547,18 +1551,26 @@ function Engine:HandleTargetAuras(updateInfo)
 		return
 	end
 
-	-- No updateInfo, or a full refresh, means the incremental stream cannot be trusted, so rebuild from the full instance list.
-	if not updateInfo or updateInfo.isFullUpdate then
+	-- The payload reads secret on a hostile target in combat, and a boolean test on a secret boolean throws (isFullUpdate does). Unreadable is not a full refresh though: reseeding clears the cast-driven dots it cannot re-adopt while spellId is secret, so the ~1 Hz reconcile carries liveness instead.
+	local iss = _G.issecretvalue
+	if iss and iss(updateInfo) then return end
+
+	if not updateInfo or PlainOrNil(updateInfo.isFullUpdate) then
 		self:ReseedTargetAuras()
 		return
 	end
 
 	local now = GetTime()
-	local added = updateInfo.addedAuras
-	if added then self:BindAddedAuras(added, now) end
+	local added = PlainOrNil(updateInfo.addedAuras)
+	if type(added) == "table" then
+		self:BindAddedAuras(added, now)
+	elseif iss and iss(updateInfo.addedAuras)
+		and self._offTraceUntil and now < self._offTraceUntil and ns.CDM then
+		ns.CDM:Print("[offtrace] SKIP-stream addedAuras is secret - nothing can be pended this update")
+	end
 
-	local removed = updateInfo.removedAuraInstanceIDs
-	if removed then
+	local removed = PlainOrNil(updateInfo.removedAuraInstanceIDs)
+	if type(removed) == "table" then
 		local killed = UnitIsDead("target")
 		for i = 1, #removed do
 			local inst = PlainOrNil(removed[i])
@@ -1694,6 +1706,7 @@ function Engine:OnOffLearnCast(spellID)
 	spellID = NormalizeOffensiveCast(spellID)
 	if self._offLearnCast then return end   -- one ability per combat: ignore stray casts so their dots are not misattributed
 	self._offLearnCast = spellID
+	self._offLearnSawSecret = false   -- the flag describes this watch, so a latch from an earlier round must not disarm this one
 	wipe(self._offLearnInsts)
 	if ns.CDM then
 		ns.CDM:Print(string.format("|cff00ff00offlearn:|r watching %s. Let its dots tick, then stop and let combat drop.",
@@ -1703,17 +1716,37 @@ end
 
 
 function Engine:CollectOffLearnAuras(updateInfo)
-	if not (self._offLearnCast and updateInfo and updateInfo.addedAuras) then return end
-	local added = updateInfo.addedAuras
-	-- Loose for the same reason as BindAddedAuras: these are candidates, and FinalizeOffLearn proves ownership on the plain read before any of them is minted.
+	if not self._offLearnCast then return end
+	local iss = _G.issecretvalue
+	if iss and iss(updateInfo) then
+		self._offLearnSawSecret = true
+		return
+	end
+	if not updateInfo then return end
+
+	local raw = updateInfo.addedAuras
+	local added = PlainOrNil(raw)
+	if type(added) ~= "table" then
+		if iss and iss(raw) then self._offLearnSawSecret = true end
+		return
+	end
+
+	-- Loose for the same reason as BindAddedAuras: these are candidates, and FinalizeOffLearn proves ownership on the plain read before any of them is minted. Anything unreadable latches the flag instead of being skipped in silence, or the guided path would keep saying "recast it" at a client that can never answer.
 	for i = 1, #added do
-		local a = added[i]
-		if a.isHarmful and a.isFromPlayerOrPlayerPet then
-			local inst = PlainOrNil(a.auraInstanceID)
-			if inst then
-				self._offLearnInsts[inst] = true
-			else
-				self._offLearnSawSecretInst = true   -- 12.1: no plain instance id to capture
+		local a = PlainOrNil(added[i])
+		if type(a) ~= "table" then
+			self._offLearnSawSecret = true
+		else
+			local harmful, ours = PlainOrNil(a.isHarmful), PlainOrNil(a.isFromPlayerOrPlayerPet)
+			if harmful == nil or ours == nil then
+				self._offLearnSawSecret = true
+			elseif harmful and ours then
+				local inst = PlainOrNil(a.auraInstanceID)
+				if inst then
+					self._offLearnInsts[inst] = true
+				else
+					self._offLearnSawSecret = true
+				end
 			end
 		end
 	end
@@ -1763,10 +1796,10 @@ function Engine:FinalizeOffLearn()
 		if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 		cdm:Print(string.format("|cff00ff00offlearn:|r learned %s -> %s. Still armed - cast the next ability, or /cm offlearn stop.",
 			tostring(GetSpellNameIcon(cast)), names))
-	elseif self._offLearnSawSecretInst then
+	elseif self._offLearnSawSecret then
 		self._offLearnArmed = false
-		self._offLearnSawSecretInst = false
-		cdm:Print("offlearn: this client keeps aura instance ids secret, so guided learning cannot read them. Disarmed.")
+		self._offLearnSawSecret = false
+		cdm:Print("offlearn: this client keeps the target's aura data secret in combat, so guided learning cannot read it. Disarmed.")
 	else
 		cdm:Print("offlearn: could not read that dot yet. Recast it, let it tick, then stop and let combat drop. Still armed.")
 	end
@@ -1776,7 +1809,7 @@ end
 function Engine:StartOffLearn()
 	self._offLearnArmed = true
 	self._offLearnCast = nil
-	self._offLearnSawSecretInst = false
+	self._offLearnSawSecret = false
 	wipe(self._offLearnInsts)
 end
 
@@ -1784,14 +1817,14 @@ end
 function Engine:StopOffLearn()
 	self._offLearnArmed = false
 	self._offLearnCast = nil
-	self._offLearnSawSecretInst = false
+	self._offLearnSawSecret = false
 	wipe(self._offLearnInsts)
 end
 
 
 -- The Classic path below runs off the combat log, which retail 12.0 forbids to addons. It names the aura edges exactly, and a stack tick is its own subevent rather than masquerading as a refresh.
 
--- A secret value throws on tostring, so a diagnostic that formats one takes the addon down with it.
+-- tostring does not throw on a secret, it hands back a secret string, and string.format on that does throw - so a diagnostic takes the addon down at the format call, not where it read the value.
 local function SafeStr(v)
 	local issecret = _G.issecretvalue
 	if issecret and issecret(v) then return "|cffff5555<secret>|r" end
@@ -1993,43 +2026,57 @@ function Engine:ProbeAuraUpdate(unit, updateInfo)
 	local lastCast = self._probe and self._probe.lastID
 	local castAge  = (self._probe and self._probe.lastSeenAt) and (GetTime() - self._probe.lastSeenAt) or 999
 
+	local iss = _G.issecretvalue
+	if iss and iss(updateInfo) then
+		cdm:Print(string.format("|cffffff00UNIT_AURA|r %s | the whole updateInfo reads |cffff5555secret|r (inCombat=%s)",
+			tostring(unit), tostring(InCombatLockdown())))
+		return
+	end
 	if not updateInfo then
 		cdm:Print(string.format("UNIT_AURA %s | no updateInfo (full refresh)", tostring(unit)))
 		return
 	end
 
 	cdm:Print(string.format("|cffffff00UNIT_AURA|r %s | full=%s inCombat=%s | lastCast=%s (%.1fs ago)",
-		tostring(unit), tostring(updateInfo.isFullUpdate), tostring(InCombatLockdown()),
+		tostring(unit), SafeStr(updateInfo.isFullUpdate), tostring(InCombatLockdown()),
 		SafeStr(lastCast), castAge))
 
-	local added = updateInfo.addedAuras
-	if added then
+	local added = PlainOrNil(updateInfo.addedAuras)
+	if type(added) == "table" then
 		for i = 1, #added do
-			local a = added[i]
-			cdm:Print(string.format("  |cff00ff00ADDED|r inst=%s - every field:", SafeStr(a.auraInstanceID)))
-			local keys = self._probeKeys or {}
-			self._probeKeys = keys
-			wipe(keys)
-			for k in pairs(a) do keys[#keys + 1] = k end
-			table.sort(keys)
-			for k = 1, #keys do
-				cdm:Print(string.format("      %s = %s", keys[k], SafeStr(a[keys[k]])))
+			local a = PlainOrNil(added[i])
+			if type(a) ~= "table" then
+				cdm:Print("  |cff00ff00ADDED|r " .. SafeStr(added[i]) .. " - the record itself is unreadable")
+			else
+				cdm:Print(string.format("  |cff00ff00ADDED|r inst=%s - every field:", SafeStr(a.auraInstanceID)))
+				local keys = self._probeKeys or {}
+				self._probeKeys = keys
+				wipe(keys)
+				for k in pairs(a) do keys[#keys + 1] = k end
+				table.sort(keys)
+				for k = 1, #keys do
+					cdm:Print(string.format("      %s = %s", keys[k], SafeStr(a[keys[k]])))
+				end
 			end
 		end
+	elseif iss and iss(updateInfo.addedAuras) then
+		cdm:Print("  addedAuras = |cffff5555secret table|r - the added-aura stream is unreadable")
 	end
 
-	local upd = updateInfo.updatedAuraInstanceIDs
-	if upd then
+	local upd = PlainOrNil(updateInfo.updatedAuraInstanceIDs)
+	if type(upd) == "table" then
 		for i = 1, #upd do
 			cdm:Print("  UPDATED inst=" .. SafeStr(upd[i]))
 		end
 	end
 
-	local rem = updateInfo.removedAuraInstanceIDs
-	if rem then
+	local rem = PlainOrNil(updateInfo.removedAuraInstanceIDs)
+	if type(rem) == "table" then
 		for i = 1, #rem do
 			cdm:Print("  REMOVED inst=" .. SafeStr(rem[i]))
 		end
+	elseif iss and iss(updateInfo.removedAuraInstanceIDs) then
+		cdm:Print("  removedAuraInstanceIDs = |cffff5555secret table|r")
 	end
 end
 

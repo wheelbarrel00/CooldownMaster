@@ -1,5 +1,17 @@
 # Cooldown Master Changelog
 
+## 1.9.1 (2026-08-11) — A retail combat error, and diagnostics that survive it
+
+### Bug Fixes
+
+- **Retail: fixed an error that fired every time your target's auras changed in combat.** Midnight hands addons the target's aura update in a form they aren't allowed to read while you're in combat, and Cooldown Master tested one of those values directly, which the game now treats as an error. Every value in that update is checked before it is used. When the whole update is unreadable, Cooldown Master falls back to the once-a-second sweep it already runs, so your dots keep appearing and keep clearing on their own.
+  - **Heads up:** while the game withholds that data in combat, a dot Cooldown Master has never seen before can't be learned mid-fight. Cast the ability once out of combat — a training dummy is ideal — and it's learned from then on. Dots you've already learned are unaffected.
+- **`/cm offlearn` tells you when your client won't let it read the dots.** It used to answer "could not read that dot yet, still armed" after every attempt, which gave you no way to tell a mistimed cast from a client that can never answer. It now says so plainly and stops. It also no longer disarms on a later ability because an earlier one happened to hit an unreadable value.
+
+### Improvements
+
+- **Diagnostics survive what they were built to diagnose.** `/cm auraprobe` could itself be taken down by an unreadable aura update; it now names which part of the update was unreadable instead. `/cm off` traces say when an aura stream arrived unreadable rather than falling silent.
+
 ## 1.9.0 (2026-08-08) — Offensives learn the right dots, and Classic Era finds your potions
 
 ### Bug Fixes

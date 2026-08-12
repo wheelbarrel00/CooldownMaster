@@ -2,6 +2,19 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.9.1",
+		date = "2026-08-11",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Retail: fixed an error that fired every time your target's auras changed in combat. Midnight hands addons that update in a form they are not allowed to read mid-fight, and Cooldown Master read one of those values directly. It checks first now, and falls back to its once-a-second sweep, so your dots keep appearing and clearing as before. Heads up: a dot Cooldown Master has never seen cannot be learned mid-fight while the game withholds this - cast it once out of combat and it sticks.",
+				"/cm offlearn says when your client will not let it read your dots, instead of answering \"could not read that dot yet\" every time.",
+			} },
+			{ head = "Improvements", items = {
+				"/cm auraprobe and the /cm off traces survive an unreadable aura update, and name what they could not read.",
+			} },
+		},
+	},
+	{
 		version = "1.9.0",
 		date = "2026-08-08",
 		sections = {
