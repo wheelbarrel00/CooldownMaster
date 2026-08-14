@@ -1,9 +1,11 @@
 # Libs
 
-This folder is empty in the source repo. Libraries are either:
+Every library below is committed to this repo, so a fresh clone runs in-game
+without any fetch step. At release time the BigWigs packager replaces them with
+fresh upstream copies via the `externals` block in `.pkgmeta` at the repo root —
+these committed copies serve local development only.
 
-1. Pulled in by the BigWigs packager via `.pkgmeta` at the repo root, or
-2. Copied here manually for local development.
+Don't hand-edit anything in here. A packaged build overwrites it.
 
 ## Required libraries (load order matches `embeds.xml`)
 
@@ -22,7 +24,8 @@ This folder is empty in the source repo. Libraries are either:
 The options panel is hand-rolled, so AceGUI, AceConfig and AceDBOptions are
 deliberately not embedded.
 
-## Quick local setup
+## Updating one
 
-Download each of the above from CurseForge, or let the packager fetch them by
-running a build from `.pkgmeta`.
+Download the new version from CurseForge (or GitHub, for LibDeflate), replace
+the folder, and commit it. `embeds.xml` needs a change only if a library's file
+list or load order changes.

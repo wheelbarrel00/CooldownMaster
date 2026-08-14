@@ -48,8 +48,38 @@ Cooldown Master works around this with a hybrid approach:
   driven entirely off the readable `isActive`/`isOnGCD` booleans.
 
 (Earlier versions of this README described a curve-evaluation engine that
-"sidesteps the taint." That turned out to be a dead end — curve results stay
-secret too; see `docs/EXPERIMENTS.md`.)
+"sidesteps the taint." That turned out to be a dead end — step, linear and
+identity curves all came back secret.)
+
+### Auras are stricter than cooldowns, and 12.1 tightened them again
+
+A cooldown at least keeps two readable booleans. An aura on your target keeps
+almost nothing: in combat its `spellId`, `name`, `icon`, `duration` and
+`sourceUnit` are all secret, and every "ask by spell" API
+(`GetUnitAuraBySpellID`, `GetAuraDataBySpellName`) returns `nil` outright rather
+than a secret — so **you cannot identify a debuff on your target in combat by
+any path**. That is why Offensives is cast-driven: the spell ID from
+`UNIT_SPELLCAST_SUCCEEDED` stays plain, so identity comes from what you cast
+rather than from what you read.
+
+As of **12.1** the `UNIT_AURA` payload itself arrives secret — `isFullUpdate` is
+a secret boolean and `addedAuras` a secret table. Two practical notes for anyone
+hitting this:
+
+- **A boolean test on a secret *boolean* throws** (`if updateInfo.isFullUpdate
+  then` is enough to error), because the single bit is the whole payload. A
+  boolean test on a secret *table* or *number* does not throw — truthiness of a
+  non-boolean leaks nothing. Check the value type before assuming which you have.
+- **`tostring` does not throw on a secret** — it hands back a secret *string*,
+  and `string.format` is what dies. Wrapping a read in `tostring` or a `pcall`
+  around the producer protects nothing; test the returned value with
+  `issecretvalue()`.
+
+Instance-id collections go the same way — `removedAuraInstanceIDs` measures as a
+secret table, and `C_UnitAuras.GetUnitAuraInstanceIDs(unit, "HARMFUL|PLAYER")` is
+dropped for the same reason. With no plain reconcile source left, the cast-driven
+path stands alone and a wall-clock expiry sweep does the job the reconcile loop
+used to.
 
 ## Features
 
@@ -109,15 +139,18 @@ secret too; see `docs/EXPERIMENTS.md`.)
   tracked buffs through Blizzard's own category sets instead.
 - **Pet spells** — your pet's abilities (Spell Lock, Axe Toss, Gnaw, Freeze and the
   rest) are discovered from the pet spellbook and tracked like any other cooldown.
-- **Offensives** — your damage-over-time effects on your current target, timed by
-  aura duration instead of by a cooldown, so a dot travels the lane and pops a ready
-  box when it falls off and wants recasting. Discovered as you apply them; refreshes
-  re-anchor. Tracking follows your target, so swapping targets clears the lane. On
+- **Offensives** — the harmful effects you put on your current target: damage-over-time
+  effects, and debuffs like stuns. Timed by aura duration instead of by a cooldown, so
+  each one travels the lane and pops a ready box when it drops. Discovered as you apply
+  them; refreshes re-anchor. Tracking follows your target, so swapping targets clears the lane. On
   retail this is **cast-driven** — a target's auras are secret in combat, so identity
   comes from `UNIT_SPELLCAST_SUCCEEDED` rather than from reading the target. A dot is
   only ever learned once its source can be positively confirmed as you, so a
-  groupmate's dots on a shared target stay off your lanes. A per-spell **Remove (X)**
-  button drops one you no longer want tracked.
+  groupmate's dots on a shared target stay off your lanes. As of 12.1 the added-aura
+  stream itself arrives secret, so an effect Cooldown Master has not already learned
+  cannot be picked up during a fight, and `/cm offlearn` says so and stands down
+  rather than pretending. Anything already learned keeps tracking normally. A
+  per-spell **Remove (X)** button drops one you no longer want tracked.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
 
@@ -159,36 +192,26 @@ secret too; see `docs/EXPERIMENTS.md`.)
 
 ## Getting it running locally
 
-The repo doesn't ship the Ace3 / LibSharedMedia / LibDataBroker libraries
-themselves — they're pulled in by the
-[BigWigs packager](https://github.com/BigWigsMods/packager) via `.pkgmeta`.
-
-You have two options:
-
-### Option A — Run the packager (recommended)
-
-If you've got the packager installed:
+Clone it straight into your AddOns folder and `/reload` — every embedded library
+is committed to the repo, so a fresh clone runs as-is:
 
 ```bash
-./release.sh
+git clone https://github.com/wheelbarrel00/CooldownMaster.git
 ```
 
-This produces `.release/CooldownMaster/` with all libraries fetched into
-`Libs/`. Copy that folder into your `World of Warcraft/_retail_/Interface/AddOns/`.
+Drop the `CooldownMaster/` folder into
+`World of Warcraft/_retail_/Interface/AddOns/` (or the `_classic_era_`,
+`_anniversary_`, or `_classic_` equivalent — the same folder serves every
+flavor, and the right `.toc` loads itself).
 
-### Option B — Fetch the libraries by hand
-
-Download each library into `Libs/`, matching the load order in `embeds.xml`:
-`LibStub`, `CallbackHandler-1.0`, `AceAddon-3.0`, `AceEvent-3.0`,
-`AceConsole-3.0`, `AceDB-3.0`, `AceSerializer-3.0`, `LibSharedMedia-3.0`,
-`LibDeflate`, `LibDataBroker-1.1`, `LibDBIcon-1.0`.
+At release time the [BigWigs packager](https://github.com/BigWigsMods/packager)
+re-fetches each library fresh from its upstream via the `externals` block in
+`.pkgmeta`, so the committed copies are a convenience for local development, not
+the source of truth for what ships.
 
 The options panel is hand-built rather than driven by an AceConfig options
 table, so AceGUI, AceConfig and AceDBOptions are deliberately **not** embedded —
 don't add them.
-
-After either option, drop the `CooldownMaster/` folder into your AddOns
-directory and `/reload`.
 
 ## Slash commands
 

@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.9.2",
+		date = "2026-08-13",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Classic: an effect with no debuff on the target, like a Paladin's Consecration, no longer flashes onto a lane for a second and vanishes. Cooldown Master checked your target for it once a second, could not find it there, and removed it. It now lets the combat log and the effect's own length decide when it ends.",
+				"The Offensives tab no longer says \"No harmful effects discovered yet\" while the category is switched off. Offensives is the one category that ships switched off, so if you went looking for your effects on a target and found nothing, this is why. It now says so plainly and points at the tick box that turns it on. Thanks to yisisixu for the report.",
+				"Turning a category on or off updates the panel straight away, and the same setting on the Defaults tab keeps in step instead of showing the old value until you reload.",
+				"Classic: the Buff Bars tab no longer tells you to reload to fill a list that can never fill on this version of the game. It explains what the category is for and points you at Offensives.",
+				"Retail: the Offensives tab no longer walks you through a /cm offlearn setup your client will refuse. On 12.1 the game withholds what that procedure reads, so it could only end in \"could not read anything\". The tab now says an effect it has not already learned cannot be picked up on such a client, and that anything already learned keeps working.",
+			} },
+			{ head = "Improvements", items = {
+				"Offensives is described as what it actually tracks: the harmful effects you put on your target, damage-over-time effects and debuffs like stuns alike, not damage-over-time alone.",
+			} },
+		},
+	},
+	{
 		version = "1.9.1",
 		date = "2026-08-11",
 		sections = {

@@ -1216,6 +1216,11 @@ function Engine:FlushOffensivePops()
 			-- Never leave a live-looking rec behind, or the forward-only re-anchor guard suppresses a re-render of this dot on its next cast (empty on Classic, which does not use auraRec).
 			self.auraRec[spellID]    = nil
 			self._reanchorAt[spellID] = nil
+
+			-- The Classic combat-log record outliving its entry lets a target swap rebuild the dot and pop it a second time.
+			local guid = UnitGUID and UnitGUID("target")
+			local byGUID = guid and debuffs[guid]
+			if byGUID then byGUID[spellID] = nil end
 		end
 	end
 	wipe(pending)
@@ -1999,6 +2004,9 @@ function Engine:ScanOffensives()
 			rec.duration = expiration - startTime
 
 			self:SyncOffensiveEntry(spellID, rec)
+
+			local live = self.entries[spellID]
+			if live and live._source == "offensive" then live._liveSeen = true end
 		end
 	end
 
@@ -2006,12 +2014,16 @@ function Engine:ScanOffensives()
 	if not unreadable then
 		local byGUID = debuffs[guid]
 		for spellID, e in pairs(self.entries) do
-			if e._source == "offensive" and not seen[spellID] then
+			-- _liveSeen gate: a ground effect (Consecration) applies a debuff the combat log reports but that never enumerates as a target aura, so its absence here is a blind spot, not the dot ending.
+			if e._source == "offensive" and e._liveSeen and not seen[spellID] then
 				self.entries[spellID] = nil
 				if byGUID then byGUID[spellID] = nil end
 			end
 		end
 	end
+
+	-- Last, so it tests the ends the live read above just corrected - queueing off a stale end inflates the mass-vanish count and burns the idempotence guard a real removal needs.
+	self:SweepOffensiveExpiry()
 end
 
 

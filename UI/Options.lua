@@ -1516,21 +1516,56 @@ local filtersState = {
 	selectedDefaultsKey     = "spells",
 	formFrames              = {},
 	railRows                = {},
+	enabledSensitive        = {},
+	enabledChecks           = {},
 }
 
 local function GetFilterCfg(key)
 	return ns.CDM.db.profile.filters[key]
 end
 
+
+-- Deferred a frame - the checkbox whose callback fires this sits on the surface being torn down.
+local function RefreshFilterListForm(key)
+	C_Timer.After(0, function()
+		-- A needless rebuild orphans a full row tree, which WoW never GCs, to redraw the same pixels.
+		if filtersState.enabledSensitive[key] then
+			local surf = filtersState.formFrames[key]
+			if surf then
+				surf:Hide()
+				filtersState.formFrames[key] = nil
+			end
+		end
+
+		-- The Defaults surface has its own checkbox for this flag and nothing else invalidates it.
+		local defaults = filtersState.formFrames["defaults"]
+		if defaults and key == filtersState.selectedDefaultsKey then
+			defaults:Hide()
+			filtersState.formFrames["defaults"] = nil
+		end
+
+		-- A surface kept above still holds a checkbox seeded from the old value, so re-seed it in place.
+		local cfg = GetFilterCfg(key)
+		local check = filtersState.enabledChecks[key]
+		if cfg and check and filtersState.formFrames[key] then
+			check:SetValue(cfg.enabled)
+		end
+
+		local shown = filtersState.selectedSubTab
+		if filtersState._refresh and (shown == key or shown == "defaults") then
+			filtersState._refresh()
+		end
+	end)
+end
+
 -- Read-only: returns the stored override or nil. Merely viewing a spell must NOT persist an
--- empty {} into spellOverrides (a SavedVariable); materialization is deferred to SetSpellOverride.
+-- empty {} into spellOverrides (a SavedVariable). Materialization is deferred to SetSpellOverride.
 local function GetSpellOverride(spellID)
 	local so = ns.CDM.db.profile.spellOverrides
 	return so and so[spellID]
 end
 
--- Write one override field, creating the table on the first real value and pruning it back to
--- nil once it holds nothing, so choosing "Default" everywhere leaves no empty table behind.
+-- Pruned back to nil once it holds nothing, so choosing "Default" everywhere leaves no empty table behind.
 local function SetSpellOverride(spellID, field, value)
 	local p = ns.CDM.db.profile
 	if value == nil then
@@ -1760,7 +1795,10 @@ local function BuildFiltersDefaultsForm(parent)
 		label   = "Enabled",
 		checked = cfg.enabled,
 		tooltip = "Untick to stop tracking this whole category. None of its cooldowns will show on a lane or pop a ready frame.",
-		onChange = function(v) cfg.enabled = v end,
+		onChange = function(v)
+			cfg.enabled = v
+			RefreshFilterListForm(key)
+		end,
 	}))
 
 	place(W.CreateCheckbox(parent, {
@@ -2086,17 +2124,23 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 			label   = "Track this category",
 			checked = catCfg.enabled,
 			tooltip = "Untick to stop tracking this whole category. None of its cooldowns show on a lane or a bar, or pop a ready frame. This is the same setting as Enabled on the Defaults tab.",
-			onChange = function(v) catCfg.enabled = v end,
+			onChange = function(v)
+				catCfg.enabled = v
+				RefreshFilterListForm(categoryKey)
+			end,
 		})
 		cb:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		filtersState.enabledChecks[categoryKey] = cb
 		top = top - 26
 	end
 
 	-- Onboarding for a /cm command (no control to hang a tooltip on), so it lives on the panel like the custom-form hint.
 	if categoryKey == "offensives" then
+		local isOff = catCfg and catCfg.enabled == false
+
 		local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		title:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
-		title:SetText("Learning your offensives")
+		title:SetText(isOff and "Offensives is turned off" or "Learning your offensives")
 		title:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 		top = top - 18
 
@@ -2105,11 +2149,17 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		body:SetWidth(parent:GetWidth() - pad * 2 - 20)
 		body:SetJustifyH("LEFT")
 		body:SetTextColor(0.7, 0.7, 0.7)
+
+		local how
 		if ns.Compat.HAS_COMBAT_LOG then
-			body:SetText("Your damage-over-time effects are detected automatically as you apply them to a target - nothing to set up.")
+			how = "Harmful effects you put on a target are detected automatically as you apply them - nothing to set up."
 		else
-			body:SetText("The game hides a debuff's identity in combat, so CooldownMaster learns your dots out of combat:\n1. Type /cm offlearn\n2. Cast one dot ability, then stop and let combat end (about 6 seconds)\n3. It learns that ability's debuffs and lists them - repeat for each ability\n4. Type /cm offlearn stop when finished\nSingle dots also learn on their own after one isolated cast.")
+			how = "A target's debuff cannot be identified in combat, so Cooldown Master learns which of your abilities applies which effect out of combat, from what lands just after you cast.\n\nSince 12.1 the game withholds that too, so an effect it has not already learned cannot be picked up at all. /cm offlearn tells you when your client is withholding it rather than leaving you guessing, and where the game still allows learning it walks you through one ability at a time - type /cm offlearn, cast the ability, let combat end, then /cm offlearn stop. Anything already learned keeps tracking normally."
 		end
+		if isOff then
+			how = "This category tracks the harmful effects you put on your target - damage-over-time effects, and debuffs like stuns - so each one travels a lane and pops a ready box when it drops. Nothing in this category is tracked while it is switched off - tick Track this category above to switch it on.\n\n" .. how
+		end
+		body:SetText(how)
 		top = top - (body:GetStringHeight() + 12)
 	end
 
@@ -2147,16 +2197,34 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		return an < bn
 	end)
 
+	-- Toggling the category only redraws these two, so every other list can keep its frames.
+	filtersState.enabledSensitive[categoryKey] = (categoryKey == "offensives") or (#matches == 0)
+
 	if #matches == 0 then
-		local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		fs:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+		local text
 		if categoryKey == "offensives" then
-			fs:SetText("No harmful effects discovered yet.\nYour damage-over-time effects are listed here as you apply them to a target.")
+			-- Offensives spells out the switch in its own block above, so a second copy here would just repeat it.
+			if not catCfg or catCfg.enabled ~= false then
+				text = "No harmful effects discovered yet.\nThe effects you put on a target are listed here as you apply them."
+			end
+		-- Must stay above the switched-off branch below - this list can never fill, so blaming the switch would send the user to tick a box that changes nothing.
+		elseif categoryKey == "debuffs" and not ns.Compat.HAS_BLIZZ_CDM then
+			text = "This category stays empty on this version of the game.\nIt lists Blizzard's own bar-style tracked buffs, which exist only on retail. The harmful effects you put on a target are under Offensives."
+		elseif catCfg and catCfg.enabled == false then
+			text = "This category is switched off, so none of its cooldowns show on a lane or a bar, or pop a ready box.\nTick Track this category above to switch it on."
 		else
-			fs:SetText("No spells discovered yet for this category.\nLog in or /reload to populate the list.")
+			text = "No spells discovered yet for this category.\nLog in or /reload to populate the list."
 		end
-		fs:SetTextColor(0.7, 0.7, 0.7)
-		fs:SetJustifyH("LEFT")
+		if text then
+			local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			fs:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
+			fs:SetWidth(parent:GetWidth() - pad * 2 - 20)
+			fs:SetText(text)
+			fs:SetTextColor(0.7, 0.7, 0.7)
+			fs:SetJustifyH("LEFT")
+			parent:SetHeight(math.abs(top) + fs:GetStringHeight() + 40)
+			return
+		end
 		parent:SetHeight(math.abs(top) + 60)
 		return
 	end

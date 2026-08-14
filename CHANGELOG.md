@@ -1,5 +1,20 @@
 # Cooldown Master Changelog
 
+## 1.9.2 (2026-08-13) — Offensives explains itself, and a Classic dot stops vanishing
+
+### Bug Fixes
+
+- **Classic: an effect that puts no debuff on your target no longer flashes onto a lane and disappears.** A Paladin's Consecration is the clearest case — the combat log reports it, but it never shows up in your target's debuff list, so the once-a-second check that looks for it there found nothing and removed the icon about a second after it appeared. That check now only removes an effect it has actually been able to see; anything else is ended by the combat log or by its own length running out.
+- **The Offensives tab no longer claims it is looking when it isn't.** Offensives is the one category that ships switched off, so if you went hunting for your effects on a target and found nothing tracked, this is why. The tab said "No harmful effects discovered yet", which reads as Cooldown Master searching for them and failing — it was never searching at all. It now says the category is off and points at the tick box that turns it on. Thanks to yisisixu for the report, and for narrowing it down on a second character.
+- **Turning a category on or off updates the panel immediately.** The tick box and the matching Enabled setting on the Defaults tab used to drift apart until you reloaded, so one could show a category as tracked while the other had it switched off, and your first click on the stale one appeared to do nothing.
+- **Classic: the Buff Bars tab stops giving advice that cannot work.** It told you to log in or reload to fill the list. That category is Blizzard's own bar-style tracked buffs, which only exist on retail, so no amount of reloading would ever fill it. It now explains that and points you at Offensives, which is where your effects on a target live.
+- **Retail: the Offensives tab no longer walks you through a setup that your client will refuse.** It laid out a four-step `/cm offlearn` procedure for teaching Cooldown Master your effects. On 12.1 the game withholds the information that procedure reads, so it could only ever end in `/cm offlearn` reporting it could not read anything. The tab now says plainly that an effect it has not already learned cannot be picked up on such a client, that anything already learned keeps working, and it still describes the guided procedure for clients where the game does allow it. Measured on a live 12.1 client rather than assumed.
+- **A long line of explanatory text no longer runs off the edge of the options panel.**
+
+### Improvements
+
+- **Offensives is described as what it actually tracks.** The panel and the README both called it "your damage-over-time effects", but it tracks every harmful effect you put on your target — a stun like Hammer of Justice counts, and always did. The wording now matches the behaviour.
+
 ## 1.9.1 (2026-08-11) — A retail combat error, and diagnostics that survive it
 
 ### Bug Fixes
