@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 local LDB     = LibStub("LibDataBroker-1.1", true)
 local LDBIcon = LibStub("LibDBIcon-1.0",     true)
@@ -18,8 +19,8 @@ function ns.DataBroker_Init(addon)
 				if ns.Options_Toggle then ns.Options_Toggle() end
 			elseif button == "RightButton" then
 				addon.db.profile.global.unlockFrames = not addon.db.profile.global.unlockFrames
-				addon:Print("Frames " ..
-					(addon.db.profile.global.unlockFrames and "unlocked" or "locked"))
+				addon:Print(addon.db.profile.global.unlockFrames
+					and L["Frames unlocked."] or L["Frames locked."])
 				-- No per-tick config apply repaints lane drag-labels anymore, so refresh them here.
 				ns.ForEachSurface("RefreshUnlockState", addon)
 			elseif button == "MiddleButton" then
@@ -29,11 +30,14 @@ function ns.DataBroker_Init(addon)
 
 		OnTooltipShow = function(tt)
 			tt:AddLine(ns.Colorize(ns.CONST.HEX.YELLOW, ns.CONST.ADDON_DISPLAY))
-			tt:AddLine("Version " .. ns.CONST.VERSION, 1, 1, 1)
+			tt:AddLine(string.format(L["Version %s"], ns.CONST.VERSION), 1, 1, 1)
 			tt:AddLine(" ")
-			tt:AddLine(ns.Colorize(ns.CONST.HEX.YELLOW, "Left-click")  .. " to open options.",  1, 1, 1)
-			tt:AddLine(ns.Colorize(ns.CONST.HEX.YELLOW, "Right-click") .. " to lock/unlock.",   1, 1, 1)
-			tt:AddLine(ns.Colorize(ns.CONST.HEX.YELLOW, "Middle-click").. " to toggle test.",   1, 1, 1)
+			tt:AddLine(string.format(L["%s to open options."],
+				ns.Colorize(ns.CONST.HEX.YELLOW, L["Left-click"])),   1, 1, 1)
+			tt:AddLine(string.format(L["%s to lock/unlock."],
+				ns.Colorize(ns.CONST.HEX.YELLOW, L["Right-click"])),  1, 1, 1)
+			tt:AddLine(string.format(L["%s to toggle test."],
+				ns.Colorize(ns.CONST.HEX.YELLOW, L["Middle-click"])), 1, 1, 1)
 		end,
 	})
 

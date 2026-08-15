@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
@@ -582,7 +583,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	statusText:Hide()
 	f.statusText = statusText
 
-	f.dragHandle = ns.CreateDragHandle(f, "Ready "..index, function(point, x, y)
+	f.dragHandle = ns.CreateDragHandle(f, string.format(L["Ready %d"], index), function(point, x, y)
 		local rfCfg = addon.db.profile.readyFrames[index]
 		if rfCfg then
 			rfCfg.anchor = point

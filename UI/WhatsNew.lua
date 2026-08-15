@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 -- Seen/announced/mode live in AceDB's account-wide `db.global` scope (NOT the addon's
 -- per-profile `db.profile.global` table), so the notice fires once per account, not once
@@ -62,9 +63,10 @@ local STOP  = "|r"
 
 local function BuildBody(releases)
 	local blocks = {
-		GOLD .. "Missed an update?" .. STOP .. "\n"
-			.. "Every release's full notes live inside the addon - type " .. WHITE .. "/cm" .. STOP
-			.. ", open the " .. WHITE .. "About" .. STOP .. " tab, and read the Changelog there.",
+		GOLD .. L["Missed an update?"] .. STOP .. "\n"
+			.. string.format(
+				L["Every release's full notes live inside the addon - type %1$s, open the %2$s tab, and read the Changelog there."],
+				WHITE .. "/cm" .. STOP, WHITE .. L["About"] .. STOP),
 	}
 	local showVersions = #releases > 1
 	for _, rel in ipairs(releases) do
@@ -81,21 +83,22 @@ local function BuildBody(releases)
 			blocks[#blocks + 1] = table.concat(lines, "\n")
 		end
 	end
-	blocks[#blocks + 1] = GOLD .. "Prefer quiet updates?" .. STOP .. "\n"
-		.. "Switch these notices to a clickable chat link, or turn them off, under "
-		.. WHITE .. "/cm" .. STOP .. " > " .. WHITE .. "Global" .. STOP .. " > "
-		.. WHITE .. "After an update" .. STOP .. ", or tick \"Don't show these again\" below."
-	blocks[#blocks + 1] = GOLD .. "Thanks for using " .. ns.CONST.ADDON_DISPLAY .. "!" .. STOP .. "\n"
-		.. "Found a bug or have an idea? Use the Discord button below."
+	blocks[#blocks + 1] = GOLD .. L["Prefer quiet updates?"] .. STOP .. "\n"
+		.. string.format(
+			L["Switch these notices to a clickable chat link, or turn them off, under %1$s > %2$s > %3$s, or tick \"Don't show these again\" below."],
+			WHITE .. "/cm" .. STOP, WHITE .. L["Global"] .. STOP,
+			WHITE .. L["After an update"] .. STOP)
+	blocks[#blocks + 1] = GOLD .. string.format(L["Thanks for using %s!"], ns.CONST.ADDON_DISPLAY) .. STOP .. "\n"
+		.. L["Found a bug or have an idea? Use the Discord button below."]
 	return table.concat(blocks, "\n\n")
 end
 
 
 local function AnnounceChat()
 	local link = "|Haddon:" .. ns.CONST.ADDON_NAME .. ":whatsnew|h"
-		.. GOLD .. "[See what's new]" .. STOP .. "|h"
-	DEFAULT_CHAT_FRAME:AddMessage(GOLD .. ns.CONST.ADDON_DISPLAY .. STOP
-		.. " updated to " .. (Latest() or "?") .. " - " .. link)
+		.. GOLD .. L["[See what's new]"] .. STOP .. "|h"
+	DEFAULT_CHAT_FRAME:AddMessage(string.format(L["%1$s updated to %2$s - %3$s"],
+		GOLD .. ns.CONST.ADDON_DISPLAY .. STOP, (Latest() or "?"), link))
 end
 
 -- Custom chat hyperlink (|Haddon:CooldownMaster:whatsnew|h); the client ignores the unknown
@@ -133,8 +136,8 @@ local function Build()
 	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 16, -14)
 	title:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
-	title:SetText("What's New in " .. ns.CONST.ADDON_DISPLAY
-		.. (#releases == 1 and (" " .. releases[1].version) or ""))
+	title:SetText(string.format(L["What's New in %s"], ns.CONST.ADDON_DISPLAY
+		.. (#releases == 1 and (" " .. releases[1].version) or "")))
 
 	local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", 14, -44)
@@ -167,7 +170,7 @@ local function Build()
 	f.dontShow:SetPoint("BOTTOMLEFT", 16, 50)
 	f.dontShow.text = f.dontShow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	f.dontShow.text:SetPoint("LEFT", f.dontShow, "RIGHT", 2, 0)
-	f.dontShow.text:SetText("Don't show these again")
+	f.dontShow.text:SetText(L["Don't show these again"])
 	f.dontShow.text:SetTextColor(0.7, 0.7, 0.7)
 	f.dontShow:SetScript("OnShow", function(self)
 		local m = CurrentMode()
@@ -187,23 +190,23 @@ local function Build()
 	end)
 	f.dontShow:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText("Stops What's New notices entirely. You can turn them back on under /cm > Global > After an update.", 1, 1, 1, 1, true)
+		GameTooltip:SetText(L["Stops What's New notices entirely. You can turn them back on under /cm > Global > After an update."], 1, 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
 	f.dontShow:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-	f.optBtn = ns.Theme.CreateButton(f, "Open Options", 150, 28)
+	f.optBtn = ns.Theme.CreateButton(f, L["Open Options"], 150, 28)
 	f.optBtn:SetPoint("BOTTOMLEFT", 16, 14)
 	f.optBtn:SetScript("OnClick", function()
 		dismiss()
 		if ns.Options_Open then ns.Options_Open() end
 	end)
 
-	f.gotBtn = ns.Theme.CreateButton(f, "Got it", 120, 28)
+	f.gotBtn = ns.Theme.CreateButton(f, L["Got it"], 120, 28)
 	f.gotBtn:SetPoint("BOTTOMRIGHT", -16, 14)
 	f.gotBtn:SetScript("OnClick", dismiss)
 
-	f.discordBtn = ns.Theme.CreateButton(f, "Join our Discord", 150, 28)
+	f.discordBtn = ns.Theme.CreateButton(f, L["Join our Discord"], 150, 28)
 	f.discordBtn:SetPoint("BOTTOM", 0, 14)
 	f.discordBtn:SetScript("OnClick", function() ns.ShowURL(ns.DISCORD_URL) end)
 

@@ -1,10 +1,11 @@
 ﻿local ADDON_NAME, ns = ...
+local L = ns.L
 
 ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.9.3",
+	VERSION          = "1.10.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -77,14 +78,14 @@ ns.CONST = {
 
 	-- Offensives and Custom are omitted - no donor pool to demo from, and a fake Custom would look like a live timer.
 	TEST_TYPES = {
-		{ value = "mixed",     text = "Mixed",      category = nil },
-		{ value = "spells",    text = "Spells",     category = 0   },
-		{ value = "items",     text = "Utility",    category = 1   },
-		{ value = "buffs",     text = "Buffs",      category = 2   },
-		{ value = "debuffs",   text = "Buff Bars",  category = 3   },
-		{ value = "potions",   text = "Potions",    category = 100 },
-		{ value = "trinkets",  text = "Trinkets",   category = 101 },
-		{ value = "petspells", text = "Pet Spells", category = 103 },
+		{ value = "mixed",     text = L["Mixed"],      category = nil },
+		{ value = "spells",    text = L["Spells"],     category = 0   },
+		{ value = "items",     text = L["Utility"],    category = 1   },
+		{ value = "buffs",     text = L["Buffs"],      category = 2   },
+		{ value = "debuffs",   text = L["Buff Bars"],  category = 3   },
+		{ value = "potions",   text = L["Potions"],    category = 100 },
+		{ value = "trinkets",  text = L["Trinkets"],   category = 101 },
+		{ value = "petspells", text = L["Pet Spells"], category = 103 },
 	},
 
 	-- Classic discovery has no Blizzard category tagging, so these would land in Spells instead of Utility.
@@ -93,17 +94,17 @@ ns.CONST = {
 	},
 
 	FILTER_CATEGORIES = {
-		{ key = "spells",     label = "Spells"     },
+		{ key = "spells",     label = L["Spells"]     },
 		-- Key stays "items" for saved-variable back-compat. The label is Blizzard's Utility-tagged spells, not inventory items.
-		{ key = "items",      label = "Utility"    },
-		{ key = "buffs",      label = "Buffs"      },
+		{ key = "items",      label = L["Utility"]    },
+		{ key = "buffs",      label = L["Buffs"]      },
 		-- Key stays "debuffs" for saved-variable back-compat. Category 3 is Blizzard's TrackedBar (bar-style tracked buffs), not debuffs - your DoTs on a target are the Offensives category.
-		{ key = "debuffs",    label = "Buff Bars"  },
-		{ key = "potions",    label = "Potions"    },
-		{ key = "trinkets",   label = "Trinkets"   },
-		{ key = "offensives", label = "Offensives" },
-		{ key = "petspells",  label = "Pet Spells" },
-		{ key = "custom",     label = "Custom"     },
+		{ key = "debuffs",    label = L["Buff Bars"]  },
+		{ key = "potions",    label = L["Potions"]    },
+		{ key = "trinkets",   label = L["Trinkets"]   },
+		{ key = "offensives", label = L["Offensives"] },
+		{ key = "petspells",  label = L["Pet Spells"] },
+		{ key = "custom",     label = L["Custom"]     },
 	},
 }
 

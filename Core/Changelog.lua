@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.10.0",
+		date = "2026-08-15",
+		sections = {
+			{ head = "New Features", items = {
+				"Cooldown Master is now translated. Everything the addon draws - options, tooltips, ready boxes, this popup - reads in your client's language where a translation exists, and falls back to English where it does not. Simplified Chinese is complete, with thanks to the translator who contributed it. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons and will fill in over time.",
+				"Translations are bundled in the addon, so there is nothing to install and nothing to download. Your client language decides, and switching languages switches the addon with it.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed custom cooldowns never picking up their real name on a non-English client. A new custom starts out called \"New Custom\", and entering a Trigger ID is meant to replace that with the ability's actual name. The placeholder was being translated while the check looking for it was not, so the two never matched and the custom kept the placeholder name for good.",
+				"Fixed translated frame names being written into your saved settings. The default names for lanes, ready boxes and bar frames were saved in whatever language you first logged in with, and switching your client language afterwards would have left them stuck in the old one permanently. They are stored in plain English again and are yours to rename as always.",
+				"The Filters column headers (Show, Lane, Bar, Ready Box, Flags) stayed English while the Remove and Buff headers beside them were translated, so one header row read as two languages at once.",
+				"Several strings that had been missed now translate too, including the lane tooltip for a custom cooldown, the profile import failure message, the on/off button on each custom, and the copy-a-link hint.",
+			} },
+		},
+	},
+	{
 		version = "1.9.3",
 		date = "2026-08-14",
 		sections = {

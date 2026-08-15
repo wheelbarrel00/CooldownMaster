@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 local issecret = _G.issecretvalue
 local floor = math.floor
@@ -24,8 +25,8 @@ local function pct(cur, max)
 end
 
 local CATEGORY_LABEL = {
-	[0]   = "Spell",   [1]   = "Utility", [2]   = "Buff",     [3]   = "Buff Bar",
-	[100] = "Potion",  [101] = "Trinket", [102] = "Custom",   [103] = "Pet",      [104] = "Offensive",
+	[0]   = L["Spell"],   [1]   = L["Utility"], [2]   = L["Buff"],     [3]   = L["Buff Bar"],
+	[100] = L["Potion"],  [101] = L["Trinket"], [102] = L["Custom"],   [103] = L["Pet"],      [104] = L["Offensive"],
 }
 
 local function nextName()
@@ -139,32 +140,32 @@ end
 
 -- Split by context: per-cooldown tags need an entry, so they fill in only on an icon label, not the frame status line.
 ns.TAG_PICKER_COOLDOWN = {
-	{ "Name", "[cd.name]" },
-	{ "Type", "[cd.type]" },
+	{ L["Name"], "[cd.name]" },
+	{ L["Type"], "[cd.type]" },
 }
 
 -- A ready icon is already up, so no [cd.time] - keep it a separate literal or the Classic append leaks in.
 ns.TAG_PICKER_READY = {
-	{ "Name", "[cd.name]" },
-	{ "Type", "[cd.type]" },
+	{ L["Name"], "[cd.name]" },
+	{ L["Type"], "[cd.type]" },
 }
 
 if CLASSIC then
-	ns.TAG_PICKER_COOLDOWN[#ns.TAG_PICKER_COOLDOWN + 1] = { "Time Left", "[cd.time]" }
+	ns.TAG_PICKER_COOLDOWN[#ns.TAG_PICKER_COOLDOWN + 1] = { L["Time Left"], "[cd.time]" }
 end
 
 ns.TAG_PICKER_GLOBAL = {
-	{ "Next CD",      "[cd.next]" },
-	{ "CD Count",     "[cd.count]" },
-	{ "My Class",     "[player.class]" },
-	{ "My Name",      "[player.name]" },
-	{ "Target",       "[target.name]" },
-	{ "Target Class", "[target.class]" },
+	{ L["Next CD"],      "[cd.next]" },
+	{ L["CD Count"],     "[cd.count]" },
+	{ L["My Class"],     "[player.class]" },
+	{ L["My Name"],      "[player.name]" },
+	{ L["Target"],       "[target.name]" },
+	{ L["Target Class"], "[target.class]" },
 }
 
 if CLASSIC then
-	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { "My HP %",    "[player.hp.pct]" }
-	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { "My Power %", "[player.power.pct]" }
+	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { L["My HP Percent"],    "[player.hp.pct]" }
+	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { L["My Power Percent"], "[player.power.pct]" }
 end
 
 function ns.RunTagProbe()

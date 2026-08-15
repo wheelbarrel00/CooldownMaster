@@ -1,6 +1,23 @@
 # Cooldown Master Changelog
 
-## 1.9.3 (2026-08-14) — A retail error on every expiry, and a Classic length that stopped learning
+## 1.10.0 (2026-08-15) — Cooldown Master speaks five languages
+
+### New Features
+
+- **Cooldown Master is now translated.** Every piece of text the addon draws — options, tooltips, ready boxes, the What's New popup — reads in your client's language where a translation exists, and falls back to English where it does not. Simplified Chinese is complete. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons, and will fill in over time.
+- **Simplified Chinese is 100% complete**, translated by 失眠啤酒.
+- Translations are bundled in the addon itself, so there is nothing to install and nothing to download. Your client language decides, and switching languages switches the addon with it.
+
+### Bug Fixes
+
+- **Fixed custom cooldowns never picking up their real name on a non-English client.** A new custom cooldown starts life called "New Custom", and entering a Trigger ID is supposed to replace that with the ability's actual name. The placeholder was being translated while the check that looked for it was not, so on a translated client the two never matched and the custom kept the placeholder name forever — on its icon tooltip, its bar, and in the custom list.
+- **Fixed translated frame names being written into your saved settings.** The default names for lanes, ready boxes and bar frames were being saved in whatever language you first logged in with. Switching your client to another language afterwards would have left them stuck in the old one permanently, because they were no longer defaults but saved values. Frame names are stored in plain English again and are yours to rename as always.
+- The Filters column headers (Show, Lane, Bar, Ready Box, Flags) were left in English while the Remove and Buff headers beside them were translated, so a single header row read as two languages at once.
+- Several strings that had been missed now translate too, including the lane tooltip for a custom cooldown, the profile import failure message, the on/off button on each custom, and the copy-a-link hint.
+
+### Improvements
+
+- Authored Lua is pinned to LF line endings, so regenerating a translation no longer reports every line in the file as changed and buries the real edit.
 
 ### Bug Fixes
 

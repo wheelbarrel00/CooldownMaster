@@ -1,5 +1,10 @@
 local ADDON_NAME, ns = ...
 
+-- "Friz Quadrata TT" is not registered on the CJK clients, where LSM names fonts in the
+-- client's own language, so a hardcoded default matches nothing in the font dropdowns.
+local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+local DEFAULT_FONT = (LSM and LSM:GetDefault("font")) or "Friz Quadrata TT"
+
 local function lane(frameName, y, enabled)
 	return {
 		enabled        = enabled ~= false,
@@ -50,30 +55,30 @@ local function lane(frameName, y, enabled)
 			{ enabled = true,  text = "[cd.time]"   },
 			{ enabled = false, text = ""            },
 		},
-		iconFont       = "Friz Quadrata TT",
+		iconFont       = DEFAULT_FONT,
 		iconFontSize   = 0,   -- 0 = auto (scales with iconSize, matching the native count)
 		iconFontFlags  = "OUTLINE",
 		iconFontColor  = { r = 1, g = 1, b = 1, a = 1 },
 
 		iconLabel      = { enabled = false, text = "[cd.name]", anchor = "BOTTOM" },
-		iconLabelFont  = "Friz Quadrata TT",
+		iconLabelFont  = DEFAULT_FONT,
 		iconLabelSize  = 10,
 		iconLabelFlags = "OUTLINE",
 		iconLabelColor = { r = 1, g = 1, b = 1, a = 1 },
 
 
-		laneTextFont   = "Friz Quadrata TT",
+		laneTextFont   = DEFAULT_FONT,
 		laneTextSize   = 9,
 		laneTextFlags  = "NONE",
 		laneTextColor  = { r = 1, g = 1, b = 1, a = 0.53 },
 
-		labelFont      = "Friz Quadrata TT",
+		labelFont      = DEFAULT_FONT,
 		labelSize      = 10,
 		labelFlags     = "OUTLINE",
 		labelColor     = { r = 1, g = 1, b = 1, a = 1 },
 
 		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
-		statusFont     = "Friz Quadrata TT",
+		statusFont     = DEFAULT_FONT,
 		statusSize     = 11,
 		statusFlags    = "OUTLINE",
 		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
@@ -141,18 +146,18 @@ local function readyFrame(frameName, x, y, enabled)
 
 		-- CENTER not lanes' BOTTOM - boxes stack vertically, so a below-icon label lands on the next icon.
 		iconLabel      = { enabled = false, text = "[cd.name]", anchor = "CENTER" },
-		iconLabelFont  = "Friz Quadrata TT",
+		iconLabelFont  = DEFAULT_FONT,
 		iconLabelSize  = 10,
 		iconLabelFlags = "OUTLINE",
 		iconLabelColor = { r = 1, g = 1, b = 1, a = 1 },
 
 		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
-		statusFont     = "Friz Quadrata TT",
+		statusFont     = DEFAULT_FONT,
 		statusSize     = 11,
 		statusFlags    = "OUTLINE",
 		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
 
-		labelFont      = "Friz Quadrata TT",
+		labelFont      = DEFAULT_FONT,
 		labelSize      = 10,
 		labelFlags     = "OUTLINE",
 		labelColor     = { r = 1, g = 1, b = 1, a = 1 },
@@ -186,24 +191,24 @@ local function barFrame(frameName, x, y, enabled)
 		showName       = true,
 		showTime       = true,
 
-		barFont        = "Friz Quadrata TT",
+		barFont        = DEFAULT_FONT,
 		barFontSize    = 10,
 		barFontFlags   = "OUTLINE",
 		barFontColor   = { r = 1, g = 1, b = 1, a = 1 },
 
 
-		barTimeFont    = "Friz Quadrata TT",
+		barTimeFont    = DEFAULT_FONT,
 		barTimeSize    = 12,
 		barTimeFlags   = "OUTLINE",
 		barTimeColor   = { r = 1, g = 1, b = 1, a = 1 },
 
-		labelFont      = "Friz Quadrata TT",
+		labelFont      = DEFAULT_FONT,
 		labelSize      = 10,
 		labelFlags     = "OUTLINE",
 		labelColor     = { r = 1, g = 1, b = 1, a = 1 },
 
 		statusText     = { enabled = false, text = "[cd.next]", anchor = "BOTTOM" },
-		statusFont     = "Friz Quadrata TT",
+		statusFont     = DEFAULT_FONT,
 		statusSize     = 11,
 		statusFlags    = "OUTLINE",
 		statusColor    = { r = 1, g = 1, b = 1, a = 1 },
@@ -244,6 +249,8 @@ ns.DEFAULTS = {
 
 	classColors = {},  -- populated from CONST.CLASS_COLORS at first run
 
+	-- Frame names stay bare English. AceDB rawsets a scalar default straight into the saved
+	-- profile, so a translated one would be written to disk and outlive a client language change.
 	lanes = {
 		[1] = lane("Lane 1", -175, true),
 		[2] = lane("Lane 2", -210, true),

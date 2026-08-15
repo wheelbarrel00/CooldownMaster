@@ -34,5 +34,6 @@ ignore:
     - .vscode
     - screenshots
     - tools
+    - docs
     - LICENSE
     - .release_changelog.md

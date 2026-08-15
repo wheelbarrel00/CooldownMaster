@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 local _dragFailWarnTime = 0  -- luacheck: ignore
 
@@ -600,7 +601,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f.cfg = cfg
 	f.index = index
 
-	f.dragHandle = ns.CreateDragHandle(f, "Lane "..index, function(point, x, y)
+	f.dragHandle = ns.CreateDragHandle(f, string.format(L["Lane %d"], index), function(point, x, y)
 		local laneCfg = addon.db.profile.lanes[index]
 		if laneCfg then
 			laneCfg.anchor = point
@@ -790,9 +791,9 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		elseif self._cdBuffSpell then
 			GameTooltip:SetSpellByID(self._cdBuffSpell)
 		elseif self._cdCustom then
-			GameTooltip:SetText(self._cdName or "Cooldown", 1, 1, 1)
+			GameTooltip:SetText(self._cdName or L["Cooldown"], 1, 1, 1)
 			if self._cdSpellID < ns.CONST.TEST_ID_BASE then
-				GameTooltip:AddLine("Custom cooldown", 0.6, 0.6, 0.6)
+				GameTooltip:AddLine(L["Custom cooldown"], 0.6, 0.6, 0.6)
 			end
 		else
 			GameTooltip:SetSpellByID(self._cdSpellID)

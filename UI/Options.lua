@@ -1,16 +1,17 @@
 local ADDON_NAME, ns = ...
 
 local Theme = ns.Theme
+local L = ns.L
 
 local TABS = {
-	{ id = "global",       label = "Global",        builder = nil },
-	{ id = "lanes",        label = "Lanes",         builder = nil },
-	{ id = "ready",        label = "Ready",         builder = nil },
-	{ id = "bars",         label = "Bars",          builder = nil },
-	{ id = "filters",      label = "Filters",       builder = nil },
-	{ id = "colors",       label = "Colors",        builder = nil },
-	{ id = "profiles",     label = "Profiles",      builder = nil },
-	{ id = "about",        label = "About",         builder = nil, static = true },
+	{ id = "global",       label = L["Global"],     builder = nil },
+	{ id = "lanes",        label = L["Lanes"],      builder = nil },
+	{ id = "ready",        label = L["Ready"],      builder = nil },
+	{ id = "bars",         label = L["Bars"],       builder = nil },
+	{ id = "filters",      label = L["Filters"],    builder = nil },
+	{ id = "colors",       label = L["Colors"],     builder = nil },
+	{ id = "profiles",     label = L["Profiles"],   builder = nil },
+	{ id = "about",        label = L["About"],      builder = nil, static = true },
 }
 
 local panel
@@ -95,7 +96,7 @@ local function GetOrCreateTabContent(id)
 				fs:SetPoint("CENTER")
 				local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 				sub:SetPoint("TOP", fs, "BOTTOM", 0, -8)
-				sub:SetText("This tab is not yet implemented in v" .. ns.CONST.VERSION .. ".")
+				sub:SetText(string.format(L["This tab is not yet implemented in v%s."], ns.CONST.VERSION))
 				sub:SetTextColor(0.7, 0.7, 0.7)
 			end
 			break
@@ -148,7 +149,7 @@ function ns.Options_Toggle()
 end
 
 
--- Show (never toggle) the panel on a given tab; used by the What's New popup's Open Options button.
+-- Show, never toggle - the What's New popup's Open Options button must not close an open panel.
 function ns.Options_Open(tabID)
 	if not panel then BuildPanel() end
 	ApplyOptionsScale()
@@ -186,7 +187,7 @@ local function BuildGlobalTab(content)
 	local pad = Theme.PANEL.CONTENT_PAD
 	local checks = {}
 
-	local section = Theme.CreateHeader(content, "Enabled:", "GameFontNormal")
+	local section = Theme.CreateHeader(content, L["Enabled:"], "GameFontNormal")
 	section:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
 	-- Extend the checkbox hit rect over its label so hovering the row shows the tip. hitExtend
@@ -229,44 +230,44 @@ local function BuildGlobalTab(content)
 		return cb
 	end
 
-	local cbAlways   = MakeCheck("Always",      "enabledAlways",   section, 0,
-		"Show your lanes at all times, no matter where you are. When on, the In Group and In Instance conditions do not matter.", -90)
+	local cbAlways   = MakeCheck(L["Always"],      "enabledAlways",   section, 0,
+		L["Show your lanes at all times, no matter where you are. When on, the In Group and In Instance conditions do not matter."], -90)
 	local cbGroup    = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 	cbGroup:SetPoint("LEFT", cbAlways, "RIGHT", 120, 0)
 	cbGroup:SetSize(24, 24)
 	local fsg = cbGroup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	fsg:SetPoint("LEFT", cbGroup, "RIGHT", 4, 0); fsg:SetText("In Group")
+	fsg:SetPoint("LEFT", cbGroup, "RIGHT", 4, 0); fsg:SetText(L["In Group"])
 	cbGroup:SetChecked(CDM.db.profile.global.enabledGroup)
 	checks[#checks + 1] = { cb = cbGroup, key = "enabledGroup" }
 	cbGroup:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledGroup = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
-	AttachTip(cbGroup, "In Group",
-		"Show your lanes only while you are in a party or raid. Any ticked visibility box can show them, so this stacks with In Instance.", -90)
+	AttachTip(cbGroup, L["In Group"],
+		L["Show your lanes only while you are in a party or raid. Any ticked visibility box can show them, so this stacks with In Instance."], -90)
 
 	local cbInst = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 	cbInst:SetPoint("LEFT", cbGroup, "RIGHT", 120, 0)
 	cbInst:SetSize(24, 24)
 	local fsi = cbInst:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	fsi:SetPoint("LEFT", cbInst, "RIGHT", 4, 0); fsi:SetText("In Instance")
+	fsi:SetPoint("LEFT", cbInst, "RIGHT", 4, 0); fsi:SetText(L["In Instance"])
 	cbInst:SetChecked(CDM.db.profile.global.enabledInstance)
 	checks[#checks + 1] = { cb = cbInst, key = "enabledInstance" }
 	cbInst:SetScript("OnClick", function(self)
 		CDM.db.profile.global.enabledInstance = self:GetChecked() and true or false
 		if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 	end)
-	AttachTip(cbInst, "In Instance",
-		"Show your lanes only while you are inside a dungeon, raid, or other instance. Any ticked visibility box can show them.", -90)
+	AttachTip(cbInst, L["In Instance"],
+		L["Show your lanes only while you are inside a dungeon, raid, or other instance. Any ticked visibility box can show them."], -90)
 
 	local prev = cbAlways
 	local toggles = {
-		{ "Unlock Frames",         "unlockFrames", "Unlock every lane and ready box so you can drag them into place. Backgrounds show while unlocked; lock again to hide the chrome and let clicks pass through." },
-		{ "Auto-hide Frames",      "autohide", "Out of combat, hides each lane's background, border, name, and markers, but your tracked cooldown icons stay visible. The chrome returns in combat. Tick a lane's Override Autohide (Lanes > General) to keep its chrome always shown." },
-		{ "Enable tooltips",       "enableTooltip", "Show the spell or item tooltip when you hover a cooldown icon on a lane. Icons take the mouse only while frames are locked, so this never blocks dragging." },
-		{ "Detect Shared Spell Cooldowns", "detectSharedCD", "When one ability is tracked under two spell IDs that share a cooldown (a base spell and its talent override, or the same spell in two categories), show one icon and one ready pop instead of duplicates." },
-		{ "Tint Unusable Icons",   "notUsableTint", "While a spell or item cannot be used right now (not enough resources, wrong stance, out of range), tint its icon with the Unusable Tint Color below." },
-		{ "Desaturate Unusable Icons", "notUsableDesaturate", "While a spell or item cannot be used right now, draw its icon in greyscale. Can be combined with Tint Unusable Icons." },
+		{ L["Unlock Frames"], "unlockFrames", L["Unlock every lane and ready box so you can drag them into place. Backgrounds show while unlocked; lock again to hide the chrome and let clicks pass through."] },
+		{ L["Auto-hide Frames"], "autohide", L["Out of combat, hides each lane's background, border, name, and markers, but your tracked cooldown icons stay visible. The chrome returns in combat. Tick a lane's Override Autohide (Lanes > General) to keep its chrome always shown."] },
+		{ L["Enable tooltips"], "enableTooltip", L["Show the spell or item tooltip when you hover a cooldown icon on a lane. Icons take the mouse only while frames are locked, so this never blocks dragging."] },
+		{ L["Detect Shared Spell Cooldowns"], "detectSharedCD", L["When one ability is tracked under two spell IDs that share a cooldown (a base spell and its talent override, or the same spell in two categories), show one icon and one ready pop instead of duplicates."] },
+		{ L["Tint Unusable Icons"], "notUsableTint", L["While a spell or item cannot be used right now (not enough resources, wrong stance, out of range), tint its icon with the Unusable Tint Color below."] },
+		{ L["Desaturate Unusable Icons"], "notUsableDesaturate", L["While a spell or item cannot be used right now, draw its icon in greyscale. Can be combined with Tint Unusable Icons."] },
 	}
 	for _, t in ipairs(toggles) do
 		prev = MakeCheck(t[1], t[2], prev, 0, t[3])
@@ -284,7 +285,7 @@ local function BuildGlobalTab(content)
 
 	local W = ns.Widgets
 	local cpUnusable = W.CreateColorPicker(content, {
-		label = "Unusable Tint Color", color = CDM.db.profile.global.notUsableColor, hasAlpha = false,
+		label = L["Unusable Tint Color"], color = CDM.db.profile.global.notUsableColor, hasAlpha = false,
 		onChange = function(r, g, b)
 			local c = CDM.db.profile.global.notUsableColor
 			c.r, c.g, c.b = r, g, b
@@ -294,7 +295,7 @@ local function BuildGlobalTab(content)
 	prev = cpUnusable
 
 	local slZoom = W.CreateSlider(content, {
-		label = "Icon Zoom", min = 1, max = 2, step = 0.05,
+		label = L["Icon Zoom"], min = 1, max = 2, step = 0.05,
 		value = CDM.db.profile.global.zoom, width = 220,
 		onChange = function(v) CDM.db.profile.global.zoom = v end,
 	})
@@ -308,34 +309,34 @@ local function BuildGlobalTab(content)
 	cbMinimap:SetSize(24, 24)
 	local fsm = cbMinimap:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	fsm:SetPoint("LEFT", cbMinimap, "RIGHT", 4, 0)
-	fsm:SetText("Show Minimap Button")
+	fsm:SetText(L["Show Minimap Button"])
 	cbMinimap:SetChecked(not CDM.db.profile.dataBroker.minimap.hide)
 	cbMinimap:SetScript("OnClick", function()
 		if ns.DataBroker_ToggleMinimap then ns.DataBroker_ToggleMinimap(CDM) end
 	end)
 	prev = cbMinimap
 
-	local secUpdates = W.CreateSectionHeader(content, "Updates")
+	local secUpdates = W.CreateSectionHeader(content, L["Updates"])
 	secUpdates:SetWidth(320)
 	secUpdates:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 2, -14)
 	prev = secUpdates
 
 	-- Account-wide (db.global), not per-profile: the update notice is a per-account preference.
 	local ddWhatsNew = W.CreateDropdown(content, {
-		label = "After an update", width = 200,
+		label = L["After an update"], width = 200,
 		value = CDM.db.global.whatsNewMode or "popup",
 		options = {
-			{ value = "popup", text = "Popup window" },
-			{ value = "chat",  text = "Chat link"    },
-			{ value = "none",  text = "Off"          },
+			{ value = "popup", text = L["Popup window"] },
+			{ value = "chat",  text = L["Chat link"]    },
+			{ value = "none",  text = L["Off"]          },
 		},
-		tooltip = "How Cooldown Master tells you about a new version: a Popup window, a quiet clickable Chat link in your chat, or Off. Reopen the notes any time with /cm whatsnew.",
+		tooltip = L["How Cooldown Master tells you about a new version: a Popup window, a quiet clickable Chat link in your chat, or Off. Reopen the notes any time with /cm whatsnew."],
 		onChange = function(v) CDM.db.global.whatsNewMode = v end,
 	})
 	ddWhatsNew:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -6)
 	prev = ddWhatsNew
 
-	local wnBtn = Theme.CreateButton(content, "Show What's New", 150, 24)
+	local wnBtn = Theme.CreateButton(content, L["Show What's New"], 150, 24)
 	wnBtn:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -8)
 	wnBtn:SetScript("OnClick", function()
 		if ns.WhatsNew_Show then ns.WhatsNew_Show() end
@@ -343,7 +344,7 @@ local function BuildGlobalTab(content)
 
 	local g = CDM.db.profile.global
 
-	local testHeader = W.CreateSectionHeader(content, "Test Mode")
+	local testHeader = W.CreateSectionHeader(content, L["Test Mode"])
 	testHeader:SetWidth(320)
 	testHeader:SetPoint("TOPLEFT", content, "TOPLEFT", 420, -pad)
 	local tprev = testHeader
@@ -355,60 +356,60 @@ local function BuildGlobalTab(content)
 	end
 
 	placeTest(W.CreateDropdown(content, {
-		label = "Type", value = g.testType or "mixed",
+		label = L["Type"], value = g.testType or "mixed",
 		options = BuildTestTypeOptions(), width = 200,
-		tooltip = "Which kind of sample cooldowns to create. Mixed uses a spread of your spells, buffs and utility. Each type is routed with that category's Lane, Bar and Ready Box settings, so this previews your own Filters routing.",
+		tooltip = L["Which kind of sample cooldowns to create. Mixed uses a spread of your spells, buffs and utility. Each type is routed with that category's Lane, Bar and Ready Box settings, so this previews your own Filters routing."],
 		onChange = function(v) g.testType = v; RequestTestReseed() end,
 	}))
 
 	placeTest(W.CreateSlider(content, {
-		label = "Number of Cooldowns", min = 1, max = 20, step = 1,
+		label = L["Number of Cooldowns"], min = 1, max = 20, step = 1,
 		value = g.testCount or 6, width = 240,
-		tooltip = "How many sample cooldowns to create, from 1 to 20. A ready box only holds as many icons as its Max Ready Icons setting, so extras push the oldest pop out.",
+		tooltip = L["How many sample cooldowns to create, from 1 to 20. A ready box only holds as many icons as its Max Ready Icons setting, so extras push the oldest pop out."],
 		onChange = function(v) g.testCount = v; RequestTestReseed() end,
 	}))
 
 	placeTest(W.CreateSlider(content, {
-		label = "First Cooldown Duration", min = 1, max = 600, step = 1,
+		label = L["First Cooldown Duration"], min = 1, max = 600, step = 1,
 		value = g.testFirst or 5, width = 240,
-		tooltip = "Length of the first sample cooldown, in seconds. The rest are spread evenly between this and the Last Cooldown Duration.",
+		tooltip = L["Length of the first sample cooldown, in seconds. The rest are spread evenly between this and the Last Cooldown Duration."],
 		onChange = function(v) g.testFirst = v; RequestTestReseed() end,
 	}))
 
 	placeTest(W.CreateSlider(content, {
-		label = "Last Cooldown Duration", min = 1, max = 600, step = 1,
+		label = L["Last Cooldown Duration"], min = 1, max = 600, step = 1,
 		value = g.testLast or 120, width = 240,
-		tooltip = "Length of the last sample cooldown, in seconds. A lane only draws cooldowns up to its Max Time unless you turn off Hide Long Timers, so a value above that will not appear on the lane.",
+		tooltip = L["Length of the last sample cooldown, in seconds. A lane only draws cooldowns up to its Max Time unless you turn off Hide Long Timers, so a value above that will not appear on the lane."],
 		onChange = function(v) g.testLast = v; RequestTestReseed() end,
 	}))
 
 	placeTest(W.CreateCheckbox(content, {
-		label = "Loop",
+		label = L["Loop"],
 		checked = g.testLoop ~= false,
-		tooltip = "Keep restarting the sample cooldowns after they pop into the ready box. Turn this off to watch them run once and clear.",
+		tooltip = L["Keep restarting the sample cooldowns after they pop into the ready box. Turn this off to watch them run once and clear."],
 		onChange = function(v) g.testLoop = v; RequestTestReseed() end,
 	}))
 
-	local testBtn = Theme.CreateButton(content, "Test", 110, 30)
+	local testBtn = Theme.CreateButton(content, L["Test"], 110, 30)
 	testBtn:SetPoint("TOPLEFT", tprev, "BOTTOMLEFT", 0, -16)
 	testBtn:SetScript("OnClick", function()
 		if ns.Engine and not ns.Engine.testActive then CDM:ToggleTestMode() end
 	end)
 
-	local stopTestBtn = Theme.CreateButton(content, "Stop Test", 110, 30)
+	local stopTestBtn = Theme.CreateButton(content, L["Stop Test"], 110, 30)
 	stopTestBtn:SetPoint("TOPLEFT", testBtn, "TOPRIGHT", 8, 0)
 	stopTestBtn:SetScript("OnClick", function()
 		if ns.Engine and ns.Engine.testActive then CDM:ToggleTestMode() end
 	end)
 
-	local scaleHeader = W.CreateSectionHeader(content, "Scale")
+	local scaleHeader = W.CreateSectionHeader(content, L["Scale"])
 	scaleHeader:SetWidth(320)
 	scaleHeader:SetPoint("TOPLEFT", testBtn, "BOTTOMLEFT", 0, -18)
 
 	local frameScaleSlider = W.CreateSlider(content, {
-		label = "Cooldown Frames", min = 0.5, max = 2, step = 0.05,
+		label = L["Cooldown Frames"], min = 0.5, max = 2, step = 0.05,
 		value = g.frameScale or 1, width = 240,
-		tooltip = "Resize the cooldown display - your lanes, bars and ready boxes - together. 1.00 is the normal size, below shrinks them, above enlarges them. They keep their on-screen position as they scale.",
+		tooltip = L["Resize the cooldown display - your lanes, bars and ready boxes - together. 1.00 is the normal size, below shrinks them, above enlarges them. They keep their on-screen position as they scale."],
 		onChange = function(v)
 			if type(v) ~= "number" or v <= 0 then return end
 			local old = (type(g.frameScale) == "number" and g.frameScale > 0) and g.frameScale or 1
@@ -450,9 +451,9 @@ local function BuildGlobalTab(content)
 	-- mid-drag moves the slider track under the cursor and the value oscillates (the flashing and
 	-- wrong sizes). onChange only records the value; the hooks below apply it once the drag ends.
 	local optScaleSlider = W.CreateSlider(content, {
-		label = "Options Window", min = 0.5, max = 2, step = 0.05,
+		label = L["Options Window"], min = 0.5, max = 2, step = 0.05,
 		value = g.optionsScale or 1, width = 240,
-		tooltip = "Resize this Cooldown Master settings window itself. 1.00 is the normal size. Applies when you let go of the slider or press Enter.",
+		tooltip = L["Resize this Cooldown Master settings window itself. 1.00 is the normal size. Applies when you let go of the slider or press Enter."],
 		onChange = function(v)
 			if type(v) == "number" and v > 0 then g.optionsScale = v end
 		end,
@@ -483,49 +484,49 @@ end
 
 local LANES_INNER_RAIL_W = 160
 local LANES_SECTION_LIST = {
-	{ id = "general",    label = "General"    },
-	{ id = "appearance", label = "Appearance" },
-	{ id = "icons",      label = "Icons"      },
-	{ id = "stacking",   label = "Stacking"   },
-	{ id = "text",       label = "Text"       },
+	{ id = "general",    label = L["General"]    },
+	{ id = "appearance", label = L["Appearance"] },
+	{ id = "icons",      label = L["Icons"]      },
+	{ id = "stacking",   label = L["Stacking"]   },
+	{ id = "text",       label = L["Text"]       },
 }
 
 local ANCHOR_OPTIONS = {
-	{ value = "TOPLEFT",     text = "Top Left"     },
-	{ value = "TOP",         text = "Top"          },
-	{ value = "TOPRIGHT",    text = "Top Right"    },
-	{ value = "LEFT",        text = "Left"         },
-	{ value = "CENTER",      text = "Center"       },
-	{ value = "RIGHT",        text = "Right"        },
-	{ value = "BOTTOMLEFT",  text = "Bottom Left"  },
-	{ value = "BOTTOM",      text = "Bottom"       },
-	{ value = "BOTTOMRIGHT", text = "Bottom Right" },
+	{ value = "TOPLEFT",     text = L["Top Left"]     },
+	{ value = "TOP",         text = L["Top"]          },
+	{ value = "TOPRIGHT",    text = L["Top Right"]    },
+	{ value = "LEFT",        text = L["Left"]         },
+	{ value = "CENTER",      text = L["Center"]       },
+	{ value = "RIGHT",        text = L["Right"]        },
+	{ value = "BOTTOMLEFT",  text = L["Bottom Left"]  },
+	{ value = "BOTTOM",      text = L["Bottom"]       },
+	{ value = "BOTTOMRIGHT", text = L["Bottom Right"] },
 }
 
 local MODE_OPTIONS = {
-	{ value = "LINEAR",   text = "Linear"                },
-	{ value = "TIMELINE", text = "Timeline (seconds)"    },
-	{ value = "LOG",      text = "Logarithmic (seconds)" },
-	{ value = "SPLIT",    text = "Split (seconds)"       },
+	{ value = "LINEAR",   text = L["Linear"]                },
+	{ value = "TIMELINE", text = L["Timeline (seconds)"]    },
+	{ value = "LOG",      text = L["Logarithmic (seconds)"] },
+	{ value = "SPLIT",    text = L["Split (seconds)"]       },
 }
 
 local FONT_FLAG_OPTIONS = {
-	{ value = "NONE",         text = "None"          },
-	{ value = "OUTLINE",      text = "Outline"       },
-	{ value = "THICKOUTLINE", text = "Thick Outline" },
+	{ value = "NONE",         text = L["None"]          },
+	{ value = "OUTLINE",      text = L["Outline"]       },
+	{ value = "THICKOUTLINE", text = L["Thick Outline"] },
 }
 
 local ICON_LABEL_ANCHOR_OPTIONS = {
-	{ value = "TOP",    text = "Above icon" },
-	{ value = "CENTER", text = "On icon"    },
-	{ value = "BOTTOM", text = "Below icon" },
+	{ value = "TOP",    text = L["Above icon"] },
+	{ value = "CENTER", text = L["On icon"]    },
+	{ value = "BOTTOM", text = L["Below icon"] },
 }
 
 local STATUS_ANCHOR_OPTIONS = {
-	{ value = "TOP",    text = "Above frame" },
-	{ value = "BOTTOM", text = "Below frame" },
-	{ value = "LEFT",   text = "Left"        },
-	{ value = "RIGHT",  text = "Right"       },
+	{ value = "TOP",    text = L["Above frame"] },
+	{ value = "BOTTOM", text = L["Below frame"] },
+	{ value = "LEFT",   text = L["Left"]        },
+	{ value = "RIGHT",  text = L["Right"]       },
 }
 
 local function BuildFontOptions()
@@ -544,9 +545,9 @@ local function BuildFontOptions()
 end
 
 local TRACKING_OPTIONS = {
-	{ value = "NONE",  text = "None"  },
+	{ value = "NONE",  text = L["None"]  },
 	{ value = "GCD",   text = "GCD"   },
-	{ value = "SWING", text = "Swing" },
+	{ value = "SWING", text = L["Swing"] },
 }
 
 local function BuildStatusbarOptions()
@@ -575,11 +576,11 @@ end
 
 
 local HL_STYLE_OPTIONS = {
-	{ value = "NONE",         text = "None"           },
-	{ value = "BORDER",       text = "Border"         },
-	{ value = "GLOW",         text = "Glow"           },
-	{ value = "FLASH",        text = "Flash"          },
-	{ value = "BORDER_FLASH", text = "Border + Flash" },
+	{ value = "NONE",         text = L["None"]           },
+	{ value = "BORDER",       text = L["Border"]         },
+	{ value = "GLOW",         text = L["Glow"]           },
+	{ value = "FLASH",        text = L["Flash"]          },
+	{ value = "BORDER_FLASH", text = L["Border + Flash"] },
 }
 
 
@@ -616,7 +617,7 @@ local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet, tip
 	local W = ns.Widgets
 
 	local eb = W.CreateEditBox(parent, {
-		label = labelText or "Text", value = sub.text or "", width = 200, maxLetters = 120,
+		label = labelText or L["Text"], value = sub.text or "", width = 200, maxLetters = 120,
 		tooltip = tip or ns.TAG_HELP,
 		onChange = function(t) sub.text = t; apply() end,
 	})
@@ -624,7 +625,7 @@ local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet, tip
 	local picker = CreateFrame("Frame", nil, parent)
 	local hdr = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	hdr:SetPoint("TOPLEFT", picker, "TOPLEFT", 0, 0)
-	hdr:SetText("Click a tag to add it:")
+	hdr:SetText(L["Click a tag to add it:"])
 	hdr:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
 	local list = tagSet or {}
@@ -633,7 +634,7 @@ local function BuildTagTextRow(parent, place, sub, apply, labelText, tagSet, tip
 		local col = (i - 1) % COLS
 		local row = math.floor((i - 1) / COLS)
 		local b = W.CreateButton(picker, {
-			label = entry[1], width = BW, height = BH, tooltip = "Inserts " .. entry[2],
+			label = entry[1], width = BW, height = BH, tooltip = string.format(L["Inserts %s"], entry[2]),
 			onClick = function()
 				local nt = (eb:GetValue() or "") .. entry[2]
 				eb:SetValue(nt)
@@ -654,40 +655,40 @@ end
 local function BuildStatusLineSection(parent, place, pad, cfg, apply)
 	local W = ns.Widgets
 
-	local sec = W.CreateSectionHeader(parent, "Status Line")
+	local sec = W.CreateSectionHeader(parent, L["Status Line"])
 	sec:SetWidth(parent:GetWidth() - pad * 2)
 	place(sec, 18)
 
 	cfg.statusText = cfg.statusText or { enabled = false, text = "[cd.next]", anchor = "BOTTOM" }
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Status Line",
+		label = L["Show Status Line"],
 		checked = cfg.statusText.enabled,
-		tooltip = "Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - the next cooldown coming up, how many are on cooldown, or your target's name.",
+		tooltip = L["Draw one line of text on this frame, built from the tags in the box below. Off by default. Use it for a live readout - the next cooldown coming up, how many are on cooldown, or your target's name."],
 		onChange = function(v) cfg.statusText.enabled = v; apply() end,
 	}))
-	BuildTagTextRow(parent, place, cfg.statusText, apply, "Text", ns.TAG_PICKER_GLOBAL, ns.TAG_HELP_STATUS)
+	BuildTagTextRow(parent, place, cfg.statusText, apply, L["Text"], ns.TAG_PICKER_GLOBAL, ns.TAG_HELP_STATUS)
 
 	place(W.CreateDropdown(parent, {
-		label = "Position", value = cfg.statusText.anchor or "BOTTOM",
+		label = L["Position"], value = cfg.statusText.anchor or "BOTTOM",
 		options = STATUS_ANCHOR_OPTIONS, width = 240,
 		onChange = function(v) cfg.statusText.anchor = v; apply() end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.statusFont, options = BuildFontOptions(), width = 240,
+		label = L["Font"], value = cfg.statusFont, options = BuildFontOptions(), width = 240,
 		onChange = function(v) cfg.statusFont = v; apply() end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.statusSize or 11, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.statusSize or 11, width = 240,
 		onChange = function(v) cfg.statusSize = v; apply() end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.statusFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Font Outline"], value = cfg.statusFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.statusFlags = v; apply() end,
 	}))
 	cfg.statusColor = cfg.statusColor or { r = 1, g = 1, b = 1, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.statusColor, hasAlpha = true,
+		label = L["Font Color"], color = cfg.statusColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.statusColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -711,7 +712,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	end
 
 	place(W.CreateEditBox(parent, {
-		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		label = L["Frame Name"], value = cfg.frameName, width = 240, maxLetters = 32,
 		onChange = function(text)
 			cfg.frameName = text
 			RefreshLane(laneIndex)
@@ -719,7 +720,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label = "Enabled", checked = cfg.enabled,
+		label = L["Enabled"], checked = cfg.enabled,
 		onChange = function(v)
 			cfg.enabled = v
 			RebuildLane(laneIndex)
@@ -727,13 +728,13 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label = "Reversed", checked = cfg.reversed,
+		label = L["Reversed"], checked = cfg.reversed,
 		onChange = function(v) cfg.reversed = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label = "Vertical", checked = cfg.vertical,
-		tooltip = "Run this lane top-to-bottom instead of left-to-right. Toggling it swaps the lane's Width and Height (Appearance tab) so the bar keeps its shape, just rotated.",
+		label = L["Vertical"], checked = cfg.vertical,
+		tooltip = L["Run this lane top-to-bottom instead of left-to-right. Toggling it swaps the lane's Width and Height (Appearance tab) so the bar keeps its shape, just rotated."],
 		onChange = function(v)
 			cfg.vertical = v
 			-- Flip the long/thin axes so a horizontal bar becomes a same-shaped vertical one
@@ -749,18 +750,18 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		end,
 	}))
 
-	local secMode = W.CreateSectionHeader(parent, "Mode")
+	local secMode = W.CreateSectionHeader(parent, L["Mode"])
 	secMode:SetWidth(parent:GetWidth() - pad * 2)
 	place(secMode, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Mode", value = cfg.mode, options = MODE_OPTIONS, width = 200,
-		tooltip = "How a cooldown's time-left maps to its spot on the lane. Linear spaces time evenly; Timeline and Logarithmic compress long timers so near-ready cooldowns spread out; Split places icons using your own time-to-position points below.",
+		label = L["Mode"], value = cfg.mode, options = MODE_OPTIONS, width = 200,
+		tooltip = L["How a cooldown's time-left maps to its spot on the lane. Linear spaces time evenly; Timeline and Logarithmic compress long timers so near-ready cooldowns spread out; Split places icons using your own time-to-position points below."],
 		onChange = function(v) cfg.mode = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Max Time (seconds)", min = 10, max = 180, step = 1,
+		label = L["Max Time (seconds)"], min = 10, max = 180, step = 1,
 		value = cfg.maxTime, width = 240,
 		onChange = function(v) cfg.maxTime = v; RefreshLane(laneIndex) end,
 	}))
@@ -773,12 +774,12 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		end
 	end
 
-	local secSplit = W.CreateSectionHeader(parent, "Split Points (Split mode)")
+	local secSplit = W.CreateSectionHeader(parent, L["Split Points (Split mode)"])
 	secSplit:SetWidth(parent:GetWidth() - pad * 2)
 	place(secSplit, 18)
 
 	place(W.CreateSlider(parent, {
-		label = "Split Points", min = 1, max = 3, step = 1,
+		label = L["Split Points"], min = 1, max = 3, step = 1,
 		value = cfg.split.count or 1, width = 240,
 		onChange = function(v) cfg.split.count = v; RefreshLane(laneIndex) end,
 	}))
@@ -786,25 +787,25 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	for i = 1, 3 do
 		local pt = cfg.split.points[i]
 		place(W.CreateSlider(parent, {
-			label = "Point " .. i .. " Time (sec)", min = 1, max = 180, step = 1,
+			label = string.format(L["Point %d Time (sec)"], i), min = 1, max = 180, step = 1,
 			value = pt.t, width = 240,
 			onChange = function(v) pt.t = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateSlider(parent, {
-			label = "Point " .. i .. " Position (%)", min = 1, max = 99, step = 1,
+			label = string.format(L["Point %d Position (%%)"], i), min = 1, max = 99, step = 1,
 			value = math.floor((pt.p or 0.5) * 100 + 0.5), width = 240,
 			onChange = function(v) pt.p = v / 100; RefreshLane(laneIndex) end,
 		}))
 	end
 
 	place(W.CreateCheckbox(parent, {
-		label = "Hide Long Timers", checked = cfg.hideLongTimers,
+		label = L["Hide Long Timers"], checked = cfg.hideLongTimers,
 		onChange = function(v) cfg.hideLongTimers = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label = "Override Autohide", checked = cfg.overrideAutohide,
-		tooltip = "Keeps this lane's background, border, and markers visible even when Auto-hide Frames is on.",
+		label = L["Override Autohide"], checked = cfg.overrideAutohide,
+		tooltip = L["Keeps this lane's background, border, and markers visible even when Auto-hide Frames is on."],
 		onChange = function(v)
 			cfg.overrideAutohide = v
 			RefreshLane(laneIndex)
@@ -814,53 +815,53 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 
 	-- On Midnight retail, Blizzard's Cooldown Manager owns secondary tracking, so hide these controls.
 	if not ns.Compat.IS_RETAIL then
-		local secTrack = W.CreateSectionHeader(parent, "Secondary Tracking")
+		local secTrack = W.CreateSectionHeader(parent, L["Secondary Tracking"])
 		secTrack:SetWidth(parent:GetWidth() - pad * 2)
 		place(secTrack, 18)
 
 		place(W.CreateDropdown(parent, {
-			label = "Primary Tracking", value = cfg.primaryTracking,
+			label = L["Primary Tracking"], value = cfg.primaryTracking,
 			options = TRACKING_OPTIONS, width = 200,
-			tooltip = "Fills the whole lane like a progress bar for a recurring timer. GCD follows your global cooldown; Swing follows your main-hand swing timer; None turns it off. Uses the ST color and texture below.",
+			tooltip = L["Fills the whole lane like a progress bar for a recurring timer. GCD follows your global cooldown; Swing follows your main-hand swing timer; None turns it off. Uses the ST color and texture below."],
 			onChange = function(v) cfg.primaryTracking = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateCheckbox(parent, {
-			label = "Reverse Primary", checked = cfg.primaryReverse,
+			label = L["Reverse Primary"], checked = cfg.primaryReverse,
 			onChange = function(v) cfg.primaryReverse = v; RefreshLane(laneIndex) end,
 		}))
 
 		place(W.CreateDropdown(parent, {
-			label = "Secondary Tracking", value = cfg.secondaryTracking,
+			label = L["Secondary Tracking"], value = cfg.secondaryTracking,
 			options = TRACKING_OPTIONS, width = 200,
-			tooltip = "A second tracking bar, separate from Primary Tracking. GCD or Swing; None turns it off. Its size and color are the ST (Secondary Tracking) options below.",
+			tooltip = L["A second tracking bar, separate from Primary Tracking. GCD or Swing; None turns it off. Its size and color are the ST (Secondary Tracking) options below."],
 			onChange = function(v) cfg.secondaryTracking = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateCheckbox(parent, {
-			label = "Reverse Secondary", checked = cfg.secondaryReverse,
+			label = L["Reverse Secondary"], checked = cfg.secondaryReverse,
 			onChange = function(v) cfg.secondaryReverse = v; RefreshLane(laneIndex) end,
 		}))
 
 		place(W.CreateSlider(parent, {
-			label = "ST Width", min = 1, max = 60, step = 1,
+			label = L["ST Width"], min = 1, max = 60, step = 1,
 			value = cfg.stWidth, width = 220,
 			onChange = function(v) cfg.stWidth = v; RefreshLane(laneIndex) end,
 		}))
 		place(W.CreateSlider(parent, {
-			label = "ST Height", min = 1, max = 120, step = 1,
+			label = L["ST Height"], min = 1, max = 120, step = 1,
 			value = cfg.stHeight, width = 220,
-			tooltip = "ST stands for Secondary Tracking. Sets the height, in pixels, of the Secondary Tracking bar set above.",
+			tooltip = L["ST stands for Secondary Tracking. Sets the height, in pixels, of the Secondary Tracking bar set above."],
 			onChange = function(v) cfg.stHeight = v; RefreshLane(laneIndex) end,
 		}))
 
 		place(W.CreateDropdown(parent, {
-			label = "ST Texture", value = cfg.stTexture,
+			label = L["ST Texture"], value = cfg.stTexture,
 			options = BuildStatusbarOptions(), width = 200,
-			tooltip = "The texture that fills the Secondary Tracking bar. Any statusbar texture from LibSharedMedia is selectable.",
+			tooltip = L["The texture that fills the Secondary Tracking bar. Any statusbar texture from LibSharedMedia is selectable."],
 			onChange = function(v) cfg.stTexture = v; RefreshLane(laneIndex) end,
 		}))
 
 		place(W.CreateColorPicker(parent, {
-			label = "ST Color", color = cfg.stColor, hasAlpha = true,
+			label = L["ST Color"], color = cfg.stColor, hasAlpha = true,
 			onChange = function(r, g, b, a)
 				cfg.stColor.r, cfg.stColor.g, cfg.stColor.b, cfg.stColor.a = r, g, b, a
 				RefreshLane(laneIndex)
@@ -887,59 +888,59 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 
 	-- Use RefreshLane, not RebuildLane: WoW frames are never GC'd, so a slider calling RebuildLane leaked one lane frame (plus label/markers/icon pool) per step. Rebuild is only for `enabled`.
 	place(W.CreateSlider(parent, {
-		label = "Width", min = 1, max = 600, step = 1,
+		label = L["Width"], min = 1, max = 600, step = 1,
 		value = cfg.width, width = 240,
 		onChange = function(v) cfg.width = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Height", min = 1, max = 600, step = 1,
+		label = L["Height"], min = 1, max = 600, step = 1,
 		value = cfg.height, width = 240,
 		onChange = function(v) cfg.height = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1,
+		label = L["X Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1,
 		value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1,
+		label = L["Y Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1,
 		value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		label = L["Anchor"], value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
 		onChange = function(v) cfg.anchor = v; RefreshLane(laneIndex) end,
 	}))
 
-	local secBG = W.CreateSectionHeader(parent, "Lane")
+	local secBG = W.CreateSectionHeader(parent, L["Lane"])
 	secBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBG, 18)
 
 	local bgTexDD = W.CreateDropdown(parent, {
-		label = "Lane Texture", value = cfg.bgTexture,
+		label = L["Lane Texture"], value = cfg.bgTexture,
 		options = BuildStatusbarOptions(), width = 200,
 		onChange = function(v) cfg.bgTexture = v; RefreshLane(laneIndex) end,
 	})
 	place(bgTexDD)
 
 	place(W.CreateColorPicker(parent, {
-		label = "Lane Color", color = cfg.bgColor, hasAlpha = true,
+		label = L["Lane Color"], color = cfg.bgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
 			RefreshLane(laneIndex)
 		end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Use Class Color (Lane)", checked = cfg.bgClassColor,
+		label = L["Use Class Color (Lane)"], checked = cfg.bgClassColor,
 		onChange = function(v) cfg.bgClassColor = v; RefreshLane(laneIndex) end,
 	}))
 
-	local secBorder = W.CreateSectionHeader(parent, "Border")
+	local secBorder = W.CreateSectionHeader(parent, L["Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		label = L["Show Border"], checked = cfg.borderEnabled ~= false,
 		onChange = function(v)
 			cfg.borderEnabled = v
 			RefreshLane(laneIndex)
@@ -947,33 +948,33 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Lane Alpha", min = 0, max = 1, step = 0.05,
+		label = L["Lane Alpha"], min = 0, max = 1, step = 0.05,
 		value = cfg.alpha, width = 220,
 		onChange = function(v) cfg.alpha = v; RefreshLane(laneIndex) end,
 	}))
 
 	local borderTexDD = W.CreateDropdown(parent, {
-		label = "Border Texture", value = cfg.borderTexture,
+		label = L["Border Texture"], value = cfg.borderTexture,
 		options = BuildBorderOptions(), width = 200,
-		tooltip = "The texture drawn around this lane. A soft texture like CDM Soft Edge needs room to fade, so raise Border Size to about 6 or it squashes into a smear.",
+		tooltip = L["The texture drawn around this lane. A soft texture like CDM Soft Edge needs room to fade, so raise Border Size to about 6 or it squashes into a smear."],
 		onChange = function(v) cfg.borderTexture = v; RefreshLane(laneIndex) end,
 	})
 	place(borderTexDD)
 
 	place(W.CreateColorPicker(parent, {
-		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		label = L["Border Color"], color = cfg.borderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
 			RefreshLane(laneIndex)
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Padding", min = 0, max = 40, step = 1,
+		label = L["Border Padding"], min = 0, max = 40, step = 1,
 		value = cfg.borderPadding, width = 220,
 		onChange = function(v) cfg.borderPadding = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Size", min = 1, max = 40, step = 1,
+		label = L["Border Size"], min = 1, max = 40, step = 1,
 		value = cfg.borderSize, width = 220,
 		onChange = function(v) cfg.borderSize = v; RefreshLane(laneIndex) end,
 	}))
@@ -983,21 +984,21 @@ end
 
 
 local STACK_STYLE_OPTIONS = {
-	{ value = "GROUPED", text = "Grouped" },
-	{ value = "SPREAD",  text = "Spread"  },
-	{ value = "OFFSET",  text = "Offset"  },
+	{ value = "GROUPED", text = L["Grouped"] },
+	{ value = "SPREAD",  text = L["Spread"]  },
+	{ value = "OFFSET",  text = L["Offset"]  },
 }
 
 local GROW_DIR_H = {
-	{ value = "UP",     text = "Up"     },
-	{ value = "DOWN",   text = "Down"   },
-	{ value = "CENTER", text = "Center" },
+	{ value = "UP",     text = L["Up"]     },
+	{ value = "DOWN",   text = L["Down"]   },
+	{ value = "CENTER", text = L["Center"] },
 }
 
 local GROW_DIR_V = {
-	{ value = "LEFT",   text = "Left"   },
-	{ value = "RIGHT",  text = "Right"  },
-	{ value = "CENTER", text = "Center" },
+	{ value = "LEFT",   text = L["Left"]   },
+	{ value = "RIGHT",  text = L["Right"]  },
+	{ value = "CENTER", text = L["Center"] },
 }
 
 local function BuildLaneStackingForm(parent, laneIndex)
@@ -1014,7 +1015,7 @@ local function BuildLaneStackingForm(parent, laneIndex)
 	end
 
 	place(W.CreateCheckbox(parent, {
-		label = "Enabled", checked = cfg.stackEnabled,
+		label = L["Enabled"], checked = cfg.stackEnabled,
 		onChange = function(v)
 			cfg.stackEnabled = v
 			RefreshLane(laneIndex)
@@ -1022,37 +1023,37 @@ local function BuildLaneStackingForm(parent, laneIndex)
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label = "Raise On Mouseover", checked = cfg.stackRaiseHover,
+		label = L["Raise On Mouseover"], checked = cfg.stackRaiseHover,
 		onChange = function(v)
 			cfg.stackRaiseHover = v
 			-- No refresh needed: OnEnter/OnLeave handlers are always attached.
 		end,
 	}))
 
-	local secBeh = W.CreateSectionHeader(parent, "Behavior")
+	local secBeh = W.CreateSectionHeader(parent, L["Behavior"])
 	secBeh:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBeh, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Stack Style", value = cfg.stackStyle, options = STACK_STYLE_OPTIONS,
+		label = L["Stack Style"], value = cfg.stackStyle, options = STACK_STYLE_OPTIONS,
 		width = 200,
-		tooltip = "How cooldowns that pile on the same spot are arranged. Grouped packs them into rows and overlaps them to stay within Height; Offset fans every icon evenly across Height; Spread pushes them apart along the lane so each stays visible.",
+		tooltip = L["How cooldowns that pile on the same spot are arranged. Grouped packs them into rows and overlaps them to stay within Height; Offset fans every icon evenly across Height; Spread pushes them apart along the lane so each stays visible."],
 		onChange = function(v) cfg.stackStyle = v; RefreshLane(laneIndex) end,
 	}))
 
 	-- Grow Direction options are snapshotted from cfg.vertical at first build; toggling Vertical updates them only on next visit (forms build lazily per-lane per-section).
 	local growOpts = cfg.vertical and GROW_DIR_V or GROW_DIR_H
 	place(W.CreateDropdown(parent, {
-		label = "Grow Direction", value = cfg.stackGrowDirection,
+		label = L["Grow Direction"], value = cfg.stackGrowDirection,
 		options = growOpts, width = 200,
-		tooltip = "Which way a Grouped or Offset stack grows from the lane line. Center straddles the line and grows both ways.",
+		tooltip = L["Which way a Grouped or Offset stack grows from the lane line. Center straddles the line and grows both ways."],
 		onChange = function(v) cfg.stackGrowDirection = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Height", min = 0, max = 300, step = 5,
+		label = L["Height"], min = 0, max = 300, step = 5,
 		value = cfg.stackHeight, width = 240,
-		tooltip = "How much room across the lane the stack may use. When the icons do not all fit, they overlap to stay within it, so raise Height to reduce overlap.",
+		tooltip = L["How much room across the lane the stack may use. When the icons do not all fit, they overlap to stay within it, so raise Height to reduce overlap."],
 		onChange = function(v) cfg.stackHeight = v; RefreshLane(laneIndex) end,
 	}))
 
@@ -1074,42 +1075,42 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "Size", min = 1, max = 128, step = 1,
+		label = L["Size"], min = 1, max = 128, step = 1,
 		value = cfg.iconSize, width = 240,
 		onChange = function(v) cfg.iconSize = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Transparency", min = 0, max = 1, step = 0.05,
+		label = L["Transparency"], min = 0, max = 1, step = 0.05,
 		value = cfg.iconAlpha, width = 240,
 		onChange = function(v) cfg.iconAlpha = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Offset", min = -30, max = 30, step = 1,
+		label = L["Offset"], min = -30, max = 30, step = 1,
 		value = cfg.iconOffset, width = 240,
 		onChange = function(v) cfg.iconOffset = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Cooldown Tint (0 = off)", min = 0, max = 1, step = 0.05,
+		label = L["Cooldown Tint (0 = off)"], min = 0, max = 1, step = 0.05,
 		value = cfg.swipeAlpha, width = 240,
 		onChange = function(v) cfg.swipeAlpha = v; RefreshLane(laneIndex) end,
 	}))
 
-	local secBorder = W.CreateSectionHeader(parent, "Icon Border")
+	local secBorder = W.CreateSectionHeader(parent, L["Icon Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Icon Border",
+		label = L["Show Icon Border"],
 		checked = cfg.iconBorder,
-		tooltip = "Draw a clean solid border around every cooldown icon in this lane. Set per lane, so you can border one lane and leave another plain. On by default.",
+		tooltip = L["Draw a clean solid border around every cooldown icon in this lane. Set per lane, so you can border one lane and leave another plain. On by default."],
 		onChange = function(v) cfg.iconBorder = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Border Size", min = 1, max = 6, step = 1,
+		label = L["Border Size"], min = 1, max = 6, step = 1,
 		value = cfg.iconBorderSize or 1, width = 240,
 		onChange = function(v) cfg.iconBorderSize = v; RefreshLane(laneIndex) end,
 	}))
@@ -1118,7 +1119,7 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		cfg.iconBorderColor = { r = 0, g = 0, b = 0, a = 1 }
 	end
 	place(W.CreateColorPicker(parent, {
-		label = "Border Color", color = cfg.iconBorderColor, hasAlpha = true,
+		label = L["Border Color"], color = cfg.iconBorderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconBorderColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1130,19 +1131,19 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	if type(cfg.highlight.color) ~= "table" then
 		cfg.highlight.color = { r = 1, g = 0.82, b = 0, a = 0.6 }
 	end
-	local secHL = W.CreateSectionHeader(parent, "Highlight (Important spells)")
+	local secHL = W.CreateSectionHeader(parent, L["Highlight (Important spells)"])
 	secHL:SetWidth(parent:GetWidth() - pad * 2)
 	place(secHL, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Highlight Style", value = cfg.highlight.style or "NONE",
+		label = L["Highlight Style"], value = cfg.highlight.style or "NONE",
 		options = HL_STYLE_OPTIONS, width = 200,
-		tooltip = "Visual emphasis drawn on icons flagged Important (per spell, in Filters). Border outlines the icon; Glow and Flash pulse it; Border + Flash does both; None disables it.",
+		tooltip = L["Visual emphasis drawn on icons flagged Important (per spell, in Filters). Border outlines the icon; Glow and Flash pulse it; Border + Flash does both; None disables it."],
 		onChange = function(v) cfg.highlight.style = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateColorPicker(parent, {
-		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		label = L["Highlight Color"], color = cfg.highlight.color, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.highlight.color
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1150,16 +1151,16 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		end,
 	}))
 
-	local secTxt = W.CreateSectionHeader(parent, "Countdown Timer")
+	local secTxt = W.CreateSectionHeader(parent, L["Countdown Timer"])
 	secTxt:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTxt, 18)
 
 	-- Only the countdown timer (iconText[2]) renders; the old charges/spare text slots were
 	-- removed (charge count is unreadable in combat). Keep the iconText[2] key so the lane read matches.
 	place(W.CreateCheckbox(parent, {
-		label = "Show Timer",
+		label = L["Show Timer"],
 		checked = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled or false,
-		tooltip = "Show the remaining-time number on each cooldown icon in this lane (for example 1:16, then 45, 44...). Style it with the Timer Font options below.",
+		tooltip = L["Show the remaining-time number on each cooldown icon in this lane (for example 1:16, then 45, 44...). Style it with the Timer Font options below."],
 		onChange = function(v)
 			if cfg.iconText and cfg.iconText[2] then
 				cfg.iconText[2].enabled = v
@@ -1168,28 +1169,28 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		end,
 	}))
 
-	local secFont = W.CreateSectionHeader(parent, "Timer Font")
+	local secFont = W.CreateSectionHeader(parent, L["Timer Font"])
 	secFont:SetWidth(parent:GetWidth() - pad * 2)
 	place(secFont, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.iconFont, options = BuildFontOptions(), width = 240,
+		label = L["Font"], value = cfg.iconFont, options = BuildFontOptions(), width = 240,
 		onChange = function(v) cfg.iconFont = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Font Size (0 = auto)", min = 0, max = 64, step = 1,
+		label = L["Font Size (0 = auto)"], min = 0, max = 64, step = 1,
 		value = cfg.iconFontSize, width = 240,
 		onChange = function(v) cfg.iconFontSize = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.iconFontFlags, options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Font Outline"], value = cfg.iconFontFlags, options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.iconFontFlags = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.iconFontColor,
+		label = L["Font Color"], color = cfg.iconFontColor,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconFontColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1197,46 +1198,46 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		end,
 	}))
 
-	local secLbl = W.CreateSectionHeader(parent, "Icon Label")
+	local secLbl = W.CreateSectionHeader(parent, L["Icon Label"])
 	secLbl:SetWidth(parent:GetWidth() - pad * 2)
 	place(secLbl, 18)
 
 	cfg.iconLabel = cfg.iconLabel or { enabled = false, text = "[cd.name]", anchor = "BOTTOM" }
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Label",
+		label = L["Show Label"],
 		checked = cfg.iconLabel.enabled,
-		tooltip = "Draw a line of text on each cooldown icon in this lane, built from the tags in Label Text below. Off by default - lanes otherwise show only the timer number, so this is how you put the ability name on the icon.",
+		tooltip = L["Draw a line of text on each cooldown icon in this lane, built from the tags in Label Text below. Off by default - lanes otherwise show only the timer number, so this is how you put the ability name on the icon."],
 		onChange = function(v) cfg.iconLabel.enabled = v; RefreshLane(laneIndex) end,
 	}))
 
-	BuildTagTextRow(parent, place, cfg.iconLabel, function() RefreshLane(laneIndex) end, "Label Text", ns.TAG_PICKER_COOLDOWN)
+	BuildTagTextRow(parent, place, cfg.iconLabel, function() RefreshLane(laneIndex) end, L["Label Text"], ns.TAG_PICKER_COOLDOWN)
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Position", value = cfg.iconLabel.anchor or "BOTTOM",
+		label = L["Label Position"], value = cfg.iconLabel.anchor or "BOTTOM",
 		options = ICON_LABEL_ANCHOR_OPTIONS, width = 240,
-		tooltip = "Where the label sits on the icon. On icon overlaps the timer number.",
+		tooltip = L["Where the label sits on the icon. On icon overlaps the timer number."],
 		onChange = function(v) cfg.iconLabel.anchor = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Font", value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
+		label = L["Label Font"], value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
 		onChange = function(v) cfg.iconLabelFont = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Label Size", min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
+		label = L["Label Size"], min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
 		onChange = function(v) cfg.iconLabelSize = v; RefreshLane(laneIndex) end,
 	}))
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Outline", value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Label Outline"], value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.iconLabelFlags = v; RefreshLane(laneIndex) end,
 	}))
 
 	cfg.iconLabelColor = cfg.iconLabelColor or { r = 1, g = 1, b = 1, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Label Color", color = cfg.iconLabelColor, hasAlpha = true,
+		label = L["Label Color"], color = cfg.iconLabelColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconLabelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1262,7 +1263,7 @@ local function BuildLaneTextForm(parent, laneIndex)
 	end
 
 	if W.CreateSectionHeader then
-		local secDef = W.CreateSectionHeader(parent, "Default Text")
+		local secDef = W.CreateSectionHeader(parent, L["Default Text"])
 		secDef:SetWidth(parent:GetWidth() - pad * 2)
 		place(secDef, 18)
 	end
@@ -1271,21 +1272,21 @@ local function BuildLaneTextForm(parent, laneIndex)
 		local def = cfg.laneText and cfg.laneText[i]
 		if def then
 			place(W.CreateCheckbox(parent, {
-				label = "Label " .. i .. " enabled", checked = def.enabled,
+				label = string.format(L["Label %d enabled"], i), checked = def.enabled,
 				onChange = function(v)
 					cfg.laneText[i].enabled = v
 					RefreshLane(laneIndex)
 				end,
 			}))
 			place(W.CreateEditBox(parent, {
-				label = "Text", value = def.text or "", width = 200, maxLetters = 24,
+				label = L["Text"], value = def.text or "", width = 200, maxLetters = 24,
 				onChange = function(text)
 					cfg.laneText[i].text = text
 					RefreshLane(laneIndex)
 				end,
 			}))
 			place(W.CreateSlider(parent, {
-				label = "Position (%)", min = 0, max = 100, step = 1,
+				label = L["Position (percent)"], min = 0, max = 100, step = 1,
 				value = math.floor((def.pos or 0) * 100 + 0.5), width = 240,
 				onChange = function(v)
 					cfg.laneText[i].pos = v / 100
@@ -1295,26 +1296,26 @@ local function BuildLaneTextForm(parent, laneIndex)
 		end
 	end
 
-	local secMarker = W.CreateSectionHeader(parent, "Marker Font")
+	local secMarker = W.CreateSectionHeader(parent, L["Marker Font"])
 	secMarker:SetWidth(parent:GetWidth() - pad * 2)
 	place(secMarker, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.laneTextFont, options = BuildFontOptions(), width = 240,
-		tooltip = "Font for the Ready/25%/50%/75%/100% markers along this lane.",
+		label = L["Font"], value = cfg.laneTextFont, options = BuildFontOptions(), width = 240,
+		tooltip = L["Font for the position markers along this lane (Ready, 25, 50, 75, 100 percent)."],
 		onChange = function(v) cfg.laneTextFont = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.laneTextSize or 9, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.laneTextSize or 9, width = 240,
 		onChange = function(v) cfg.laneTextSize = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.laneTextFlags or "NONE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Font Outline"], value = cfg.laneTextFlags or "NONE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.laneTextFlags = v; RefreshLane(laneIndex) end,
 	}))
 	cfg.laneTextColor = cfg.laneTextColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.laneTextColor, hasAlpha = true,
+		label = L["Font Color"], color = cfg.laneTextColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.laneTextColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1322,26 +1323,26 @@ local function BuildLaneTextForm(parent, laneIndex)
 		end,
 	}))
 
-	local secLabel = W.CreateSectionHeader(parent, "Name Tag Font")
+	local secLabel = W.CreateSectionHeader(parent, L["Name Tag Font"])
 	secLabel:SetWidth(parent:GetWidth() - pad * 2)
 	place(secLabel, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
-		tooltip = "Font for this lane's name tag (shown above the bar while frames are unlocked).",
+		label = L["Font"], value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = L["Font for this lane's name tag (shown above the bar while frames are unlocked)."],
 		onChange = function(v) cfg.labelFont = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
 		onChange = function(v) cfg.labelSize = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Font Outline"], value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.labelFlags = v; RefreshLane(laneIndex) end,
 	}))
 	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		label = L["Font Color"], color = cfg.labelColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.labelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -1431,7 +1432,7 @@ local function BuildLanesTab(content)
 	wipe(lanesState.subTabBtns)
 	local x = 0
 	for i = 1, 3 do
-		local b = Theme.CreateTab(subBar, "Lane " .. i, 90)
+		local b = Theme.CreateTab(subBar, string.format(L["Lane %d"], i), 90)
 		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
 		lanesState.subTabBtns[i] = b
 		x = x + 90 + Theme.PANEL.TAB_GAP
@@ -1634,7 +1635,7 @@ end
 local setAllState = {}
 
 StaticPopupDialogs["COOLDOWNMASTER_FILTERS_SET_ALL"] = {
-	text = "Set every cooldown in %s to follow the category default for %s? Any per-spell choice for that setting is cleared.",
+	text = L["Set every cooldown in %s to follow the category default for %s? Any per-spell choice for that setting is cleared."],
 	button1 = YES,
 	button2 = NO,
 	OnAccept = function() ClearOverrideField(setAllState.key, setAllState.field) end,
@@ -1647,7 +1648,7 @@ StaticPopupDialogs["COOLDOWNMASTER_FILTERS_SET_ALL"] = {
 
 local function AddSetAll(parent, dd, key, field, fieldLabel, categoryLabel, tooltip)
 	local btn = ns.Widgets.CreateButton(parent, {
-		label = "Set All", width = 70, tooltip = tooltip,
+		label = L["Set All"], width = 70, tooltip = tooltip,
 		onClick = function()
 			setAllState.key, setAllState.field = key, field
 			StaticPopup_Show("COOLDOWNMASTER_FILTERS_SET_ALL", categoryLabel, fieldLabel, setAllState)
@@ -1658,16 +1659,16 @@ local function AddSetAll(parent, dd, key, field, fieldLabel, categoryLabel, tool
 end
 
 local FILTER_LANE_OPTIONS = {
-	{ value = 0, text = "Default" },  -- 0 = nil sentinel; stored as nil
-	{ value = 1, text = "Lane 1"  },
-	{ value = 2, text = "Lane 2"  },
-	{ value = 3, text = "Lane 3"  },
+	{ value = 0, text = L["Default"] },  -- 0 = nil sentinel, stored as nil
+	{ value = 1, text = L["Lane 1"]  },
+	{ value = 2, text = L["Lane 2"]  },
+	{ value = 3, text = L["Lane 3"]  },
 }
 
 local FILTER_LANE_FOR_DEFAULTS = {
-	{ value = 1, text = "Lane 1" },
-	{ value = 2, text = "Lane 2" },
-	{ value = 3, text = "Lane 3" },
+	{ value = 1, text = L["Lane 1"] },
+	{ value = 2, text = L["Lane 2"] },
+	{ value = 3, text = L["Lane 3"] },
 }
 
 -- Mutate the option tables in place - every dropdown already built holds them by reference.
@@ -1682,41 +1683,41 @@ local function RefreshLaneOptionLabels()
 end
 
 local FILTER_READYBOX_FOR_DEFAULTS = {
-	{ value = 0, text = "Off"   },
-	{ value = 1, text = "Box 1" },
-	{ value = 2, text = "Box 2" },
-	{ value = 3, text = "Box 3" },
+	{ value = 0, text = L["Off"]   },
+	{ value = 1, text = L["Box 1"] },
+	{ value = 2, text = L["Box 2"] },
+	{ value = 3, text = L["Box 3"] },
 }
 
 local FILTER_BAR_FOR_DEFAULTS = {
-	{ value = 0, text = "Off"    },
-	{ value = 1, text = "Bars 1" },
-	{ value = 2, text = "Bars 2" },
-	{ value = 3, text = "Bars 3" },
+	{ value = 0, text = L["Off"]    },
+	{ value = 1, text = L["Bars 1"] },
+	{ value = 2, text = L["Bars 2"] },
+	{ value = 3, text = L["Bars 3"] },
 }
 
 local FILTER_READYBOX_OPTIONS = {
-	{ value = -1, text = "Default" },  -- -1 = nil sentinel; stored as nil
-	{ value = 0,  text = "Off"     },
-	{ value = 1,  text = "Box 1"   },
-	{ value = 2,  text = "Box 2"   },
-	{ value = 3,  text = "Box 3"   },
+	{ value = -1, text = L["Default"] },  -- -1 = nil sentinel, stored as nil
+	{ value = 0,  text = L["Off"]     },
+	{ value = 1,  text = L["Box 1"]   },
+	{ value = 2,  text = L["Box 2"]   },
+	{ value = 3,  text = L["Box 3"]   },
 }
 
 local FILTER_BAR_OPTIONS = {
-	{ value = -1, text = "Default" },  -- -1 = nil sentinel; stored as nil
-	{ value = 0,  text = "Off"     },
-	{ value = 1,  text = "Bars 1"  },
-	{ value = 2,  text = "Bars 2"  },
-	{ value = 3,  text = "Bars 3"  },
+	{ value = -1, text = L["Default"] },  -- -1 = nil sentinel, stored as nil
+	{ value = 0,  text = L["Off"]     },
+	{ value = 1,  text = L["Bars 1"]  },
+	{ value = 2,  text = L["Bars 2"]  },
+	{ value = 3,  text = L["Bars 3"]  },
 }
 
 -- Per-spell ready treatment, packed as bits: bit0 = important (highlight), bit1 = pinned.
 local FILTER_READYFLAG_OPTIONS = {
-	{ value = 0, text = "Normal"    },
-	{ value = 1, text = "Important" },
-	{ value = 2, text = "Pinned"    },
-	{ value = 3, text = "Imp + Pin" },
+	{ value = 0, text = L["Normal"]    },
+	{ value = 1, text = L["Important"] },
+	{ value = 2, text = L["Pinned"]    },
+	{ value = 3, text = L["Imp + Pin"] },
 }
 
 local function BuildDefaultsCategoryDropdownOptions()
@@ -1743,12 +1744,12 @@ local function BuildFiltersDefaultsForm(parent)
 	end
 
 	local pickerLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	pickerLabel:SetText("Pick a category to edit its defaults:")
+	pickerLabel:SetText(L["Pick a category to edit its defaults:"])
 	pickerLabel:SetTextColor(1, 1, 1)
 	place(pickerLabel, 16)
 
 	local hintLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	hintLabel:SetText("These settings apply to every spell in the chosen category. To override an individual spell, use that category's sub-tab on the left.")
+	hintLabel:SetText(L["These settings apply to every spell in the chosen category. To override an individual spell, use that category's sub-tab on the left."])
 	hintLabel:SetTextColor(0.7, 0.7, 0.7)
 	hintLabel:SetWidth(parent:GetWidth() - pad * 2 - 30)
 	hintLabel:SetJustifyH("LEFT")
@@ -1775,7 +1776,7 @@ local function BuildFiltersDefaultsForm(parent)
 	local cfg = GetFilterCfg(key)
 	if not cfg then
 		local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		fs:SetText("Unknown category: " .. tostring(key))
+		fs:SetText(string.format(L["Unknown category: %s"], tostring(key)))
 		fs:SetTextColor(0.7, 0.4, 0.4)
 		place(fs, 16)
 		parent:SetHeight(math.abs(y) + pad)
@@ -1787,14 +1788,14 @@ local function BuildFiltersDefaultsForm(parent)
 		if def.key == key then label = def.label; break end
 	end
 
-	local sec = W.CreateSectionHeader(parent, label .. " Defaults")
+	local sec = W.CreateSectionHeader(parent, string.format(L["%s Defaults"], label))
 	sec:SetWidth(parent:GetWidth() - pad * 2)
 	place(sec, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label   = "Enabled",
+		label   = L["Enabled"],
 		checked = cfg.enabled,
-		tooltip = "Untick to stop tracking this whole category. None of its cooldowns will show on a lane or pop a ready frame.",
+		tooltip = L["Untick to stop tracking this whole category. None of its cooldowns will show on a lane or pop a ready frame."],
 		onChange = function(v)
 			cfg.enabled = v
 			RefreshFilterListForm(key)
@@ -1802,59 +1803,59 @@ local function BuildFiltersDefaultsForm(parent)
 	}))
 
 	place(W.CreateCheckbox(parent, {
-		label   = "Show by Default",
+		label   = L["Show by Default"],
 		checked = cfg.showByDefault,
-		tooltip = "On: spells in this category show unless you hide one individually. Off: spells stay hidden until you enable each one.",
+		tooltip = L["On: spells in this category show unless you hide one individually. Off: spells stay hidden until you enable each one."],
 		onChange = function(v) cfg.showByDefault = v end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Ignore Threshold (sec)", min = 60, max = 3600, step = 5,
+		label = L["Ignore Threshold (sec)"], min = 60, max = 3600, step = 5,
 		value = cfg.ignoreThreshold or 1800, width = 240,
-		tooltip = "Stop tracking any cooldown in this category whose full length is longer than this many seconds. Use it to hide very long cooldowns (like 30+ minute abilities) so they never show on a lane or pop ready. A spell you explicitly enable in the list below still shows. Unlike a lane's Max Time, this filters by the ability's total cooldown, not how much of the timeline is drawn.",
+		tooltip = L["Stop tracking any cooldown in this category whose full length is longer than this many seconds. Use it to hide very long cooldowns (like 30+ minute abilities) so they never show on a lane or pop ready. A spell you explicitly enable in the list below still shows. Unlike a lane's Max Time, this filters by the ability's total cooldown, not how much of the timeline is drawn."],
 		onChange = function(v) cfg.ignoreThreshold = v end,
 	}))
 
 	local laneDD = W.CreateDropdown(parent, {
-		label = "Default Lane",
+		label = L["Default Lane"],
 		value = cfg.defaultLane or 1,
 		options = FILTER_LANE_FOR_DEFAULTS,
 		width = 200,
-		tooltip = "Which lane this category's cooldowns travel along. The chosen lane must also be enabled on the Lanes tab - one marked (off) draws nothing.",
+		tooltip = L["Which lane this category's cooldowns travel along. The chosen lane must also be enabled on the Lanes tab - one marked (off) draws nothing."],
 		onChange = function(v)
 			cfg.defaultLane = v
 			if ns.Engine then ns.Engine:ReapplyRouting() end
 		end,
 	})
 	place(laneDD)
-	AddSetAll(parent, laneDD, key, "lane", "Lane", label,
-		"Makes every cooldown in this category follow the Default Lane above. Any per-spell Lane you picked in the category's list is cleared. Show, Bar, Ready Box, Important and Pinned choices are left alone.")
+	AddSetAll(parent, laneDD, key, "lane", L["Lane"], label,
+		L["Makes every cooldown in this category follow the Default Lane above. Any per-spell Lane you picked in the category's list is cleared. Show, Bar, Ready Box, Important and Pinned choices are left alone."])
 
 	local readyDD = W.CreateDropdown(parent, {
-		label = "Ready Box",
+		label = L["Ready Box"],
 		value = cfg.readyBox or 0,
 		options = FILTER_READYBOX_FOR_DEFAULTS,
 		width = 200,
 		onChange = function(v) cfg.readyBox = v end,
 	})
 	place(readyDD)
-	AddSetAll(parent, readyDD, key, "readyBox", "Ready Box", label,
-		"Makes every cooldown in this category follow the Ready Box above. Any per-spell Ready Box you picked in the category's list is cleared. Show, Lane, Bar, Important and Pinned choices are left alone.")
+	AddSetAll(parent, readyDD, key, "readyBox", L["Ready Box"], label,
+		L["Makes every cooldown in this category follow the Ready Box above. Any per-spell Ready Box you picked in the category's list is cleared. Show, Lane, Bar, Important and Pinned choices are left alone."])
 
 	local barDD = W.CreateDropdown(parent, {
-		label = "Default Bar",
+		label = L["Default Bar"],
 		value = cfg.defaultBar or 0,
 		options = FILTER_BAR_FOR_DEFAULTS,
 		width = 200,
-		tooltip = "Which bar frame this category's cooldowns appear in. The chosen Bars frame must also be enabled on the Bars tab. Off shows no bar.",
+		tooltip = L["Which bar frame this category's cooldowns appear in. The chosen Bars frame must also be enabled on the Bars tab. Off shows no bar."],
 		onChange = function(v)
 			cfg.defaultBar = v
 			if ns.Engine then ns.Engine:ReapplyRouting() end
 		end,
 	})
 	place(barDD)
-	AddSetAll(parent, barDD, key, "bar", "Bar", label,
-		"Makes every cooldown in this category follow the Default Bar above. Any per-spell Bar you picked in the category's list is cleared. Show, Lane, Ready Box, Important and Pinned choices are left alone.")
+	AddSetAll(parent, barDD, key, "bar", L["Bar"], label,
+		L["Makes every cooldown in this category follow the Default Bar above. Any per-spell Bar you picked in the category's list is cleared. Show, Lane, Ready Box, Important and Pinned choices are left alone."])
 
 	parent:SetHeight(math.abs(y) + pad)
 end
@@ -1926,7 +1927,7 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	name:SetPoint("LEFT", tex, "RIGHT", 8, 0)
 	name:SetWidth(180)
 	name:SetJustifyH("LEFT")
-	name:SetText(info.name or ("Spell " .. spellID))
+	name:SetText(info.name or string.format(L["Spell %d"], spellID))
 	name:SetTextColor(1, 1, 1)
 
 	-- Item rows key on the itemID, so spellID IS the itemID there. A custom's synthetic id is no real spell.
@@ -1941,8 +1942,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		elseif info.buffSpellID then
 			GameTooltip:SetSpellByID(info.buffSpellID)
 		elseif spellID >= ns.CONST.CUSTOM_ID_BASE then
-			GameTooltip:SetText(info.name or "Cooldown", 1, 1, 1)
-			GameTooltip:AddLine("Custom cooldown", 0.6, 0.6, 0.6)
+			GameTooltip:SetText(info.name or L["Cooldown"], 1, 1, 1)
+			GameTooltip:AddLine(L["Custom cooldown"], 0.6, 0.6, 0.6)
 		else
 			GameTooltip:SetSpellByID(spellID)
 		end
@@ -1961,9 +1962,9 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 	end
 
 	local cb = W.CreateCheckbox(row, {
-		label = "Show",
+		label = L["Show"],
 		checked = effectiveVisible,
-		tooltip = "Track this cooldown and draw it. Untick to hide it from every lane, bar and ready box. Until you touch it here, it follows this category's Show By Default setting.",
+		tooltip = L["Track this cooldown and draw it. Untick to hide it from every lane, bar and ready box. Until you touch it here, it follows this category's Show By Default setting."],
 		onChange = function(v) SetSpellOverride(spellID, "visible", v) end,
 	})
 	cb:SetPoint("LEFT", name, "RIGHT", 8, 0)
@@ -1983,8 +1984,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	dd:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-	AttachRowTip(dd.box, "Lane",
-		"Which lane this cooldown travels in. Default follows this category's Default Lane, set on the Defaults tab.")
+	AttachRowTip(dd.box, L["Lane"],
+		L["Which lane this cooldown travels in. Default follows this category's Default Lane, set on the Defaults tab."])
 
 	local barVal = override and override.bar
 	if barVal == nil then barVal = -1 end  -- -1 sentinel for "Default"
@@ -1999,8 +2000,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	bdd:SetPoint("LEFT", dd, "RIGHT", 8, 0)
-	AttachRowTip(bdd.box, "Bar",
-		"Which bar frame this cooldown shows on. Default follows this category's Default Bar. Off keeps it off the bars without hiding it from your lanes or ready boxes.")
+	AttachRowTip(bdd.box, L["Bar"],
+		L["Which bar frame this cooldown shows on. Default follows this category's Default Bar. Off keeps it off the bars without hiding it from your lanes or ready boxes."])
 
 	local rbVal = override and override.readyBox
 	if rbVal == nil then rbVal = -1 end  -- -1 sentinel for "Default"
@@ -2014,8 +2015,8 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	rdd:SetPoint("LEFT", bdd, "RIGHT", 8, 0)
-	AttachRowTip(rdd.box, "Ready Box",
-		"Which ready box this pops into the moment the cooldown comes up. Default follows this category's Ready Box. Off means it never pops.")
+	AttachRowTip(rdd.box, L["Ready Box"],
+		L["Which ready box this pops into the moment the cooldown comes up. Default follows this category's Ready Box. Off means it never pops."])
 
 	local flagVal = ((override and override.important) and 1 or 0) + ((override and override.pinned) and 2 or 0)
 	local fdd = W.CreateDropdown(row, {
@@ -2029,18 +2030,14 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		end,
 	})
 	fdd:SetPoint("LEFT", rdd, "RIGHT", 8, 0)
-	AttachRowTip(fdd.box, "Flags",
-		"How this one behaves once it pops into a ready box."
-		.. "\n\nNormal - fades after the box's Display Duration."
-		.. "\n\nImportant - highlights the icon and holds it for the box's Highlight Duration instead, and plays the box's Highlight Sound (set to None until you pick one)."
-		.. "\n\nPinned - the icon never fades. It stays until you reload or switch profile, and a box full of pinned icons has no room for new pops."
-		.. "\n\nImp + Pin - both.")
+	AttachRowTip(fdd.box, L["Flags"],
+		L["How this one behaves once it pops into a ready box.\n\nNormal - fades after the box's Display Duration.\n\nImportant - highlights the icon and holds it for the box's Highlight Duration instead, and plays the box's Highlight Sound (set to None until you pick one).\n\nPinned - the icon never fades. It stays until you reload or switch profile, and a box full of pinned icons has no room for new pops.\n\nImp + Pin - both."])
 
 	-- Offensives is the only auto-discovered, persisted list, so it is the only place a leaked entry can lodge. Narrow so the button clears the scrollbar on a full list.
 	if info.category == ns.CONST.OFFENSIVE_CATEGORY then
 		local del = W.CreateButton(row, {
 			label = "X", width = 22,
-			tooltip = "Remove this from Offensives. Use it to clear a debuff that leaked in from another player on a shared target. If the spell is actually yours, it relearns the next time you cast it.",
+			tooltip = L["Remove this from Offensives. Use it to clear a debuff that leaked in from another player on a shared target. If the spell is actually yours, it relearns the next time you cast it."],
 			onClick = function()
 				-- Deferred a frame - the forget rebuilds this list, tearing down the surface this button lives on.
 				C_Timer.After(0, function()
@@ -2056,7 +2053,7 @@ local function BuildSpellRow(parent, spellID, info, yPos)
 		local bcb = W.CreateCheckbox(row, {
 			label = "",
 			checked = (override and override.trackBuff) and true or false,
-			tooltip = "Also track this spell's buff. Adds a second icon that counts down how long the buff lasts, separate from the cooldown. Off by default - leave it off for spells that do not give you a buff.",
+			tooltip = L["Also track this spell's buff. Adds a second icon that counts down how long the buff lasts, separate from the cooldown. Off by default - leave it off for spells that do not give you a buff."],
 			onChange = function(v)
 				SetSpellOverride(spellID, "trackBuff", v or nil)
 				if ns.Engine and ns.Engine.RefreshBuffTracking then ns.Engine:RefreshBuffTracking(spellID) end
@@ -2078,7 +2075,7 @@ end
 
 
 -- These x offsets are BuildSpellRow's anchor chain summed, so a control moved there must move here.
-local FILTER_COL_HEADERS = { { "Show", 216 }, { "Lane", 440 }, { "Bar", 528 }, { "Ready Box", 616 }, { "Flags", 704 } }
+local FILTER_COL_HEADERS = { { L["Show"], 216 }, { L["Lane"], 440 }, { L["Bar"], 528 }, { L["Ready Box"], 616 }, { L["Flags"], 704 } }
 local function BuildFiltersColumnHeader(parent, yPos, categoryKey)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetSize(parent:GetWidth() - 24, 16)
@@ -2094,12 +2091,12 @@ local function BuildFiltersColumnHeader(parent, yPos, categoryKey)
 		-- Row x 786, just left of the Delete button, so it clears the Flags dropdown (ends 784) and the scrollbar.
 		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		fs:SetPoint("LEFT", row, "LEFT", 786, 0)
-		fs:SetText("Remove")
+		fs:SetText(L["Remove"])
 		fs:SetTextColor(Y.r, Y.g, Y.b)
 	elseif not ns.Compat.HAS_BLIZZ_CDM and (categoryKey == "spells" or categoryKey == "items") then
 		local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		fs:SetPoint("LEFT", row, "LEFT", 786, 0)
-		fs:SetText("Buff")
+		fs:SetText(L["Buff"])
 		fs:SetTextColor(Y.r, Y.g, Y.b)
 	end
 end
@@ -2121,9 +2118,9 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 	local catCfg = GetFilterCfg(categoryKey)
 	if catCfg then
 		local cb = ns.Widgets.CreateCheckbox(parent, {
-			label   = "Track this category",
+			label   = L["Track this category"],
 			checked = catCfg.enabled,
-			tooltip = "Untick to stop tracking this whole category. None of its cooldowns show on a lane or a bar, or pop a ready frame. This is the same setting as Enabled on the Defaults tab.",
+			tooltip = L["Untick to stop tracking this whole category. None of its cooldowns show on a lane or a bar, or pop a ready frame. This is the same setting as Enabled on the Defaults tab."],
 			onChange = function(v)
 				catCfg.enabled = v
 				RefreshFilterListForm(categoryKey)
@@ -2140,7 +2137,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 		local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		title:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
-		title:SetText(isOff and "Offensives is turned off" or "Learning your offensives")
+		title:SetText(isOff and L["Offensives is turned off"] or L["Learning your offensives"])
 		title:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 		top = top - 18
 
@@ -2152,12 +2149,12 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 		local how
 		if ns.Compat.HAS_COMBAT_LOG then
-			how = "Harmful effects you put on a target are detected automatically as you apply them - nothing to set up."
+			how = L["Harmful effects you put on a target are detected automatically as you apply them - nothing to set up."]
 		else
-			how = "A target's debuff cannot be identified in combat, so Cooldown Master learns which of your abilities applies which effect out of combat, from what lands just after you cast.\n\nSince 12.1 the game withholds that too, so an effect it has not already learned cannot be picked up at all. /cm offlearn tells you when your client is withholding it rather than leaving you guessing, and where the game still allows learning, it walks you through one ability at a time - type /cm offlearn, cast the ability, let combat end, then /cm offlearn stop. Anything already learned keeps tracking normally."
+			how = L["A target's debuff cannot be identified in combat, so Cooldown Master learns which of your abilities applies which effect out of combat, from what lands just after you cast.\n\nSince 12.1 the game withholds that too, so an effect it has not already learned cannot be picked up at all. /cm offlearn tells you when your client is withholding it rather than leaving you guessing, and where the game still allows learning, it walks you through one ability at a time - type /cm offlearn, cast the ability, let combat end, then /cm offlearn stop. Anything already learned keeps tracking normally."]
 		end
 		if isOff then
-			how = "This category tracks the harmful effects you put on your target - damage-over-time effects, and debuffs like stuns - so each one travels a lane and pops a ready box when it drops. Nothing in this category is tracked while it is switched off - tick Track this category above to switch it on.\n\n" .. how
+			how = L["This category tracks the harmful effects you put on your target - damage-over-time effects, and debuffs like stuns - so each one travels a lane and pops a ready box when it drops. Nothing in this category is tracked while it is switched off - tick Track this category above to switch it on.\n\n"] .. how
 		end
 		body:SetText(how)
 		top = top - (body:GetStringHeight() + 12)
@@ -2205,15 +2202,15 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		if categoryKey == "offensives" then
 			-- Offensives spells out the switch in its own block above, so a second copy here would just repeat it.
 			if not catCfg or catCfg.enabled ~= false then
-				text = "No harmful effects discovered yet.\nThe effects you put on a target are listed here as you apply them."
+				text = L["No harmful effects discovered yet.\nThe effects you put on a target are listed here as you apply them."]
 			end
 		-- Must stay above the switched-off branch below - this list can never fill, so blaming the switch would send the user to tick a box that changes nothing.
 		elseif categoryKey == "debuffs" and not ns.Compat.HAS_BLIZZ_CDM then
-			text = "This category stays empty on this version of the game.\nIt lists Blizzard's own bar-style tracked buffs, which exist only on retail. The harmful effects you put on a target are under Offensives."
+			text = L["This category stays empty on this version of the game.\nIt lists Blizzard's own bar-style tracked buffs, which exist only on retail. The harmful effects you put on a target are under Offensives."]
 		elseif catCfg and catCfg.enabled == false then
-			text = "This category is switched off, so none of its cooldowns show on a lane or a bar, or pop a ready box.\nTick Track this category above to switch it on."
+			text = L["This category is switched off, so none of its cooldowns show on a lane or a bar, or pop a ready box.\nTick Track this category above to switch it on."]
 		else
-			text = "No spells discovered yet for this category.\nLog in or /reload to populate the list."
+			text = L["No spells discovered yet for this category.\nLog in or /reload to populate the list."]
 		end
 		if text then
 			local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -2231,7 +2228,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	header:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, top)
-	header:SetText(string.format("%d spells tracked. \"Default\" follows this category's Defaults tab; the last column flags a spell Important or Pinned.", #matches))
+	header:SetText(string.format(L["%d spells tracked. \"Default\" follows this category's Defaults tab; the last column flags a spell Important or Pinned."], #matches))
 	header:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 
 	BuildFiltersColumnHeader(parent, top - 20, categoryKey)
@@ -2247,11 +2244,11 @@ end
 
 
 local CUSTOM_TRIGGER_TYPE_OPTIONS = {
-	{ value = "spell", text = "Spell cast"  },
-	{ value = "aura",  text = "Aura gained" },
+	{ value = "spell", text = L["Spell cast"]  },
+	{ value = "aura",  text = L["Aura gained"] },
 }
 
-local CUSTOM_TRIGGER_TIP = "Spell cast starts the timer when you cast the entered spell. On-use trinkets, potions and flasks all count - enter the spell the item casts. This is the reliable choice.\n\nAura gained starts it when you gain the entered buff. On retail, the game hides your buffs from addons while you are in combat, so a buff gained mid-fight cannot be seen and the timer will not start. Prefer Spell cast for anything you cast or use."
+local CUSTOM_TRIGGER_TIP = L["Spell cast starts the timer when you cast the entered spell. On-use trinkets, potions and flasks all count - enter the spell the item casts. This is the reliable choice.\n\nAura gained starts it when you gain the entered buff. On retail, the game hides your buffs from addons while you are in combat, so a buff gained mid-fight cannot be seen and the timer will not start. Prefer Spell cast for anything you cast or use."]
 
 
 local function SortedCustomDefs()
@@ -2260,6 +2257,14 @@ local function SortedCustomDefs()
 	for id in pairs(store.defs) do ids[#ids + 1] = id end
 	table.sort(ids)
 	return ids, store
+end
+
+
+-- The placeholder is stored bare because def.name is saved, so a client language switch
+-- must not strip a def of the sentinel that lets a real spell name replace it.
+local function CustomDisplayName(def)
+	if def.name == "New Custom" then return L["New Custom"] end
+	return def.name or L["Custom"]
 end
 
 
@@ -2352,7 +2357,7 @@ end
 
 
 StaticPopupDialogs["COOLDOWNMASTER_DELETE_CUSTOM"] = {
-	text = "Delete this custom cooldown?",
+	text = L["Delete this custom cooldown?"],
 	button1 = YES,
 	button2 = NO,
 	OnAccept = function(_, id) DeleteCustomDef(id); RefreshCustomForm() end,
@@ -2370,13 +2375,13 @@ local function BuildCustomDefBlock(parent, def, y)
 		return widget
 	end
 
-	local head = W.CreateSectionHeader(parent, def.name or "Custom")
+	local head = W.CreateSectionHeader(parent, CustomDisplayName(def))
 	head:SetWidth(parent:GetWidth() - pad * 2)
 	place(head, 18)
 
 	place(W.CreateEditBox(parent, {
-		label = "Name", value = def.name, width = 240, maxLetters = 40, commitOnly = true,
-		tooltip = "Shown on the cooldown's icon tooltip and bar. Left blank, it follows the trigger spell's name.",
+		label = L["Name"], value = def.name, width = 240, maxLetters = 40, commitOnly = true,
+		tooltip = L["Shown on the cooldown's icon tooltip and bar. Left blank, it follows the trigger spell's name."],
 		onChange = function(t)
 			if t == "" then
 				def.name = nil
@@ -2392,18 +2397,18 @@ local function BuildCustomDefBlock(parent, def, y)
 
 	local rowY = y
 	local typeDD = W.CreateDropdown(parent, {
-		label = "Trigger", value = def.triggerType or "spell",
+		label = L["Trigger"], value = def.triggerType or "spell",
 		options = CUSTOM_TRIGGER_TYPE_OPTIONS, width = 120, tooltip = CUSTOM_TRIGGER_TIP,
 		onChange = function(v) def.triggerType = v; RefreshCustomForm() end,
 	})
 	typeDD:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, rowY)
 
 	local idBox = W.CreateEditBox(parent, {
-		label = "Trigger ID", value = def.triggerID and tostring(def.triggerID) or "",
+		label = L["Trigger ID"], value = def.triggerID and tostring(def.triggerID) or "",
 		width = 100, maxLetters = 10, numeric = true, commitOnly = true,
 		tooltip = isAura
-			and "The buff's spell ID (often different from the ability that grants it). Not sure of the ID? Use the Detect button."
-			or "The spell ID you cast that fires this cooldown. For an on-use item, enter the spell the item casts.",
+			and L["The buff's spell ID (often different from the ability that grants it). Not sure of the ID? Use the Detect button."]
+			or L["The spell ID you cast that fires this cooldown. For an on-use item, enter the spell the item casts."],
 		onChange = function(t)
 			def.triggerID = tonumber(t)
 			ResolveCustomDef(def)
@@ -2420,10 +2425,10 @@ local function BuildCustomDefBlock(parent, def, y)
 
 	if isAura and ns.Engine and ns.Engine.ArmAuraCapture then
 		local detect = W.CreateButton(parent, {
-			label = "Detect", width = 90,
-			tooltip = "Click, then gain the buff in-game within 15 seconds - CDM fills in its ID, name, icon and duration.",
+			label = L["Detect"], width = 90,
+			tooltip = L["Click, then gain the buff in-game within 15 seconds - CDM fills in its ID, name, icon and duration."],
 			onClick = function(self2)
-				self2:SetLabel("Gain a buff...")
+				self2:SetLabel(L["Gain a buff..."])
 				ns.Engine:ArmAuraCapture(function(spellID, name, icon, duration)
 					def.triggerID = spellID
 					if icon then def.icon = icon end
@@ -2447,9 +2452,9 @@ local function BuildCustomDefBlock(parent, def, y)
 	y = rowY - 48 - rowGap
 
 	place(W.CreateSlider(parent, {
-		label = "Duration (sec)", min = 1, max = 3600, step = 1,
+		label = L["Duration (sec)"], min = 1, max = 3600, step = 1,
 		value = (def.durationMs or 30000) / 1000, width = 240,
-		tooltip = "How long the timer runs after the trigger fires. Type an exact value in the box below the slider.",
+		tooltip = L["How long the timer runs after the trigger fires. Type an exact value in the box below the slider."],
 		onChange = function(v) def.durationMs = v * 1000 end,
 	}))
 
@@ -2458,7 +2463,7 @@ local function BuildCustomDefBlock(parent, def, y)
 
 	local laneVal = (ov and ov.lane) or 0
 	local laneDD = W.CreateDropdown(parent, {
-		label = "Lane", value = laneVal, options = FILTER_LANE_OPTIONS, width = 84,
+		label = L["Lane"], value = laneVal, options = FILTER_LANE_OPTIONS, width = 84,
 		onChange = function(v)
 			SetSpellOverride(id, "lane", v ~= 0 and v or nil)
 			if ns.Engine then ns.Engine:ReapplyRouting() end
@@ -2469,7 +2474,7 @@ local function BuildCustomDefBlock(parent, def, y)
 	local barVal = ov and ov.bar
 	if barVal == nil then barVal = -1 end
 	local barDD = W.CreateDropdown(parent, {
-		label = "Bar", value = barVal, options = FILTER_BAR_OPTIONS, width = 84,
+		label = L["Bar"], value = barVal, options = FILTER_BAR_OPTIONS, width = 84,
 		onChange = function(v)
 			SetSpellOverride(id, "bar", v ~= -1 and v or nil)
 			if ns.Engine then ns.Engine:ReapplyRouting() end
@@ -2480,14 +2485,14 @@ local function BuildCustomDefBlock(parent, def, y)
 	local rbVal = ov and ov.readyBox
 	if rbVal == nil then rbVal = -1 end
 	local rbDD = W.CreateDropdown(parent, {
-		label = "Ready Box", value = rbVal, options = FILTER_READYBOX_OPTIONS, width = 84,
+		label = L["Ready Box"], value = rbVal, options = FILTER_READYBOX_OPTIONS, width = 84,
 		onChange = function(v) SetSpellOverride(id, "readyBox", v ~= -1 and v or nil) end,
 	})
 	rbDD:SetPoint("TOPLEFT", barDD, "TOPRIGHT", 8, 0)
 
 	local flagVal = ((ov and ov.important) and 1 or 0) + ((ov and ov.pinned) and 2 or 0)
 	local flagDD = W.CreateDropdown(parent, {
-		label = "Flags", value = flagVal, options = FILTER_READYFLAG_OPTIONS, width = 84,
+		label = L["Flags"], value = flagVal, options = FILTER_READYFLAG_OPTIONS, width = 84,
 		onChange = function(v)
 			SetSpellOverride(id, "important", (v % 2 == 1) or nil)
 			SetSpellOverride(id, "pinned", (v >= 2) or nil)
@@ -2498,7 +2503,7 @@ local function BuildCustomDefBlock(parent, def, y)
 
 	local enY = y
 	local en = W.CreateCheckbox(parent, {
-		label = "Enabled", checked = def.enabled ~= false,
+		label = L["Enabled"], checked = def.enabled ~= false,
 		onChange = function(v)
 			def.enabled = v
 			if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
@@ -2508,7 +2513,7 @@ local function BuildCustomDefBlock(parent, def, y)
 	en:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, enY)
 
 	local del = W.CreateButton(parent, {
-		label = "Delete", width = 90, tooltip = "Remove this custom cooldown.",
+		label = L["Delete"], width = 90, tooltip = L["Remove this custom cooldown."],
 		onClick = function() StaticPopup_Show("COOLDOWNMASTER_DELETE_CUSTOM", nil, nil, id) end,
 	})
 	del:SetPoint("TOPLEFT", en, "TOPRIGHT", 60, -1)
@@ -2518,7 +2523,7 @@ local function BuildCustomDefBlock(parent, def, y)
 end
 
 
--- One compact line per custom cooldown: icon, name, an inline on/off toggle, and Edit / delete. Edit opens its full editor below (only one at a time), so a long list of customs no longer stacks a tall editor each.
+-- Only one editor opens at a time, so a long list of customs does not stack a tall editor each.
 local function BuildCustomListRow(parent, def, y, selected)
 	local W = ns.Widgets
 	local pad, rowH = 12, 22
@@ -2531,7 +2536,7 @@ local function BuildCustomListRow(parent, def, y, selected)
 	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
 	local del = W.CreateButton(parent, {
-		label = "X", width = 24, tooltip = "Remove this custom cooldown.",
+		label = "X", width = 24, tooltip = L["Remove this custom cooldown."],
 		onClick = function() StaticPopup_Show("COOLDOWNMASTER_DELETE_CUSTOM", nil, nil, id) end,
 	})
 	del:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -pad, y + 1)
@@ -2548,8 +2553,8 @@ local function BuildCustomListRow(parent, def, y, selected)
 	edit:SetPoint("TOPRIGHT", del, "TOPLEFT", -6, 0)
 
 	local toggle = W.CreateButton(parent, {
-		label = (def.enabled ~= false) and "On" or "Off", width = 42,
-		tooltip = "Toggle this custom cooldown on or off without opening it.",
+		label = (def.enabled ~= false) and L["On"] or L["Off"], width = 42,
+		tooltip = L["Toggle this custom cooldown on or off without opening it."],
 		onClick = function()
 			def.enabled = (def.enabled == false)
 			if ns.Engine and ns.Engine.RebuildCustomTriggers then ns.Engine:RebuildCustomTriggers() end
@@ -2564,7 +2569,7 @@ local function BuildCustomListRow(parent, def, y, selected)
 	name:SetPoint("RIGHT", toggle, "LEFT", -8, 0)
 	name:SetJustifyH("LEFT")
 	name:SetWordWrap(false)
-	name:SetText(def.name or "Custom")
+	name:SetText(CustomDisplayName(def))
 	if selected then
 		name:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
 	elseif def.enabled == false then
@@ -2588,7 +2593,7 @@ local function BuildFiltersCustomForm(parent)
 	end
 
 	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	hint:SetText("Custom cooldowns run a local timer you define - a fixed duration plus a trigger. They never read a live cooldown, so they behave the same in combat.")
+	hint:SetText(L["Custom cooldowns run a local timer you define - a fixed duration plus a trigger. They never read a live cooldown, so they behave the same in combat."])
 	hint:SetTextColor(0.7, 0.7, 0.7)
 	hint:SetWidth(parent:GetWidth() - pad * 2 - 20)
 	hint:SetJustifyH("LEFT")
@@ -2599,7 +2604,7 @@ local function BuildFiltersCustomForm(parent)
 	if #ids == 0 then
 		local none = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		none:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
-		none:SetText("No custom cooldowns yet. Add one below.")
+		none:SetText(L["No custom cooldowns yet. Add one below."])
 		y = y - 20 - rowGap
 	else
 		for _, id in ipairs(ids) do
@@ -2609,8 +2614,8 @@ local function BuildFiltersCustomForm(parent)
 	end
 
 	place(W.CreateButton(parent, {
-		label = "Add Custom Cooldown", width = 200,
-		tooltip = "Create a new custom cooldown - its editor opens below so you can set its trigger and duration.",
+		label = L["Add Custom Cooldown"], width = 200,
+		tooltip = L["Create a new custom cooldown - its editor opens below so you can set its trigger and duration."],
 		onClick = function()
 			filtersState.customSelected = NewCustomDef()
 			filtersState.customScrollToEditor = true
@@ -2631,7 +2636,7 @@ local function BuildFiltersCustomForm(parent)
 	elseif #ids > 0 then
 		local tip = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		tip:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
-		tip:SetText("Select a custom cooldown above to edit it.")
+		tip:SetText(L["Select a custom cooldown above to edit it."])
 		y = y - 20 - rowGap
 	end
 
@@ -2692,7 +2697,7 @@ end
 local function BuildFiltersTab(content)
 	local pad = Theme.PANEL.CONTENT_PAD
 
-	local header = Theme.CreateHeader(content, "Filters", "GameFontNormalLarge")
+	local header = Theme.CreateHeader(content, L["Filters"], "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
 	local rail = CreateFrame("Frame", nil, content)
@@ -2708,7 +2713,7 @@ local function BuildFiltersTab(content)
 	wipe(filtersState.railRows)
 
 	local railEntries = {
-		{ key = "defaults", label = "Defaults" },
+		{ key = "defaults", label = L["Defaults"] },
 	}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
 		railEntries[#railEntries + 1] = def
@@ -2793,12 +2798,18 @@ local CLASS_DISPLAY_NAMES = {
 	WARRIOR = "Warrior",
 }
 
+-- Blizzard localizes this in every client language, so it wins over our English names and the L[] store.
+local function ClassDisplayName(token)
+	local g = LOCALIZED_CLASS_NAMES_MALE
+	return (g and g[token]) or CLASS_DISPLAY_NAMES[token] or token
+end
+
 
 local function BuildColorsTab(content)
 	local W = ns.Widgets
 	local pad = Theme.PANEL.CONTENT_PAD
 
-	local header = Theme.CreateHeader(content, "Class Colors", "GameFontNormalLarge")
+	local header = Theme.CreateHeader(content, L["Class Colors"], "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
 	local tokens = ns.Compat.IS_MOP and CLASS_TOKENS_MOP
@@ -2824,7 +2835,7 @@ local function BuildColorsTab(content)
 		end
 
 		local cp = W.CreateColorPicker(content, {
-			label = CLASS_DISPLAY_NAMES[token] or token,
+			label = ClassDisplayName(token),
 			color = profile.classColors[token],
 			hasAlpha = true,
 			onChange = function(r, g, b, a)
@@ -2886,17 +2897,17 @@ end
 local function ProfileDecode(str)
 	local ser = LibStub("AceSerializer-3.0", true)
 	local def = LibStub("LibDeflate", true)
-	if not (ser and def) then return nil, "serialization libraries unavailable" end
+	if not (ser and def) then return nil, L["serialization libraries unavailable"] end
 	str = (str or ""):gsub("%s", "")
-	if str == "" then return nil, "empty string" end
+	if str == "" then return nil, L["empty string"] end
 	local compressed = def:DecodeForPrint(str)
-	if not compressed then return nil, "not a valid import string" end
+	if not compressed then return nil, L["not a valid import string"] end
 	local payload = def:DecompressDeflate(compressed)
-	if not payload then return nil, "could not decompress" end
+	if not payload then return nil, L["could not decompress"] end
 	local ok, data = ser:Deserialize(payload)
-	if not ok or type(data) ~= "table" then return nil, "could not read profile data" end
+	if not ok or type(data) ~= "table" then return nil, L["could not read profile data"] end
 	if data.addon ~= ns.CONST.ADDON_NAME or type(data.profile) ~= "table" then
-		return nil, "not a Cooldown Master profile string"
+		return nil, L["not a Cooldown Master profile string"]
 	end
 	return data.profile
 end
@@ -2928,7 +2939,7 @@ end
 
 
 StaticPopupDialogs["COOLDOWNMASTER_RESET_PROFILE"] = {
-	text = "Reset profile \"%s\" to default settings?",
+	text = L["Reset profile \"%s\" to default settings?"],
 	button1 = YES,
 	button2 = NO,
 	OnAccept = function()
@@ -2939,7 +2950,7 @@ StaticPopupDialogs["COOLDOWNMASTER_RESET_PROFILE"] = {
 }
 
 StaticPopupDialogs["COOLDOWNMASTER_DELETE_PROFILE"] = {
-	text = "Delete profile \"%s\"? This cannot be undone.",
+	text = L["Delete profile \"%s\"? This cannot be undone."],
 	button1 = YES,
 	button2 = NO,
 	OnAccept = function(self, data)
@@ -2961,8 +2972,8 @@ local function PopupEditBox(popup)
 end
 
 StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
-	text = "Paste an exported string to overwrite the current profile \"%s\".",
-	button1 = "Import",
+	text = L["Paste an exported string to overwrite the current profile \"%s\"."],
+	button1 = L["Import"],
 	button2 = CANCEL,
 	hasEditBox = true,
 	editBoxWidth = 350,
@@ -2977,11 +2988,11 @@ StaticPopupDialogs["COOLDOWNMASTER_IMPORT_PROFILE"] = {
 		local eb = PopupEditBox(self)
 		local prof, err = ProfileDecode(eb and eb:GetText())
 		if not prof then
-			ns.CDM:Print("Import failed: " .. (err or "invalid string"))
+			ns.CDM:Print(string.format(L["Import failed: %s"], err or L["invalid string"]))
 			return
 		end
 		ApplyImportedProfile(prof)
-		ns.CDM:Print("Imported into profile \"" .. ns.CDM.db:GetCurrentProfile() .. "\".")
+		ns.CDM:Print(string.format(L["Imported into profile \"%s\"."], ns.CDM.db:GetCurrentProfile()))
 	end,
 	EditBoxOnEnterPressed = function(self) self:ClearFocus() end,
 	-- By name, not self:GetParent():Hide() - that assumes the box is a direct child of the popup.
@@ -2996,14 +3007,14 @@ local function BuildProfilesTab(content)
 	local W   = ns.Widgets
 	local pad = Theme.PANEL.CONTENT_PAD
 
-	local header = Theme.CreateHeader(content, "Profiles", "GameFontNormalLarge")
+	local header = Theme.CreateHeader(content, L["Profiles"], "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
 	local current = db:GetCurrentProfile()
 
 	local curLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	curLabel:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -(pad + 26))
-	curLabel:SetText("Current profile: |cffEBB706" .. current .. "|r")
+	curLabel:SetText(string.format(L["Current profile: |cffEBB706%s|r"], current))
 	curLabel:SetTextColor(1, 1, 1)
 
 	local allOpts, otherOpts = {}, {}
@@ -3022,7 +3033,7 @@ local function BuildProfilesTab(content)
 	local y    = -(pad + 58)
 
 	local switchDD = W.CreateDropdown(content, {
-		label = "Active profile", value = current, width = ddW, options = allOpts,
+		label = L["Active profile"], value = current, width = ddW, options = allOpts,
 		onChange = function(v)
 			if v and v ~= db:GetCurrentProfile() then db:SetProfile(v) end
 		end,
@@ -3032,43 +3043,43 @@ local function BuildProfilesTab(content)
 
 	local newName = ""
 	local newBox = W.CreateEditBox(content, {
-		label = "New profile name", width = ddW, maxLetters = 32,
+		label = L["New profile name"], width = ddW, maxLetters = 32,
 		onChange = function(t) newName = t end,
 	})
 	newBox:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
-	local createBtn = Theme.CreateButton(content, "Create", 90, 24)
+	local createBtn = Theme.CreateButton(content, L["Create"], 90, 24)
 	createBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
 	createBtn:SetScript("OnClick", function()
 		local name = (newName or ""):trim()
 		if name == "" then
-			ns.CDM:Print("Enter a profile name first.")
+			ns.CDM:Print(L["Enter a profile name first."])
 			return
 		end
 		if name == db:GetCurrentProfile() then
-			ns.CDM:Print("Already on profile: " .. name)
+			ns.CDM:Print(string.format(L["Already on profile: %s"], name))
 			return
 		end
 		for _, existing in ipairs(db:GetProfiles()) do
 			if existing == name then
-				ns.CDM:Print("Profile already exists: " .. name .. " (switch with Active profile, or pick a new name).")
+				ns.CDM:Print(string.format(L["Profile already exists: %s (switch with Active profile, or pick a new name)."], name))
 				return
 			end
 		end
 		db:SetProfile(name)   -- creates the new profile and switches to it
 		newName = ""
 		newBox:SetValue("")
-		ns.CDM:Print("Created and switched to profile: " .. name)
+		ns.CDM:Print(string.format(L["Created and switched to profile: %s"], name))
 	end)
 	y = y - step
 
 	if #otherOpts > 0 then
 		local copyTarget = otherOpts[1].value
 		local copyDD = W.CreateDropdown(content, {
-			label = "Copy settings from", value = copyTarget, width = ddW, options = otherOpts,
+			label = L["Copy settings from"], value = copyTarget, width = ddW, options = otherOpts,
 			onChange = function(v) copyTarget = v end,
 		})
 		copyDD:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
-		local copyBtn = Theme.CreateButton(content, "Copy", 90, 24)
+		local copyBtn = Theme.CreateButton(content, L["Copy"], 90, 24)
 		copyBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
 		copyBtn:SetScript("OnClick", function()
 			if copyTarget and copyTarget ~= db:GetCurrentProfile() then
@@ -3079,11 +3090,11 @@ local function BuildProfilesTab(content)
 
 		local delTarget = otherOpts[1].value
 		local delDD = W.CreateDropdown(content, {
-			label = "Delete profile", value = delTarget, width = ddW, options = otherOpts,
+			label = L["Delete profile"], value = delTarget, width = ddW, options = otherOpts,
 			onChange = function(v) delTarget = v end,
 		})
 		delDD:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y)
-		local delBtn = Theme.CreateButton(content, "Delete", 90, 24)
+		local delBtn = Theme.CreateButton(content, L["Delete"], 90, 24)
 		delBtn:SetPoint("TOPLEFT", content, "TOPLEFT", btnX, y - 16)
 		delBtn:SetScript("OnClick", function()
 			if delTarget and delTarget ~= db:GetCurrentProfile() then
@@ -3094,44 +3105,42 @@ local function BuildProfilesTab(content)
 	else
 		local hint = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		hint:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y - 4)
-		hint:SetText("Create another profile to enable Copy and Delete.")
+		hint:SetText(L["Create another profile to enable Copy and Delete."])
 		y = y - step
 	end
 
-	local resetBtn = Theme.CreateButton(content, "Reset current profile to defaults", 280, 28)
+	local resetBtn = Theme.CreateButton(content, L["Reset current profile to defaults"], 280, 28)
 	resetBtn:SetPoint("TOPLEFT", content, "TOPLEFT", pad, y - 8)
 	resetBtn:SetScript("OnClick", function()
 		StaticPopup_Show("COOLDOWNMASTER_RESET_PROFILE", db:GetCurrentProfile())
 	end)
 
-	local exportBtn = Theme.CreateButton(content, "Export", 130, 24)
+	local exportBtn = Theme.CreateButton(content, L["Export"], 130, 24)
 	exportBtn:SetPoint("TOPLEFT", resetBtn, "BOTTOMLEFT", 0, -12)
 	exportBtn:SetScript("OnClick", function()
 		local s = ProfileExportString()
 		if s and ns.ShowURL then ns.ShowURL(s) else ns.CDM:Print("Export failed.") end
 	end)
-	local importBtn = Theme.CreateButton(content, "Import", 130, 24)
+	local importBtn = Theme.CreateButton(content, L["Import"], 130, 24)
 	importBtn:SetPoint("TOPLEFT", exportBtn, "TOPRIGHT", 16, 0)
 	importBtn:SetScript("OnClick", function()
 		StaticPopup_Show("COOLDOWNMASTER_IMPORT_PROFILE", db:GetCurrentProfile())
 	end)
 
-	-- Second column (the panel is wide): per-spec auto-switch. Spec-capable flavors
-	-- only (retail + MoP); the map lives in db.char (per character), so the dropdowns
-	-- read CDM.db.char. Gate on GetSpecInfo(1) as a guard so a flavor that reports a
-	-- spec count but can't resolve per-index info self-hides instead of erroring.
+	-- Gate on GetSpecInfo(1) so a flavor that reports a spec count but cannot resolve
+	-- per-index info self-hides instead of erroring.
 	local numSpecs = ns.Compat.GetNumSpecs()
 	if numSpecs and numSpecs > 0 and ns.Compat.GetSpecInfo(1) then
 		local rx = 470
-		local specHeader = Theme.CreateHeader(content, "Auto-switch by Specialization", "GameFontNormalLarge")
+		local specHeader = Theme.CreateHeader(content, L["Auto-switch by Specialization"], "GameFontNormalLarge")
 		specHeader:SetPoint("TOPLEFT", content, "TOPLEFT", rx, -pad)
 
 		local specHint = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		specHint:SetPoint("TOPLEFT", content, "TOPLEFT", rx, -(pad + 24))
-		specHint:SetText("Switch profile automatically when you change spec.")
+		specHint:SetText(L["Switch profile automatically when you change spec."])
 		specHint:SetTextColor(0.7, 0.7, 0.7)
 
-		local specOpts = { { value = "", text = "(no auto-switch)" } }
+		local specOpts = { { value = "", text = L["(no auto-switch)"] } }
 		for _, name in ipairs(names) do
 			specOpts[#specOpts + 1] = { value = name, text = name }
 		end
@@ -3200,13 +3209,13 @@ local ABOUT_BUG_URL      = "https://github.com/wheelbarrel00/CooldownMaster/issu
 local ABOUT_RELEASES_URL = "https://github.com/wheelbarrel00/CooldownMaster/releases"
 
 local ABOUT_COMMANDS = {
-	{ cmd = "/cm",         desc = "Open or close the options window (or /cdmaster)" },
-	{ cmd = "/cm lock",    desc = "Lock the lane frames" },
-	{ cmd = "/cm unlock",  desc = "Unlock the lane frames for moving" },
-	{ cmd = "/cm test",    desc = "Toggle sample cooldowns (set them up in Global > Test Mode)" },
-	{ cmd = "/cm reset",   desc = "Reset the current profile to defaults" },
-	{ cmd = "/cm version", desc = "Print the version and game flavor" },
-	{ cmd = "/cm whatsnew", desc = "Reopen the What's New window" },
+	{ cmd = "/cm",         desc = L["Open or close the options window (or /cdmaster)"] },
+	{ cmd = "/cm lock",    desc = L["Lock the lane frames"] },
+	{ cmd = "/cm unlock",  desc = L["Unlock the lane frames for moving"] },
+	{ cmd = "/cm test",    desc = L["Toggle sample cooldowns (set them up in Global > Test Mode)"] },
+	{ cmd = "/cm reset",   desc = L["Reset the current profile to defaults"] },
+	{ cmd = "/cm version", desc = L["Print the version and game flavor"] },
+	{ cmd = "/cm whatsnew", desc = L["Reopen the What's New window"] },
 }
 
 local ABOUT_OTHER_ADDONS = {
@@ -3316,24 +3325,24 @@ local function BuildAboutTab(content)
 	local sub = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	sub:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
 	sub:SetText(ABOUT_GOLD .. "v" .. ver .. ABOUT_CLOSE
-		.. ABOUT_MUTED .. "    by Wheelbarrel00"
+		.. ABOUT_MUTED .. "    " .. string.format(L["by %s"], "Wheelbarrel00")
 		.. "    -    " .. ns.Compat.FlavorLabel() .. ABOUT_CLOSE)
 	Y = Y - 22
 
 	-- Only retail has a built-in Cooldown Manager to complement.
 	body(ABOUT_WHITE .. (ns.Compat.HAS_BLIZZ_CDM
-		and "A timeline-style lane cooldown tracker that complements Blizzard's built-in Cooldown Manager."
-		or "A timeline-style lane cooldown tracker for your spells, items, and buffs.") .. ABOUT_CLOSE)
+		and L["A timeline-style lane cooldown tracker that complements Blizzard's built-in Cooldown Manager."]
+		or L["A timeline-style lane cooldown tracker for your spells, items, and buffs."]) .. ABOUT_CLOSE)
 	gap(10)
 
 	linkRow({
-		{ label = "Join our Discord", onClick = function() ns.ShowURL(ns.DISCORD_URL) end },
-		{ label = "GitHub",           onClick = function() ns.ShowURL(ABOUT_GITHUB_URL) end },
-		{ label = "Report a Bug",     onClick = function() ns.ShowURL(ABOUT_BUG_URL) end },
+		{ label = L["Join our Discord"], onClick = function() ns.ShowURL(ns.DISCORD_URL) end },
+		{ label = L["GitHub"],           onClick = function() ns.ShowURL(ABOUT_GITHUB_URL) end },
+		{ label = L["Report a Bug"],     onClick = function() ns.ShowURL(ABOUT_BUG_URL) end },
 	})
 	gap(8)
 
-	header("Commands")
+	header(L["Commands"])
 	for _, c in ipairs(ABOUT_COMMANDS) do
 		local cmd = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		cmd:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
@@ -3344,14 +3353,14 @@ local function BuildAboutTab(content)
 		Y = Y - 18
 	end
 	gap(2)
-	body(ABOUT_MUTED .. "Tip: left-click the minimap button to open Options, right-click to lock or unlock frames." .. ABOUT_CLOSE, 0, 11)
+	body(ABOUT_MUTED .. L["Tip: left-click the minimap button to open Options, right-click to lock or unlock frames."] .. ABOUT_CLOSE, 0, 11)
 	gap(10)
 
-	header("Tutorials")
-	body(ABOUT_MUTED .. "Video tutorials are coming soon." .. ABOUT_CLOSE)
+	header(L["Tutorials"])
+	body(ABOUT_MUTED .. L["Video tutorials are coming soon."] .. ABOUT_CLOSE)
 	gap(10)
 
-	header("More Add-ons by Wheelbarrel00")
+	header(L["More Add-ons by Wheelbarrel00"])
 	for _, a in ipairs(ABOUT_OTHER_ADDONS) do
 		local n = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		n:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
@@ -3361,25 +3370,23 @@ local function BuildAboutTab(content)
 		local sep = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		sep:SetText(ABOUT_MUTED .. "  |  " .. ABOUT_CLOSE)
 		sep:SetPoint("LEFT", cfLink, "RIGHT", 2, 0)
-		local ghLink = makeLink("GitHub", function() ns.ShowURL(a.gh) end)
+		local ghLink = makeLink(L["GitHub"], function() ns.ShowURL(a.gh) end)
 		ghLink:SetPoint("LEFT", sep, "RIGHT", 2, 0)
 		Y = Y - 20
 	end
 	gap(10)
 
-	header("Credits")
-	body(ABOUT_WHITE .. "Cooldown Master carries forward the idea behind " .. ABOUT_CLOSE
-		.. ABOUT_GOLD .. "CooldownTimeline2 (CDTL2)" .. ABOUT_CLOSE
-		.. ABOUT_WHITE .. " by " .. ABOUT_CLOSE
-		.. ABOUT_GOLD .. "cliffclive" .. ABOUT_CLOSE
-		.. ABOUT_WHITE .. " - the timeline-cooldown addon that inspired this one. After Midnight changed how cooldowns work, I rebuilt the concept from the ground up for 12.0 with his blessing. Full credit for the original timeline-cooldown idea goes to him. Thank you, cliffclive." .. ABOUT_CLOSE)
+	header(L["Credits"])
+	body(ABOUT_WHITE .. string.format(
+		L["Cooldown Master carries forward the idea behind |cffEBB706%1$s|r by |cffEBB706%2$s|r - the timeline-cooldown addon that inspired this one. After Midnight changed how cooldowns work, I rebuilt the concept from the ground up for 12.0 with his blessing. Full credit for the original timeline-cooldown idea goes to him. Thank you, cliffclive."],
+		"CooldownTimeline2 (CDTL2)", "cliffclive") .. ABOUT_CLOSE)
 	gap(10)
 
-	header("Thanks")
-	body(ABOUT_WHITE .. "Built with feedback, reports, and ideas from the community. Thank you!" .. ABOUT_CLOSE)
+	header(L["Thanks"])
+	body(ABOUT_WHITE .. L["Built with feedback, reports, and ideas from the community. Thank you!"] .. ABOUT_CLOSE)
 	gap(10)
 
-	header("Changelog")
+	header(L["Changelog"])
 	for _, entry in ipairs(ns.Changelog or {}) do
 		local vh = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		vh:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
@@ -3402,7 +3409,7 @@ local function BuildAboutTab(content)
 		gap(8)
 	end
 
-	local older = makeLink("Older versions are on GitHub", function() ns.ShowURL(ABOUT_RELEASES_URL) end)
+	local older = makeLink(L["Older versions are on GitHub"], function() ns.ShowURL(ABOUT_RELEASES_URL) end)
 	older:SetPoint("TOPLEFT", sc, "TOPLEFT", LEFT, Y)
 	Y = Y - 28
 
@@ -3416,20 +3423,20 @@ end
 
 
 local READY_SECTION_LIST = {
-	{ id = "general",    label = "General"    },
-	{ id = "appearance", label = "Appearance" },
-	{ id = "icons",      label = "Icons"      },
-	{ id = "text",       label = "Text"       },
-	{ id = "highlight",  label = "Highlight"  },
+	{ id = "general",    label = L["General"]    },
+	{ id = "appearance", label = L["Appearance"] },
+	{ id = "icons",      label = L["Icons"]      },
+	{ id = "text",       label = L["Text"]       },
+	{ id = "highlight",  label = L["Highlight"]  },
 }
 
 local READY_GROW_OPTIONS = {
-	{ value = "DOWN",     text = "Down"                },
-	{ value = "UP",       text = "Up"                  },
-	{ value = "RIGHT",    text = "Right"               },
-	{ value = "LEFT",     text = "Left"                },
-	{ value = "CENTER_V", text = "Center (vertical)"   },
-	{ value = "CENTER_H", text = "Center (horizontal)" },
+	{ value = "DOWN",     text = L["Down"]                },
+	{ value = "UP",       text = L["Up"]                  },
+	{ value = "RIGHT",    text = L["Right"]               },
+	{ value = "LEFT",     text = L["Left"]                },
+	{ value = "CENTER_V", text = L["Center (vertical)"]   },
+	{ value = "CENTER_H", text = L["Center (horizontal)"] },
 }
 
 local READY_HL_STYLE_OPTIONS = HL_STYLE_OPTIONS
@@ -3449,7 +3456,7 @@ local function ReadyApply(i)
 end
 
 local function ReadySoundOptions()
-	local opts = { { value = "None", text = "None" } }
+	local opts = { { value = "None", text = L["None"] } }
 	for _, s in ipairs(ns.READY_BUILTIN_SOUNDS or {}) do
 		opts[#opts + 1] = { value = s.name, text = s.name }
 	end
@@ -3477,44 +3484,44 @@ local function BuildReadyGeneralForm(parent, i)
 	end
 
 	place(W.CreateEditBox(parent, {
-		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		label = L["Frame Name"], value = cfg.frameName, width = 240, maxLetters = 32,
 		onChange = function(t) cfg.frameName = t; ReadyApply(i) end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Enabled", checked = cfg.enabled,
+		label = L["Enabled"], checked = cfg.enabled,
 		onChange = function(v)
 			cfg.enabled = v
 			if ns.ReadyFrames_RebuildOne then ns.ReadyFrames_RebuildOne(i) end
 		end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Grow Direction", value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
+		label = L["Grow Direction"], value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
 		onChange = function(v) cfg.growDirection = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Display Duration (sec)", min = 1, max = 20, step = 1, value = cfg.normalDuration, width = 240,
+		label = L["Display Duration (sec)"], min = 1, max = 20, step = 1, value = cfg.normalDuration, width = 240,
 		onChange = function(v) cfg.normalDuration = v end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Post-Combat Hide (sec, 0 = off)", min = 0, max = 30, step = 1, value = cfg.pTime or 0, width = 240,
+		label = L["Post-Combat Hide (sec, 0 = off)"], min = 0, max = 30, step = 1, value = cfg.pTime or 0, width = 240,
 		onChange = function(v) cfg.pTime = v end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Max Ready Icons", min = 1, max = 10, step = 1, value = cfg.maxIcons or 10, width = 240,
+		label = L["Max Ready Icons"], min = 1, max = 10, step = 1, value = cfg.maxIcons or 10, width = 240,
 		onChange = function(v) cfg.maxIcons = v end,
 	}))
 	local sndDD = place(W.CreateDropdown(parent, {
-		label = "Ready Sound", value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
+		label = L["Ready Sound"], value = cfg.normalSound or "None", options = ReadySoundOptions(), width = 240,
 		onChange = function(v) cfg.normalSound = v end,
 	}))
-	local sndPlay = Theme.CreateButton(parent, "Play", 46, 22)
+	local sndPlay = Theme.CreateButton(parent, L["Play"], 46, 22)
 	sndPlay:SetPoint("TOPLEFT", sndDD, "TOPRIGHT", 6, -18)
 	sndPlay:SetScript("OnClick", function()
 		if ns.ReadyFrames_PreviewSound then ns.ReadyFrames_PreviewSound(cfg.normalSound) end
 	end)
 
 	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	hint:SetText("Tip: enable Unlock Frames on the Global tab, then drag this box into position.")
+	hint:SetText(L["Tip: enable Unlock Frames on the Global tab, then drag this box into position."])
 	place(hint, 16)
 
 	parent:SetHeight(math.abs(y) + pad)
@@ -3533,56 +3540,56 @@ local function BuildReadyAppearanceForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
+		label = L["X Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
+		label = L["Y Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; ReadyApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
-		tooltip = "Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from.",
+		label = L["Anchor"], value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		tooltip = L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."],
 		onChange = function(v) cfg.anchor = v; ReadyApply(i) end,
 	}))
 
-	local secBG = W.CreateSectionHeader(parent, "Background")
+	local secBG = W.CreateSectionHeader(parent, L["Background"])
 	secBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBG, 18)
 
 	place(W.CreateColorPicker(parent, {
-		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		label = L["Background Color"], color = cfg.bgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
 			ReadyApply(i)
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Box Alpha", min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
+		label = L["Box Alpha"], min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
 		onChange = function(v) cfg.alpha = v; ReadyApply(i) end,
 	}))
 
-	local secBorder = W.CreateSectionHeader(parent, "Border")
+	local secBorder = W.CreateSectionHeader(parent, L["Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		label = L["Show Border"], checked = cfg.borderEnabled ~= false,
 		onChange = function(v) cfg.borderEnabled = v; ReadyApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		label = L["Border Color"], color = cfg.borderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
 			ReadyApply(i)
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Padding", min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
+		label = L["Border Padding"], min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
 		onChange = function(v) cfg.borderPadding = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Size", min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
+		label = L["Border Size"], min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
 		onChange = function(v) cfg.borderSize = v; ReadyApply(i) end,
 	}))
 
@@ -3602,41 +3609,41 @@ local function BuildReadyIconsForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "Size", min = 1, max = 128, step = 1, value = cfg.iconSize, width = 240,
+		label = L["Size"], min = 1, max = 128, step = 1, value = cfg.iconSize, width = 240,
 		onChange = function(v) cfg.iconSize = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Transparency", min = 0, max = 1, step = 0.05, value = cfg.iconAlpha, width = 240,
+		label = L["Transparency"], min = 0, max = 1, step = 0.05, value = cfg.iconAlpha, width = 240,
 		onChange = function(v) cfg.iconAlpha = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Offset", min = -30, max = 30, step = 1, value = cfg.iconOffset, width = 240,
+		label = L["Offset"], min = -30, max = 30, step = 1, value = cfg.iconOffset, width = 240,
 		onChange = function(v) cfg.iconOffset = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Spacing", min = 0, max = 40, step = 1, value = cfg.yPadding, width = 240,
+		label = L["Spacing"], min = 0, max = 40, step = 1, value = cfg.yPadding, width = 240,
 		onChange = function(v) cfg.yPadding = v; ReadyApply(i) end,
 	}))
 
-	local secBorder = W.CreateSectionHeader(parent, "Icon Border")
+	local secBorder = W.CreateSectionHeader(parent, L["Icon Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Icon Border",
+		label = L["Show Icon Border"],
 		checked = cfg.iconBorder,
-		tooltip = "Draw a clean solid border around each ready icon in this box. Set per box. On by default.",
+		tooltip = L["Draw a clean solid border around each ready icon in this box. Set per box. On by default."],
 		onChange = function(v) cfg.iconBorder = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Size", min = 1, max = 6, step = 1, value = cfg.iconBorderSize or 1, width = 240,
+		label = L["Border Size"], min = 1, max = 6, step = 1, value = cfg.iconBorderSize or 1, width = 240,
 		onChange = function(v) cfg.iconBorderSize = v; ReadyApply(i) end,
 	}))
 	if type(cfg.iconBorderColor) ~= "table" then
 		cfg.iconBorderColor = { r = 0, g = 0, b = 0, a = 1 }
 	end
 	place(W.CreateColorPicker(parent, {
-		label = "Border Color", color = cfg.iconBorderColor, hasAlpha = true,
+		label = L["Border Color"], color = cfg.iconBorderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconBorderColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -3644,46 +3651,46 @@ local function BuildReadyIconsForm(parent, i)
 		end,
 	}))
 
-	local secLbl = W.CreateSectionHeader(parent, "Icon Label")
+	local secLbl = W.CreateSectionHeader(parent, L["Icon Label"])
 	secLbl:SetWidth(parent:GetWidth() - pad * 2)
 	place(secLbl, 18)
 
 	cfg.iconLabel = cfg.iconLabel or { enabled = false, text = "[cd.name]", anchor = "CENTER" }
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Label",
+		label = L["Show Label"],
 		checked = cfg.iconLabel.enabled,
-		tooltip = "Draw a line of text on each ready icon in this box, built from the tags in Label Text below. Off by default - a ready icon is otherwise just art, so this is how you name what came up.",
+		tooltip = L["Draw a line of text on each ready icon in this box, built from the tags in Label Text below. Off by default - a ready icon is otherwise just art, so this is how you name what came up."],
 		onChange = function(v) cfg.iconLabel.enabled = v; ReadyApply(i) end,
 	}))
 
-	BuildTagTextRow(parent, place, cfg.iconLabel, function() ReadyApply(i) end, "Label Text", ns.TAG_PICKER_READY)
+	BuildTagTextRow(parent, place, cfg.iconLabel, function() ReadyApply(i) end, L["Label Text"], ns.TAG_PICKER_READY)
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Position", value = cfg.iconLabel.anchor or "CENTER",
+		label = L["Label Position"], value = cfg.iconLabel.anchor or "CENTER",
 		options = ICON_LABEL_ANCHOR_OPTIONS, width = 240,
-		tooltip = "Where the label sits on the icon. On icon draws it over the art.",
+		tooltip = L["Where the label sits on the icon. On icon draws it over the art."],
 		onChange = function(v) cfg.iconLabel.anchor = v; ReadyApply(i) end,
 	}))
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Font", value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
+		label = L["Label Font"], value = cfg.iconLabelFont, options = BuildFontOptions(), width = 240,
 		onChange = function(v) cfg.iconLabelFont = v; ReadyApply(i) end,
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = "Label Size", min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
+		label = L["Label Size"], min = 6, max = 32, step = 1, value = cfg.iconLabelSize or 10, width = 240,
 		onChange = function(v) cfg.iconLabelSize = v; ReadyApply(i) end,
 	}))
 
 	place(W.CreateDropdown(parent, {
-		label = "Label Outline", value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Label Outline"], value = cfg.iconLabelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.iconLabelFlags = v; ReadyApply(i) end,
 	}))
 
 	cfg.iconLabelColor = cfg.iconLabelColor or { r = 1, g = 1, b = 1, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Label Color", color = cfg.iconLabelColor, hasAlpha = true,
+		label = L["Label Color"], color = cfg.iconLabelColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.iconLabelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -3706,26 +3713,26 @@ local function BuildReadyTextForm(parent, i)
 		return widget
 	end
 
-	local secLabel = W.CreateSectionHeader(parent, "Name Tag Font")
+	local secLabel = W.CreateSectionHeader(parent, L["Name Tag Font"])
 	secLabel:SetWidth(parent:GetWidth() - pad * 2)
 	place(secLabel, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
-		tooltip = "Font for this box's name tag (shown above the box while frames are unlocked).",
+		label = L["Font"], value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = L["Font for this box's name tag (shown above the box while frames are unlocked)."],
 		onChange = function(v) cfg.labelFont = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
 		onChange = function(v) cfg.labelSize = v; ReadyApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
+		label = L["Font Outline"], value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 240,
 		onChange = function(v) cfg.labelFlags = v; ReadyApply(i) end,
 	}))
 	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		label = L["Font Color"], color = cfg.labelColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.labelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -3753,31 +3760,31 @@ local function BuildReadyHighlightForm(parent, i)
 	end
 
 	local intro = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	intro:SetText("Applies to spells flagged Important in the Filters tab. Important spells use the hold and sound below instead of the normal ones.")
+	intro:SetText(L["Applies to spells flagged Important in the Filters tab. Important spells use the hold and sound below instead of the normal ones."])
 	intro:SetTextColor(0.7, 0.7, 0.7)
 	intro:SetWidth(parent:GetWidth() - pad * 2 - 20)
 	intro:SetJustifyH("LEFT")
 	place(intro, 32)
 
 	place(W.CreateDropdown(parent, {
-		label = "Highlight Style", value = cfg.highlight.style or "BORDER", options = READY_HL_STYLE_OPTIONS, width = 200,
+		label = L["Highlight Style"], value = cfg.highlight.style or "BORDER", options = READY_HL_STYLE_OPTIONS, width = 200,
 		onChange = function(v) cfg.highlight.style = v end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		label = L["Highlight Color"], color = cfg.highlight.color, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.highlight.color.r, cfg.highlight.color.g, cfg.highlight.color.b, cfg.highlight.color.a = r, g, b, a
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Highlight Duration (sec)", min = 1, max = 30, step = 1, value = cfg.highlightDuration or 10, width = 240,
+		label = L["Highlight Duration (sec)"], min = 1, max = 30, step = 1, value = cfg.highlightDuration or 10, width = 240,
 		onChange = function(v) cfg.highlightDuration = v end,
 	}))
 	local hsDD = place(W.CreateDropdown(parent, {
-		label = "Highlight Sound", value = cfg.highlightSound or "None", options = ReadySoundOptions(), width = 240,
+		label = L["Highlight Sound"], value = cfg.highlightSound or "None", options = ReadySoundOptions(), width = 240,
 		onChange = function(v) cfg.highlightSound = v end,
 	}))
-	local hsPlay = Theme.CreateButton(parent, "Play", 46, 22)
+	local hsPlay = Theme.CreateButton(parent, L["Play"], 46, 22)
 	hsPlay:SetPoint("TOPLEFT", hsDD, "TOPRIGHT", 6, -18)
 	hsPlay:SetScript("OnClick", function()
 		if ns.ReadyFrames_PreviewSound then ns.ReadyFrames_PreviewSound(cfg.highlightSound) end
@@ -3854,7 +3861,7 @@ local function BuildReadyTab(content)
 	wipe(readyState.formFrames)
 	local x = 0
 	for i = 1, 3 do
-		local b = Theme.CreateTab(subBar, "Box " .. i, 90)
+		local b = Theme.CreateTab(subBar, string.format(L["Box %d"], i), 90)
 		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
 		readyState.subTabBtns[i] = b
 		x = x + 90 + Theme.PANEL.TAB_GAP
@@ -3923,19 +3930,19 @@ end
 
 
 local BARS_SECTION_LIST = {
-	{ id = "general",    label = "General"    },
-	{ id = "appearance", label = "Appearance" },
-	{ id = "bar",        label = "Bar"        },
+	{ id = "general",    label = L["General"]    },
+	{ id = "appearance", label = L["Appearance"] },
+	{ id = "bar",        label = L["Bar"]        },
 }
 
 local BAR_SORT_OPTIONS = {
-	{ value = "DESCENDING", text = "Longest first"  },
-	{ value = "ASCENDING",  text = "Shortest first" },
+	{ value = "DESCENDING", text = L["Longest first"]  },
+	{ value = "ASCENDING",  text = L["Shortest first"] },
 }
 
 local BAR_ICON_POS_OPTIONS = {
-	{ value = "LEFT",  text = "Left"  },
-	{ value = "RIGHT", text = "Right" },
+	{ value = "LEFT",  text = L["Left"]  },
+	{ value = "RIGHT", text = L["Right"] },
 }
 
 local barsState = {
@@ -3981,43 +3988,43 @@ local function BuildBarGeneralForm(parent, i)
 	end
 
 	place(W.CreateEditBox(parent, {
-		label = "Frame Name", value = cfg.frameName, width = 240, maxLetters = 32,
+		label = L["Frame Name"], value = cfg.frameName, width = 240, maxLetters = 32,
 		onChange = function(t) cfg.frameName = t; BarApply(i) end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Enabled", checked = cfg.enabled,
+		label = L["Enabled"], checked = cfg.enabled,
 		onChange = function(v)
 			cfg.enabled = v
 			if ns.Bars_RebuildOne then ns.Bars_RebuildOne(i) end
 		end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Grow Direction", value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
-		tooltip = "Direction the bars stack as more cooldowns become active.",
+		label = L["Grow Direction"], value = cfg.growDirection, options = READY_GROW_OPTIONS, width = 200,
+		tooltip = L["Direction the bars stack as more cooldowns become active."],
 		onChange = function(v) cfg.growDirection = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Sort Order", value = cfg.sortDir or "DESCENDING", options = BAR_SORT_OPTIONS, width = 200,
-		tooltip = "Longest first puts the cooldown with the most time left at the start of the grow direction.",
+		label = L["Sort Order"], value = cfg.sortDir or "DESCENDING", options = BAR_SORT_OPTIONS, width = 200,
+		tooltip = L["Longest first puts the cooldown with the most time left at the start of the grow direction."],
 		onChange = function(v) cfg.sortDir = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Max Bars", min = 1, max = 20, step = 1, value = cfg.maxBars or 10, width = 240,
-		tooltip = "Cap on how many bars this frame shows at once.",
+		label = L["Max Bars"], min = 1, max = 20, step = 1, value = cfg.maxBars or 10, width = 240,
+		tooltip = L["Cap on how many bars this frame shows at once."],
 		onChange = function(v) cfg.maxBars = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Spacing", min = 0, max = 40, step = 1, value = cfg.spacing or 0, width = 240,
-		tooltip = "Gap, in pixels, between stacked bars.",
+		label = L["Spacing"], min = 0, max = 40, step = 1, value = cfg.spacing or 0, width = 240,
+		tooltip = L["Gap, in pixels, between stacked bars."],
 		onChange = function(v) cfg.spacing = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Frame Padding", min = 0, max = 40, step = 1, value = cfg.padding or 0, width = 240,
+		label = L["Frame Padding"], min = 0, max = 40, step = 1, value = cfg.padding or 0, width = 240,
 		onChange = function(v) cfg.padding = v; BarApply(i) end,
 	}))
 
 	local hint = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	hint:SetText("Tip: turn on Unlock Frames (Global tab) to drag this frame, and Test (Global tab) to preview bars.")
+	hint:SetText(L["Tip: turn on Unlock Frames (Global tab) to drag this frame, and Test (Global tab) to preview bars."])
 	hint:SetWidth(parent:GetWidth() - pad * 2 - 20)
 	hint:SetJustifyH("LEFT")
 	place(hint, 28)
@@ -4038,56 +4045,56 @@ local function BuildBarAppearanceForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "X Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
+		label = L["X Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.x, width = 240,
 		onChange = function(v) cfg.x = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Y Offset", min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
+		label = L["Y Offset"], min = -OffsetLimit(), max = OffsetLimit(), step = 1, value = cfg.y, width = 240,
 		onChange = function(v) cfg.y = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Anchor", value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
-		tooltip = "Screen point the frame is pinned to, then nudged by the X and Y offsets above.",
+		label = L["Anchor"], value = cfg.anchor, options = ANCHOR_OPTIONS, width = 200,
+		tooltip = L["Screen point the frame is pinned to, then nudged by the X and Y offsets above."],
 		onChange = function(v) cfg.anchor = v; BarApply(i) end,
 	}))
 
-	local secBG = W.CreateSectionHeader(parent, "Background")
+	local secBG = W.CreateSectionHeader(parent, L["Background"])
 	secBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBG, 18)
 
 	place(W.CreateColorPicker(parent, {
-		label = "Background Color", color = cfg.bgColor, hasAlpha = true,
+		label = L["Background Color"], color = cfg.bgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.bgColor.r, cfg.bgColor.g, cfg.bgColor.b, cfg.bgColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Frame Alpha", min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
+		label = L["Frame Alpha"], min = 0, max = 1, step = 0.05, value = cfg.alpha, width = 220,
 		onChange = function(v) cfg.alpha = v; BarApply(i) end,
 	}))
 
-	local secBorder = W.CreateSectionHeader(parent, "Border")
+	local secBorder = W.CreateSectionHeader(parent, L["Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Border", checked = cfg.borderEnabled ~= false,
+		label = L["Show Border"], checked = cfg.borderEnabled ~= false,
 		onChange = function(v) cfg.borderEnabled = v; BarApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Border Color", color = cfg.borderColor, hasAlpha = true,
+		label = L["Border Color"], color = cfg.borderColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.borderColor.r, cfg.borderColor.g, cfg.borderColor.b, cfg.borderColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Padding", min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
+		label = L["Border Padding"], min = 0, max = 40, step = 1, value = cfg.borderPadding, width = 220,
 		onChange = function(v) cfg.borderPadding = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Border Size", min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
+		label = L["Border Size"], min = 1, max = 40, step = 1, value = cfg.borderSize, width = 220,
 		onChange = function(v) cfg.borderSize = v; BarApply(i) end,
 	}))
 
@@ -4107,147 +4114,147 @@ local function BuildBarStyleForm(parent, i)
 	end
 
 	place(W.CreateSlider(parent, {
-		label = "Bar Width", min = 50, max = 500, step = 1, value = cfg.barWidth, width = 240,
+		label = L["Bar Width"], min = 50, max = 500, step = 1, value = cfg.barWidth, width = 240,
 		onChange = function(v) cfg.barWidth = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Bar Height", min = 4, max = 60, step = 1, value = cfg.barHeight, width = 240,
+		label = L["Bar Height"], min = 4, max = 60, step = 1, value = cfg.barHeight, width = 240,
 		onChange = function(v) cfg.barHeight = v; BarApply(i) end,
 	}))
 
-	local secFG = W.CreateSectionHeader(parent, "Foreground")
+	local secFG = W.CreateSectionHeader(parent, L["Foreground"])
 	secFG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secFG, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Texture", value = cfg.fgTexture, options = BuildStatusbarOptions(), width = 200,
+		label = L["Texture"], value = cfg.fgTexture, options = BuildStatusbarOptions(), width = 200,
 		onChange = function(v) cfg.fgTexture = v; BarApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Color", color = cfg.fgColor, hasAlpha = true,
+		label = L["Color"], color = cfg.fgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.fgColor.r, cfg.fgColor.g, cfg.fgColor.b, cfg.fgColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Use Class Color", checked = cfg.fgClassColor,
-		tooltip = "Fill the bar with your class color instead of the color above.",
+		label = L["Use Class Color"], checked = cfg.fgClassColor,
+		tooltip = L["Fill the bar with your class color instead of the color above."],
 		onChange = function(v) cfg.fgClassColor = v; BarApply(i) end,
 	}))
 
-	local secBarBG = W.CreateSectionHeader(parent, "Bar Background")
+	local secBarBG = W.CreateSectionHeader(parent, L["Bar Background"])
 	secBarBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBarBG, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Texture", value = cfg.barBgTexture, options = BuildStatusbarOptions(), width = 200,
+		label = L["Texture"], value = cfg.barBgTexture, options = BuildStatusbarOptions(), width = 200,
 		onChange = function(v) cfg.barBgTexture = v; BarApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Color", color = cfg.barBgColor, hasAlpha = true,
+		label = L["Color"], color = cfg.barBgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.barBgColor.r, cfg.barBgColor.g, cfg.barBgColor.b, cfg.barBgColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 
-	local secIcon = W.CreateSectionHeader(parent, "Icon")
+	local secIcon = W.CreateSectionHeader(parent, L["Icon"])
 	secIcon:SetWidth(parent:GetWidth() - pad * 2)
 	place(secIcon, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Icon", checked = cfg.showIcon ~= false,
+		label = L["Show Icon"], checked = cfg.showIcon ~= false,
 		onChange = function(v) cfg.showIcon = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Icon Position", value = cfg.iconPosition or "LEFT", options = BAR_ICON_POS_OPTIONS, width = 200,
+		label = L["Icon Position"], value = cfg.iconPosition or "LEFT", options = BAR_ICON_POS_OPTIONS, width = 200,
 		onChange = function(v) cfg.iconPosition = v; BarApply(i) end,
 	}))
 
-	local secText = W.CreateSectionHeader(parent, "Text")
+	local secText = W.CreateSectionHeader(parent, L["Text"])
 	secText:SetWidth(parent:GetWidth() - pad * 2)
 	place(secText, 18)
 
 	place(W.CreateCheckbox(parent, {
-		label = "Show Name", checked = cfg.showName ~= false,
+		label = L["Show Name"], checked = cfg.showName ~= false,
 		onChange = function(v) cfg.showName = v; BarApply(i) end,
 	}))
 	place(W.CreateCheckbox(parent, {
-		label = "Show Time", checked = cfg.showTime ~= false,
-		tooltip = "Show the countdown number, drawn by the game's own cooldown widget so it stays correct in combat.",
+		label = L["Show Time"], checked = cfg.showTime ~= false,
+		tooltip = L["Show the countdown number, drawn by the game's own cooldown widget so it stays correct in combat."],
 		onChange = function(v) cfg.showTime = v; BarApply(i) end,
 	}))
-	local secName = W.CreateSectionHeader(parent, "Name")
+	local secName = W.CreateSectionHeader(parent, L["Name"])
 	secName:SetWidth(parent:GetWidth() - pad * 2)
 	place(secName, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.barFont, options = BuildFontOptions(), width = 240,
+		label = L["Font"], value = cfg.barFont, options = BuildFontOptions(), width = 240,
 		onChange = function(v) cfg.barFont = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.barFontSize or 12, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.barFontSize or 12, width = 240,
 		onChange = function(v) cfg.barFontSize = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.barFontFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		label = L["Font Outline"], value = cfg.barFontFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
 		onChange = function(v) cfg.barFontFlags = v; BarApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Name Color", color = cfg.barFontColor, hasAlpha = true,
+		label = L["Name Color"], color = cfg.barFontColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.barFontColor.r, cfg.barFontColor.g, cfg.barFontColor.b, cfg.barFontColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 
-	local secTime = W.CreateSectionHeader(parent, "Time")
+	local secTime = W.CreateSectionHeader(parent, L["Time"])
 	secTime:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTime, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Time Font", value = cfg.barTimeFont, options = BuildFontOptions(), width = 240,
-		tooltip = "Font for the countdown number, drawn by the game's cooldown widget. Restyling applies on Retail.",
+		label = L["Time Font"], value = cfg.barTimeFont, options = BuildFontOptions(), width = 240,
+		tooltip = L["Font for the countdown number, drawn by the game's cooldown widget. Restyling applies on Retail."],
 		onChange = function(v) cfg.barTimeFont = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Time Size", min = 6, max = 32, step = 1, value = cfg.barTimeSize or 12, width = 240,
+		label = L["Time Size"], min = 6, max = 32, step = 1, value = cfg.barTimeSize or 12, width = 240,
 		onChange = function(v) cfg.barTimeSize = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Time Outline", value = cfg.barTimeFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		label = L["Time Outline"], value = cfg.barTimeFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
 		onChange = function(v) cfg.barTimeFlags = v; BarApply(i) end,
 	}))
 	cfg.barTimeColor = cfg.barTimeColor or { r = 1, g = 1, b = 1, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Time Color", color = cfg.barTimeColor, hasAlpha = true,
+		label = L["Time Color"], color = cfg.barTimeColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.barTimeColor.r, cfg.barTimeColor.g, cfg.barTimeColor.b, cfg.barTimeColor.a = r, g, b, a
 			BarApply(i)
 		end,
 	}))
 
-	local secTag = W.CreateSectionHeader(parent, "Name Tag")
+	local secTag = W.CreateSectionHeader(parent, L["Name Tag"])
 	secTag:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTag, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Font", value = cfg.labelFont, options = BuildFontOptions(), width = 240,
-		tooltip = "Font for this frame's name tag (shown above the frame while frames are unlocked).",
+		label = L["Font"], value = cfg.labelFont, options = BuildFontOptions(), width = 240,
+		tooltip = L["Font for this frame's name tag (shown above the frame while frames are unlocked)."],
 		onChange = function(v) cfg.labelFont = v; BarApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = "Font Size", min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
+		label = L["Font Size"], min = 6, max = 32, step = 1, value = cfg.labelSize or 12, width = 240,
 		onChange = function(v) cfg.labelSize = v; BarApply(i) end,
 	}))
 	place(W.CreateDropdown(parent, {
-		label = "Font Outline", value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
+		label = L["Font Outline"], value = cfg.labelFlags or "OUTLINE", options = FONT_FLAG_OPTIONS, width = 200,
 		onChange = function(v) cfg.labelFlags = v; BarApply(i) end,
 	}))
 	cfg.labelColor = cfg.labelColor or { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 }
 	place(W.CreateColorPicker(parent, {
-		label = "Font Color", color = cfg.labelColor, hasAlpha = true,
+		label = L["Font Color"], color = cfg.labelColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			local c = cfg.labelColor
 			c.r, c.g, c.b, c.a = r, g, b, a
@@ -4257,17 +4264,17 @@ local function BuildBarStyleForm(parent, i)
 
 	cfg.highlight = cfg.highlight or { style = "BORDER", color = { r = 1, g = 0.82, b = 0, a = 0.8 } }
 	cfg.highlight.color = cfg.highlight.color or { r = 1, g = 0.82, b = 0, a = 0.8 }
-	local secHL = W.CreateSectionHeader(parent, "Highlight (Important spells)")
+	local secHL = W.CreateSectionHeader(parent, L["Highlight (Important spells)"])
 	secHL:SetWidth(parent:GetWidth() - pad * 2)
 	place(secHL, 18)
 
 	place(W.CreateDropdown(parent, {
-		label = "Highlight Style", value = cfg.highlight.style or "BORDER", options = HL_STYLE_OPTIONS, width = 200,
-		tooltip = "Emphasis drawn on the bar of a spell flagged Important (per spell, in the Filters tab).",
+		label = L["Highlight Style"], value = cfg.highlight.style or "BORDER", options = HL_STYLE_OPTIONS, width = 200,
+		tooltip = L["Emphasis drawn on the bar of a spell flagged Important (per spell, in the Filters tab)."],
 		onChange = function(v) cfg.highlight.style = v; BarApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
-		label = "Highlight Color", color = cfg.highlight.color, hasAlpha = true,
+		label = L["Highlight Color"], color = cfg.highlight.color, hasAlpha = true,
 		onChange = function(r, g, b, a)
 			cfg.highlight.color.r, cfg.highlight.color.g, cfg.highlight.color.b, cfg.highlight.color.a = r, g, b, a
 			BarApply(i)
@@ -4343,7 +4350,7 @@ local function BuildBarsTab(content)
 	wipe(barsState.formFrames)
 	local x = 0
 	for i = 1, 3 do
-		local b = Theme.CreateTab(subBar, "Bars " .. i, 90)
+		local b = Theme.CreateTab(subBar, string.format(L["Bars %d"], i), 90)
 		b:SetPoint("TOPLEFT", subBar, "TOPLEFT", x, 0)
 		barsState.subTabBtns[i] = b
 		x = x + 90 + Theme.PANEL.TAB_GAP

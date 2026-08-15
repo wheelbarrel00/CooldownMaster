@@ -151,6 +151,12 @@ used to.
   cannot be picked up during a fight, and `/cm offlearn` says so and stands down
   rather than pretending. Anything already learned keeps tracking normally. A
   per-spell **Remove (X)** button drops one you no longer want tracked.
+  - On the Classic flavors an effect that puts nothing readable on your target — a
+    Paladin's Consecration is the clearest case — has its length **learned by
+    observation**, from when the combat log reports it ending, and the estimate only ever
+    revises upward. So on a fresh install its ready box fires early for the first several
+    casts and settles once the effect has run its full course uninterrupted. Measured on
+    TBC: 3s, then 5s, then 8s and stable. That is the learning working, not a fault.
 - **Shared-cooldown dedupe** — abilities tracked under multiple spell IDs
   collapse to a single lane icon and a single ready pop.
 

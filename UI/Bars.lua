@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -465,7 +466,7 @@ function ns.Bars_CreateFrame(addon, index, cfg)
 	statusText:Hide()
 	f.statusText = statusText
 
-	f.dragHandle = ns.CreateDragHandle(f, "Bar "..index, function(point, x, y)
+	f.dragHandle = ns.CreateDragHandle(f, string.format(L["Bar %d"], index), function(point, x, y)
 		local bcfg = addon.db.profile.barFrames[index]
 		if bcfg then
 			bcfg.anchor = point

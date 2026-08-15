@@ -1,4 +1,5 @@
 local ADDON_NAME, ns = ...
+local L = ns.L
 
 local AceAddon = LibStub("AceAddon-3.0")
 local AceDB    = LibStub("AceDB-3.0")
@@ -44,7 +45,7 @@ function ns.ShowURL(url)
 
 		local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		hint:SetPoint("TOP", title, "BOTTOM", 0, -6)
-		hint:SetText("Press Ctrl+C to copy, then Escape to close.")
+		hint:SetText(L["Press Ctrl+C to copy, then Escape to close."])
 
 		local eb = CreateFrame("EditBox", nil, f,
 			BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -58,7 +59,7 @@ function ns.ShowURL(url)
 		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 		f.editBox = eb
 
-		local close = ns.Theme.CreateButton(f, "Close", 90, 24)
+		local close = ns.Theme.CreateButton(f, CLOSE, 90, 24)
 		close:SetPoint("BOTTOM", f, "BOTTOM", 0, 12)
 		close:SetScript("OnClick", function() f:Hide() end)
 
@@ -205,7 +206,7 @@ function CDM:OnPlayerLogin()
 
 	if self.db.profile.global.firstRun then
 		self:Print(ns.Colorize(ns.CONST.HEX.YELLOW,
-			"Welcome! Type /cdmaster to open the options panel."))
+			L["Welcome! Type /cdmaster to open the options panel."]))
 		self.db.profile.global.firstRun = false
 	end
 	if ns.WhatsNew_OnLogin then ns.WhatsNew_OnLogin() end
@@ -273,12 +274,12 @@ function CDM:OnSlash(input)
 
 	elseif input == "lock" then
 		self.db.profile.global.unlockFrames = false
-		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "locked|r.")
+		self:Print(string.format(L["Frames %s."], ns.Colorize(ns.CONST.HEX.YELLOW, L["locked"])))
 		ns.ForEachSurface("RefreshUnlockState", self)
 
 	elseif input == "unlock" then
 		self.db.profile.global.unlockFrames = true
-		self:Print("Frames |cff" .. ns.CONST.HEX.YELLOW .. "unlocked|r.")
+		self:Print(string.format(L["Frames %s."], ns.Colorize(ns.CONST.HEX.YELLOW, L["unlocked"])))
 		ns.ForEachSurface("RefreshUnlockState", self)
 
 	elseif input == "test" then
@@ -286,10 +287,10 @@ function CDM:OnSlash(input)
 
 	elseif input == "reset" then
 		self.db:ResetProfile()
-		self:Print("Settings reset to defaults.")
+		self:Print(L["Settings reset to defaults."])
 
 	elseif input == "version" then
-		self:Print("Version " .. self.version .. " on " .. ns.Compat.FlavorLabel())
+		self:Print(string.format(L["Version %1$s on %2$s"], self.version, ns.Compat.FlavorLabel()))
 
 	elseif input == "whatsnew" or input == "news" then
 		if ns.WhatsNew_Show then ns.WhatsNew_Show() end
@@ -598,7 +599,8 @@ function CDM:ToggleTestMode()
 		engine:StartTestMode()
 	end
 	ns.ForEachSurface("RefreshVisibility")
-	self:Print("Test mode: " .. (engine.testActive and "|cff00ff00on|r" or "|cffff5555off|r"))
+	self:Print(string.format(L["Test mode: %s"], engine.testActive
+		and ("|cff00ff00" .. L["on"] .. "|r") or ("|cffff5555" .. L["off"] .. "|r")))
 end
 
 
