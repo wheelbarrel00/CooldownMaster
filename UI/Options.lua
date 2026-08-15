@@ -2154,7 +2154,7 @@ local function BuildFiltersSpellListForm(parent, categoryKey)
 		if ns.Compat.HAS_COMBAT_LOG then
 			how = "Harmful effects you put on a target are detected automatically as you apply them - nothing to set up."
 		else
-			how = "A target's debuff cannot be identified in combat, so Cooldown Master learns which of your abilities applies which effect out of combat, from what lands just after you cast.\n\nSince 12.1 the game withholds that too, so an effect it has not already learned cannot be picked up at all. /cm offlearn tells you when your client is withholding it rather than leaving you guessing, and where the game still allows learning it walks you through one ability at a time - type /cm offlearn, cast the ability, let combat end, then /cm offlearn stop. Anything already learned keeps tracking normally."
+			how = "A target's debuff cannot be identified in combat, so Cooldown Master learns which of your abilities applies which effect out of combat, from what lands just after you cast.\n\nSince 12.1 the game withholds that too, so an effect it has not already learned cannot be picked up at all. /cm offlearn tells you when your client is withholding it rather than leaving you guessing, and where the game still allows learning, it walks you through one ability at a time - type /cm offlearn, cast the ability, let combat end, then /cm offlearn stop. Anything already learned keeps tracking normally."
 		end
 		if isOff then
 			how = "This category tracks the harmful effects you put on your target - damage-over-time effects, and debuffs like stuns - so each one travels a lane and pops a ready box when it drops. Nothing in this category is tracked while it is switched off - tick Track this category above to switch it on.\n\n" .. how

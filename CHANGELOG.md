@@ -1,10 +1,17 @@
 # Cooldown Master Changelog
 
+## 1.9.3 (2026-08-14) — A retail error on every expiry, and a Classic length that stopped learning
+
+### Bug Fixes
+
+- **Retail: fixed an error that fired every time one of your tracked effects on a target ran out.** A tidy-up step added in 1.9.2 for the Classic flavors reached for your target's unique ID, which Midnight keeps secret on a hostile target, and looking it up at all was enough to trigger the error. That step never did anything useful on retail, and the case it was guarding against is now handled where it belongs — when a dot is restored after you switch targets. Your ready boxes and lanes kept working throughout. The cost was an error in your log on each expiry, and a dropped frame of movement with it. Retail only, and only with Offensives switched on.
+- **Classic: an effect that leaves nothing to read on your target now keeps improving its own timing.** Something like a Paladin's Consecration puts nothing on your target that Cooldown Master can inspect, so it works out how long the effect lasts by watching when the combat log says it ended, and revises upward as it sees longer runs. The same 1.9.2 tidy-up step was discarding the record it needed to do that, so the estimate was pinned to whatever the first run happened to give — and if that run was cut short, the ready box fired early on every cast afterwards. Estimates now keep correcting themselves as you play.
+
 ## 1.9.2 (2026-08-13) — Offensives explains itself, and a Classic dot stops vanishing
 
 ### Bug Fixes
 
-- **Classic: an effect that puts no debuff on your target no longer flashes onto a lane and disappears.** A Paladin's Consecration is the clearest case — the combat log reports it, but it never shows up in your target's debuff list, so the once-a-second check that looks for it there found nothing and removed the icon about a second after it appeared. That check now only removes an effect it has actually been able to see; anything else is ended by the combat log or by its own length running out.
+- **Classic: an effect that puts no debuff on your target no longer flashes onto a lane and disappears.** A Paladin's Consecration is the clearest case — the combat log reports it, but it never shows up in your target's debuff list, so the once-a-second check that looks for it there found nothing and removed the icon about a second after it appeared. That check now only removes an effect it has actually been able to see. Anything else is ended by the combat log or by its own length running out.
 - **The Offensives tab no longer claims it is looking when it isn't.** Offensives is the one category that ships switched off, so if you went hunting for your effects on a target and found nothing tracked, this is why. The tab said "No harmful effects discovered yet", which reads as Cooldown Master searching for them and failing — it was never searching at all. It now says the category is off and points at the tick box that turns it on. Thanks to yisisixu for the report, and for narrowing it down on a second character.
 - **Turning a category on or off updates the panel immediately.** The tick box and the matching Enabled setting on the Defaults tab used to drift apart until you reloaded, so one could show a category as tracked while the other had it switched off, and your first click on the stale one appeared to do nothing.
 - **Classic: the Buff Bars tab stops giving advice that cannot work.** It told you to log in or reload to fill the list. That category is Blizzard's own bar-style tracked buffs, which only exist on retail, so no amount of reloading would ever fill it. It now explains that and points you at Offensives, which is where your effects on a target live.
@@ -25,13 +32,13 @@
 
 ### Improvements
 
-- **Diagnostics survive what they were built to diagnose.** `/cm auraprobe` could itself be taken down by an unreadable aura update; it now names which part of the update was unreadable instead. `/cm off` traces say when an aura stream arrived unreadable rather than falling silent.
+- **Diagnostics survive what they were built to diagnose.** `/cm auraprobe` could itself be taken down by an unreadable aura update. It now names which part of the update was unreadable instead. `/cm off` traces say when an aura stream arrived unreadable rather than falling silent.
 
 ## 1.9.0 (2026-08-08) — Offensives learn the right dots, and Classic Era finds your potions
 
 ### Bug Fixes
 
-- **Retail: other players' damage-over-time effects no longer end up in your Offensives list.** Cooldown Master learns which of your abilities applies which dot by watching what lands right after you cast. In a group, a teammate's dot landing at that moment could be attributed to one of your abilities instead — and once learned it stayed learned, so their dot appeared on your lanes as if it were yours. The game reports a debuff as coming from you even when it doesn't, and that was what the check relied on; it now confirms the source directly and refuses anything it cannot positively tie to you.
+- **Retail: other players' damage-over-time effects no longer end up in your Offensives list.** Cooldown Master learns which of your abilities applies which dot by watching what lands right after you cast. In a group, a teammate's dot landing at that moment could be attributed to one of your abilities instead — and once learned it stayed learned, so their dot appeared on your lanes as if it were yours. The game reports a debuff as coming from you even when it doesn't, and that was what the check relied on. It now confirms the source directly and refuses anything it cannot positively tie to you.
   - **Heads up:** because every existing mapping was learned through the faulty check, the learned dot list is cleared once on your first login after updating. Filters > Offensives will be empty until your own dots relearn, which happens as you cast them. Anything you had set up for those dots is kept — a dot you routed to Lane 3, sent to a particular bar or ready box, or unticked Show on, comes straight back to that setting the moment it is relearned. Cooldown Master tells you in chat when the reset happens. Retail only, and only if you turned Offensives on.
 - **Classic Era: your potions are tracked at all now.** Era doesn't tell addons whether a consumable is a potion, an elixir or a piece of food — everything comes back as simply "consumable" — so the filter that picks out potions matched nothing and Filters > Potions was permanently empty. Every consumable is now listed on Era.
   - **Heads up:** food and drink are listed there too, because Era gives nothing to tell them apart. They have no cooldown, so they never draw an icon or a ready box. Untick **Show** on their rows if you'd rather not see them in the list.
@@ -75,7 +82,7 @@
 
 ### Bug Fixes
 
-- **Retail: the Potions list no longer shows potions you aren't carrying.** CDM was seeding a small built-in set of retail potion IDs on top of scanning your bags. One of them no longer exists in the game and appeared as a nameless "Item 258318" row that could never do anything; two others were alternate versions sharing a name with potions you'd actually have, so Light's Potential and Flask of the Magisters each showed up twice. Your bags are the only source now, on every flavor.
+- **Retail: the Potions list no longer shows potions you aren't carrying.** CDM was seeding a small built-in set of retail potion IDs on top of scanning your bags. One of them no longer exists in the game and appeared as a nameless "Item 258318" row that could never do anything. Two others were alternate versions sharing a name with potions you'd actually have, so Light's Potential and Flask of the Magisters each showed up twice. Your bags are the only source now, on every flavor.
 - **Hiding one potion no longer hides another.** All combat potions share a single cooldown, and unticking Show on one could leave a potion you hadn't hidden with no icon, no bar and no ready box at all. Hidden items now step aside instead of claiming the shared cooldown, which is how spells have always behaved.
 - **Using the last of a potion no longer loses its icon.** Drinking your final one removes the item from your bags, and the timer used to vanish with it about half a second later — or hand the countdown to a different potion, so a mana potion you drank would finish its run wearing another potion's name. It now runs to the end as itself and pops a ready box when the cooldown is up.
 
@@ -173,7 +180,7 @@
 
 ### Bug Fixes
 
-- **Health and resource tags never worked on retail, and no longer pretend to.** `[player.hp.pct]` and `[player.power.pct]` rendered blank for every retail user since 1.2.0. Retail returns your health and power as protected values that addons are not allowed to read — even out of combat — so a percentage cannot be worked out at all. Those tags are now offered on the Classic flavors only, where they work, instead of sitting in the picker doing nothing. `[cd.time]` has always been Classic-only for the same reason; on retail the icon's own countdown covers it.
+- **Health and resource tags never worked on retail, and no longer pretend to.** `[player.hp.pct]` and `[player.power.pct]` rendered blank for every retail user since 1.2.0. Retail returns your health and power as protected values that addons are not allowed to read — even out of combat — so a percentage cannot be worked out at all. Those tags are now offered on the Classic flavors only, where they work, instead of sitting in the picker doing nothing. `[cd.time]` has always been Classic-only for the same reason. On retail the icon's own countdown covers it.
 - **A stale status line no longer flashes when a ready box comes back.** A box that had auto-hidden could show the text it froze at for a fraction of a second when it reappeared.
 - **The About tab no longer claims to complement Blizzard's Cooldown Manager on Classic**, which does not have one. Same for the addon list description on the three Classic flavors.
 
@@ -206,7 +213,7 @@
 
 ### New Features
 
-- **Offensives** — a new Filters category that tracks your own damage-over-time effects and debuffs on your current target, so you can see when a dot is about to fall off. Off by default; turn it on under Filters > Offensives. On retail the game hides a target's auras from addons in combat, so Offensives learns each dot from the spell you cast rather than by reading the target. A brand-new dot may take a cast or two to start showing, and it follows your current target only.
+- **Offensives** — a new Filters category that tracks your own damage-over-time effects and debuffs on your current target, so you can see when a dot is about to fall off. Off by default. Turn it on under Filters > Offensives. On retail the game hides a target's auras from addons in combat, so Offensives learns each dot from the spell you cast rather than by reading the target. A brand-new dot may take a cast or two to start showing, and it follows your current target only.
 - **Pet Spells** — a new Filters category that tracks your pet's ability cooldowns, for Hunters, Warlocks, Death Knights, and anyone with a pet bar. On by default. Your pet's basic attack and its command and stance buttons are left out, so only real cooldowns show.
 - **Scale controls**, on the Global tab. **Cooldown Frames** resizes all of your lanes, bars, and ready boxes together while keeping them where they are. **Options Window** resizes this settings window itself. Both run from half size to double size.
 
@@ -257,9 +264,9 @@ Every one of these is a normal option, and the in-game What's New popup spells o
 
 ### Bug Fixes
 
-- **A passive talent could appear as a tracked cooldown.** Some talents (e.g. the Paladin talent Undisputed Ruling) are exposed by `C_CooldownViewer` as their own entry, flagged `HideByDefault`, and carry their parent ability's icon art. Blizzard's own Cooldown Manager skips those rows; we weren't. The passive rendered as a bar/lane icon wearing Judgment's icon with the wrong name and its own internal proc timer. Hidden rows are now skipped — which also fixes the wrong spell tooltip on hover and the wrong name (and sort position) in the Filters list.
+- **A passive talent could appear as a tracked cooldown.** Some talents (e.g. the Paladin talent Undisputed Ruling) are exposed by `C_CooldownViewer` as their own entry, flagged `HideByDefault`, and carry their parent ability's icon art. Blizzard's own Cooldown Manager skips those rows. We weren't. The passive rendered as a bar/lane icon wearing Judgment's icon with the wrong name and its own internal proc timer. Hidden rows are now skipped — which also fixes the wrong spell tooltip on hover and the wrong name (and sort position) in the Filters list.
 - A spell still on cooldown across a spec or talent change kept its pre-swap name and icon until it expired. Entries now re-sync on rebuild.
-- **Color opacity never took effect on text.** Two separate bugs: the color picker's opacity value is transparency (not alpha) and was being stored inverted, and a FontString's `SetAlpha` overrides the alpha passed to `SetTextColor`. Both fixed; this also corrects background, border, and highlight opacity at the extremes.
+- **Color opacity never took effect on text.** Two separate bugs: the color picker's opacity value is transparency (not alpha) and was being stored inverted, and a FontString's `SetAlpha` overrides the alpha passed to `SetTextColor`. Both fixed. This also corrects background, border, and highlight opacity at the extremes.
 - Identically configured frames could show visibly different border darkness depending on their screen position (sub-pixel grid misalignment). Frames are now snapped to the physical pixel grid.
 - A ready box could briefly render as two concentric boxes when two cooldowns came up in the same tick (only visible with Auto-hide on).
 - Changing a cooldown's lane or bar routing now moves it immediately, instead of only taking effect the next time that cooldown is used.
@@ -290,12 +297,12 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 
 ### Bug Fixes
 - **Reliable login.** The What's New popup, the first-run welcome message, and automatic profile switching by specialization now run reliably on a fresh login instead of only after a `/reload`.
-- **Color-picker opacity on 12.0.** A color's transparency was inverted on modern clients; it now matches what you set, and Cancel restores the correct alpha.
+- **Color-picker opacity on 12.0.** A color's transparency was inverted on modern clients. It now matches what you set, and Cancel restores the correct alpha.
 - **Filters options no longer leak.** Every spec, talent, or spellbook change rebuilt the Filters options even while the window was closed, orphaning UI frames for the rest of the session. The rebuild now happens only while the panel is open.
-- **Blank Filters tab.** After a profile change or options rebuild, the Filters tab could come up empty; it now rebuilds cleanly.
+- **Blank Filters tab.** After a profile change or options rebuild, the Filters tab could come up empty. It now rebuilds cleanly.
 - **No stray override tables.** Merely viewing a spell in Filters no longer saves an empty per-spell override into your settings.
-- **Vertical secondary tracking.** The GCD / Swing secondary bar was sized and oriented for a horizontal lane; it now travels correctly along the full length of vertical lanes.
-- **Ready-box flicker.** A ready box holding a pinned icon no longer flickers after combat and no longer relayouts every frame; pinned icons stay shown while unpinned ones clear.
+- **Vertical secondary tracking.** The GCD / Swing secondary bar was sized and oriented for a horizontal lane. It now travels correctly along the full length of vertical lanes.
+- **Ready-box flicker.** A ready box holding a pinned icon no longer flickers after combat and no longer relayouts every frame. Pinned icons stay shown while unpinned ones clear.
 - **Selected-tab highlight.** The selected Options tab keeps its yellow highlight when you hover or click it instead of briefly flashing red.
 - **Classic spec tracking.** Classic Era and Burning Crusade (Anniversary) no longer set up specialization-change tracking that does not apply on those flavors.
 
@@ -320,7 +327,7 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 
 ### Improvements
 - **The Ignore Threshold now works.** Previously a dead slider, it now hides any spell whose full base cooldown is longer than its category's Ignore Threshold (a per-spell override still wins) — handy for keeping very long cooldowns off a short lane.
-- **Empty ready boxes honor Auto-hide.** They used to disappear whenever empty and locked; now they follow your global Auto-hide setting. With Auto-hide off (the default), empty ready boxes stay visible.
+- **Empty ready boxes honor Auto-hide.** They used to disappear whenever empty and locked. Now they follow your global Auto-hide setting. With Auto-hide off (the default), empty ready boxes stay visible.
 - **Stronger Important-spell highlight.** The highlight for spells flagged Important is now a full-icon glow instead of a thin hollow border, so it stands out at a glance.
 - **Global-tab tooltips.** Every option on the Global tab now has a hover tooltip explaining what it does.
 - **Clearer Filters list.** The per-spell Filters list now has an aligned **Show / Lane / Ready Box / Flags** column header.
@@ -342,7 +349,7 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 ## 0.18.0 (2026-07-04) — GCD/Swing tracking, ready-icon cap, Classic fixes
 
 ### New Features
-- **GCD & Swing tracking on the lanes.** Each lane can now show your global cooldown or main-hand swing timer as a recurring indicator — either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with its own size, color, and direction. (Classic flavors; on retail this is handled by Blizzard's built-in Cooldown Manager.)
+- **GCD & Swing tracking on the lanes.** Each lane can now show your global cooldown or main-hand swing timer as a recurring indicator — either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with its own size, color, and direction. (Classic flavors, on retail this is handled by Blizzard's built-in Cooldown Manager.)
 - **Max Ready Icons.** Each ready box now caps how many ready icons show at once (Ready > General), so a burst of cooldowns coming off at the same time no longer floods the box. Newest readies take priority.
 - **`/cm` shortcut.** Every slash command now also works as `/cm` (e.g. `/cm`, `/cm lock`, `/cm test`) in addition to `/cdmaster`.
 
@@ -359,7 +366,7 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 - **Mists of Pandaria Classic support.** Cooldown Master now runs on the MoP Classic client (5.5.x), using the same spellbook-scan cooldown tracking as the other Classic flavors. The Colors tab covers MoP's full class list, including Death Knight and Monk. The addon now ships a Mists TOC so it loads without an out-of-date warning.
 
 ### Bug Fixes
-- Fixed the **Profiles tab showing blank** (with a Lua error) on Mists of Pandaria Classic. The per-specialization auto-switch controls now use that client's specialization API; the same fix also covers spec-based profile auto-switching at login.
+- Fixed the **Profiles tab showing blank** (with a Lua error) on Mists of Pandaria Classic. The per-specialization auto-switch controls now use that client's specialization API. The same fix also covers spec-based profile auto-switching at login.
 
 ### Improvements
 - Renamed the lane's **"Background" appearance settings to "Lane"** (Lane, Lane Texture, Lane Color, Use Class Color), since they control the visible lane strip.
@@ -394,7 +401,7 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 - **WoW Classic support.** Cooldown Master now runs on Classic flavors that don't have retail's Cooldown Viewer. It scans your spellbook and tracks every ability whose cooldown is longer than the global cooldown, reading live cooldown times directly (which stay readable in combat on Classic). Class buffs that have no cooldown — Paladin Seals and Blessings, and the like — are tracked by their remaining duration under the Buffs category. The tracked set refreshes automatically as you learn spells or swap talents.
 
 ### Improvements
-- **Lane transparency now fades the bar, not the icons.** A lane's Box Alpha now dims only the bar background, border, name, and markers; the cooldown icons keep their own Icon Alpha and stay fully visible. Previously, lowering a lane's alpha faded the icons along with it.
+- **Lane transparency now fades the bar, not the icons.** A lane's Box Alpha now dims only the bar background, border, name, and markers. The cooldown icons keep their own Icon Alpha and stay fully visible. Previously, lowering a lane's alpha faded the icons along with it.
 - **Refreshed default layout.** Fresh installs start with a cleaner look — thinner, wider lanes with tighter borders, slightly smaller icons, and a repositioned first ready box. Existing profiles are left untouched.
 - Lane and ready-box names now float just above the frame instead of sitting centered inside it, so the label never overlaps the bar or its percent markers at any size.
 
@@ -412,7 +419,7 @@ Thanks to everyone who ran the beta and sent feedback, and to cliffclive, whose 
 ## 0.16.2 (2026-07-02) — Auto-hide keeps your icons
 
 ### Improvements
-- **Auto-hide Frames** now hides only each lane's background, border, name, and markers; your tracked cooldown icons stay visible out of combat and return with the chrome when you enter combat. Use a lane's Override Autohide to keep its chrome pinned.
+- **Auto-hide Frames** now hides only each lane's background, border, name, and markers. Your tracked cooldown icons stay visible out of combat and return with the chrome when you enter combat. Use a lane's Override Autohide to keep its chrome pinned.
 - Added plain-language tooltips to the Auto-hide Frames, Override Autohide, and per-category Enabled / Show by Default options, so their effect is clear at a glance.
 
 ### Bug Fixes
@@ -442,19 +449,19 @@ A pass focused on matching the look and feel of CooldownTimeline2 (with the auth
 
 ### Improvements
 - **Detect Shared Spell Cooldowns** now also de-duplicates ready-frame pops. An ability tracked under two spell IDs that share a cooldown (a base spell and its override, or the same ability in two Cooldown Viewer categories) now pops a single ready icon instead of one per ID, mirroring how the lanes already collapse it. Off by default, gated on the same Global option.
-- Minor internal code cleanup (comment tidy-up; no behavior change).
+- Minor internal code cleanup (comment tidy-up, no behavior change).
 
 ## 0.14.1 (2026-06-22) — Charge-spell display hotfix
 
 ### Bug Fixes
-- Fixed multi-charge spells (such as Roll) not appearing on the lane when fully out of charges. A check added in 0.14.0 was hiding them in every case; depleted charge spells now correctly show their recharge again, while still not flickering on individual charge uses.
+- Fixed multi-charge spells (such as Roll) not appearing on the lane when fully out of charges. A check added in 0.14.0 was hiding them in every case. Depleted charge spells now correctly show their recharge again, while still not flickering on individual charge uses.
 
 ## 0.14.0 (2026-06-22) — Icon zoom, unusable tint, and cooldown-tracking fixes
 
 New display options for lane and ready icons, plus fixes for cooldown position and charge-spell tracking.
 
 ### New Features
-- **Icon Zoom** (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look; higher crops the icon border further.
+- **Icon Zoom** (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look. Higher crops the icon border further.
 - **Unusable icon tint** (Global tab): tint and/or desaturate icons for spells you currently can't cast (not enough resources, wrong form, and so on), in a color you choose — "Tint Unusable Icons", "Desaturate Unusable Icons", and "Unusable Tint Color".
 - **Spread stacking** (Lanes > Stacking): a new stacking style that pushes overlapping icons apart along the lane instead of stacking them into rows, so clustered cooldowns stay readable in sequence.
 - **Detect Shared Spell Cooldowns** (Global tab): collapse spells that share a cooldown into a single lane icon instead of showing duplicates.
@@ -492,7 +499,7 @@ New profile tools, potion and trinket tracking, a cooldown-tint control, and two
 - **Cooldown Tint slider** (Lanes > Appearance > Icons) to lighten the cooldown darkening so you can see the spell art, or set it to 0 to turn it off.
 
 ### Bug Fixes
-- Locking the frames no longer hides lanes; it now only disables dragging. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.
+- Locking the frames no longer hides lanes. It now only disables dragging. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.
 - Using a single potion no longer pops several ready frames at once. Combat potions share one cooldown, so they now show and notify as a single icon.
 
 ## 0.11.0 (2026-06-21) — Minimap toggle and icon tooltips
@@ -508,7 +515,7 @@ Two new options: a checkbox to show or hide the minimap button, and tooltips whe
 A maintenance release: fixes a ready-frame bug on loading screens, cuts memory use when switching profiles, smooths the lane display, and shows release dates in the in-game changelog.
 
 ### Bug Fixes
-- Fixed every tracked spell flooding the ready frames at once after a loading screen or zone change. The cooldown state the game reports during a loading screen is briefly unreliable; the addon now waits for it to settle instead of treating every cooldown as ready.
+- Fixed every tracked spell flooding the ready frames at once after a loading screen or zone change. The cooldown state the game reports during a loading screen is briefly unreliable. The addon now waits for it to settle instead of treating every cooldown as ready.
 
 ### Improvements
 - Switching, copying, or resetting profiles no longer leaks frames. Lane and ready boxes are now reused instead of destroyed and recreated, and the About tab is no longer rebuilt each time.
@@ -520,7 +527,7 @@ A maintenance release: fixes a ready-frame bug on loading screens, cuts memory u
 Fixes a Lua error that could spam in combat for multi-charge spells, and adds feedback to the profile creation flow.
 
 ### Bug Fixes
-- Fixed a repeating "secret number value" Lua error that fired in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count; multi-charge spells are detected from their maximum charges instead, so their recharge still shows once the spell is fully on cooldown.
+- Fixed a repeating "secret number value" Lua error that fired in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count. Multi-charge spells are detected from their maximum charges instead, so their recharge still shows once the spell is fully on cooldown.
 - Creating a profile now gives feedback: it warns on an empty, duplicate, or current name, and clears the box with a confirmation on success.
 - Hardened active-profile switching so the dropdown can't tear itself down mid-click.
 
@@ -542,7 +549,7 @@ Ready Frames gains the full feature set it was known for: spells route to any of
 
 ### Bug Fixes
 - The minimap button's hide state and position now follow profile switches instead of staying stuck on the profile you logged in with.
-- Cooldowns first seen during combat no longer keep an approximate resting position after their real length is learned; the icon re-centers once the true cooldown is known. The countdown number was always exact.
+- Cooldowns first seen during combat no longer keep an approximate resting position after their real length is learned. The icon re-centers once the true cooldown is known. The countdown number was always exact.
 - Charge-based spells (Shimmer, Fire Blast) once again appear only when the spell is fully on cooldown, not while a charge is still available. A partial recharge isn't a cooldown, so it no longer shows in a lane or pops a ready frame.
 
 ### Improvements
@@ -583,7 +590,7 @@ A maintenance release that brings the retail build current with the latest Midni
 Cooldown position baselines now cover every class and spec instead of just Paladin and Mage, so icons land in sensible places on first sight regardless of what you play. This release also fixes a cluster of Filters and spec-swap bugs, makes test mode actually work, and includes a substantial allocation-reduction pass on the live engine.
 
 ### New Features
-- Baseline cooldown coverage for all classes and specs. The addon already discovered every class's spells dynamically, but the first-impression icon position relied on a hardcoded duration table that only covered Paladin and Mage; every other class fell back to a flat default until each spell was seen once. Positions are now seeded from the game's own base-cooldown data for whatever you're playing, so icons start in the right place on any class. The countdown number on each icon was already exact in all cases; this improves only the icon's resting position along the lane.
+- Baseline cooldown coverage for all classes and specs. The addon already discovered every class's spells dynamically, but the first-impression icon position relied on a hardcoded duration table that only covered Paladin and Mage. Every other class fell back to a flat default until each spell was seen once. Positions are now seeded from the game's own base-cooldown data for whatever you're playing, so icons start in the right place on any class. The countdown number on each icon was already exact in all cases. This improves only the icon's resting position along the lane.
 
 ### Bug Fixes
 - Filters: spells that Blizzard lists in more than one Cooldown Viewer category (for example an Essential cooldown that is also a tracked buff) no longer get reassigned to the wrong sub-tab. Each spell now keeps its primary category, so it appears in the expected Filters list and routes to the lane you'd expect.
@@ -594,7 +601,7 @@ Cooldown position baselines now cover every class and spec instead of just Palad
 - A party member changing spec no longer wipes your own learned durations. The specialization event is now filtered to the player.
 
 ### Improvements
-- Engine allocation pass. The cooldown scan no longer runs on every frame tick; cooldown changes are caught by game events (cast, cooldown-change, and bag-cooldown for potions) with a low-frequency safety sweep behind them. A cast that fires two events now collapses into a single scan instead of two. Together this removes the bulk of the addon's steady-state memory churn during sustained combat.
+- Engine allocation pass. The cooldown scan no longer runs on every frame tick. Cooldown changes are caught by game events (cast, cooldown-change, and bag-cooldown for potions) with a low-frequency safety sweep behind them. A cast that fires two events now collapses into a single scan instead of two. Together this removes the bulk of the addon's steady-state memory churn during sustained combat.
 - Lane configuration (size, position, colors, markers) is no longer re-applied on every render frame. It is now applied once when a lane is built and again only when you actually change a setting, removing redundant layout work at roughly 30 updates per second across three lanes.
 - Dragging the Width, Height, X, Y, or Anchor sliders in a lane's Appearance settings no longer leaks a frame per slider step. These now update the existing lane in place instead of destroying and recreating it.
 
@@ -604,7 +611,7 @@ Cooldown position baselines now cover every class and spec instead of just Palad
 
 ## 0.6.0 (2026-05-30) — Combat-accurate cooldowns
 
-A ground-up engine rewrite so cooldowns display correctly in combat under Midnight's "secret value" API restrictions. Previously, in-combat timers were extrapolated guesses that were often wrong; now each lane icon shows the real cooldown swipe and countdown, tracks the true cooldown state, and reads as a continuous clock.
+A ground-up engine rewrite so cooldowns display correctly in combat under Midnight's "secret value" API restrictions. Previously, in-combat timers were extrapolated guesses that were often wrong. Now each lane icon shows the real cooldown swipe and countdown, tracks the true cooldown state, and reads as a continuous clock.
 
 ### New Features
 - Combat-accurate cooldown display. Under Midnight, addons can no longer read remaining cooldown time in combat — it is a protected value. Each lane icon now renders Blizzard's native cooldown swipe and countdown, fed the cooldown object directly, so the swipe and number stay exact in combat without the addon ever reading the number.
@@ -620,7 +627,7 @@ A ground-up engine rewrite so cooldowns display correctly in combat under Midnig
 - Charge-based spells may not show their recharge until fully on cooldown.
 
 ### Developer notes
-- Added `docs/EXPERIMENTS.md` recording the Midnight secret-value investigation (no readable cooldown number exists in combat; only `isActive`/`isOnGCD` are usable) and the `/cdmaster curvetest` diagnostic that established it.
+- Added `docs/EXPERIMENTS.md` recording the Midnight secret-value investigation (no readable cooldown number exists in combat, only `isActive`/`isOnGCD` are usable) and the `/cdmaster curvetest` diagnostic that established it.
 
 ## 0.5.0 (2026-05-23) — Potions, Mage support, and a performance pass
 
@@ -628,16 +635,16 @@ Adds item-cooldown tracking (potions), extends fallback duration coverage to Mag
 
 ### New Features
 - Potions category: the engine now polls a hardcoded list of potion item cooldowns directly via `C_Container.GetItemCooldown`. Items don't come from Blizzard's Cooldown Viewer (which only enumerates spells), so they're tracked in a parallel registry. A new `Filters > Potions` sub-tab lists tracked items with the same icon / visibility checkbox / per-item lane dropdown as spells. Item names and icons resolve asynchronously via `GET_ITEM_INFO_RECEIVED` and update their Filters row in place.
-- Mage fallback durations: baseline cooldowns for all three Mage specs (Arcane, Fire, Frost) plus shared utility and defensives, so Mage cooldowns display correctly in combat before each spell has been observed once out of combat. The addon already discovered Mage spells dynamically from the Cooldown Viewer; this fills the in-combat seed gap that previously only covered Paladin.
-- The `Filters > Items` sub-tab is relabeled `Utility` to reflect its real contents — Blizzard's Utility-tagged spells (Hammer of Justice, Lay on Hands, etc.), not inventory items. The internal saved-variable key stays `items` for compatibility; actual consumables now live under Potions.
+- Mage fallback durations: baseline cooldowns for all three Mage specs (Arcane, Fire, Frost) plus shared utility and defensives, so Mage cooldowns display correctly in combat before each spell has been observed once out of combat. The addon already discovered Mage spells dynamically from the Cooldown Viewer. This fills the in-combat seed gap that previously only covered Paladin.
+- The `Filters > Items` sub-tab is relabeled `Utility` to reflect its real contents — Blizzard's Utility-tagged spells (Hammer of Justice, Lay on Hands, etc.), not inventory items. The internal saved-variable key stays `items` for compatibility. Actual consumables now live under Potions.
 
 ### Bug Fixes
 - Fixed a stray token at the end of `Core/Init.lua` that produced a Lua compile error (`'=' expected near '<eof>'`) and prevented the addon from loading at all.
-- Backdrop changes (border size, border color, padding) now take effect immediately instead of requiring a `/reload`. Blizzard's `BackdropTemplateMixin` reference-compares the backdrop table and skipped re-applying when the same reference came back; lane code now swaps in a fresh table only when border settings actually change.
+- Backdrop changes (border size, border color, padding) now take effect immediately instead of requiring a `/reload`. Blizzard's `BackdropTemplateMixin` reference-compares the backdrop table and skipped re-applying when the same reference came back. Lane code now swaps in a fresh table only when border settings actually change.
 
 ### Improvements
 - Engine performance: hoisted per-tick `pcall` closures to module-level functions, switched the hot pollers (`PollOneSpell` / `PollOneItem`) to multi-value returns instead of allocating a result table per call, and reused scratch tables (`_seenSpells` / `_seenItems`) across ticks. `SPELL_UPDATE_COOLDOWN` is now debounced so cooldown-change bursts collapse into a single deferred poll.
-- Lane renderer performance: pre-built integer/decimal time-string lookup tables to eliminate roughly 450 `string.format` allocations/sec from the per-icon `OnUpdate` and per-tick refresh; extracted the `ApplyConfig` and `Refresh` bodies to module-level functions so their `pcall` wrappers no longer allocate a closure at ~30 Hz across three lanes; the backdrop table is cached for the steady-state case.
+- Lane renderer performance: pre-built integer/decimal time-string lookup tables to eliminate roughly 450 `string.format` allocations/sec from the per-icon `OnUpdate` and per-tick refresh. Extracted the `ApplyConfig` and `Refresh` bodies to module-level functions so their `pcall` wrappers no longer allocate a closure at ~30 Hz across three lanes. The backdrop table is cached for the steady-state case.
 
 ## 0.4.0 (2026-05-03) — Filters
 
@@ -647,7 +654,7 @@ The Filters tab is now functional. Users can decide which discovered spells, ite
 - `Filters > Defaults` sub-tab: per-category Enabled toggle, Show by Default flag (controls whether brand-new discovered spells start visible), Ignore Threshold slider, and Default Lane dropdown.
 - `Filters > Spells / Items / Buffs / Debuffs` sub-tabs: scrollable list of every spell the engine has discovered for that category, each row with an icon, spell name, visibility checkbox, and per-spell lane dropdown ("Default" or Lane 1/2/3).
 - Three-layer visibility model in the engine: category-enabled → per-spell override → category `showByDefault` fallback.
-- Per-spell lane override stored in `spellOverrides[spellID].lane`; falls back to `filters[category].defaultLane`, then the engine's hardcoded category default.
+- Per-spell lane override stored in `spellOverrides[spellID].lane`. Falls back to `filters[category].defaultLane`, then the engine's hardcoded category default.
 
 ### Bug Fixes
 - Multi-lane rendering: the entries loop now correctly gates each entry by its resolved `laneIndex`, so spells only appear in the lane they're routed to. Previously every spell rendered in every enabled lane (latent bug — only invisible because most users ran a single lane).
@@ -678,7 +685,7 @@ on that one job — and on doing it well.
 - `OnInitialize` runs a one-time SavedVariables cleanup that strips the
   orphaned `barFrames` / `readyFrames` blocks and the obsolete
   `defaultBar` / `defaultReady` keys from each filter category. Idempotent —
-  safe to run repeatedly. Nothing for users to do; just `/reload` after
+  safe to run repeatedly. Nothing for users to do. Just `/reload` after
   upgrading.
 
 ### Kept and unchanged
@@ -727,7 +734,7 @@ spells without ever touching tainted secret values directly.
 ## 0.1.0 (Undated) — Scaffolding
 
 First playable build. Loads cleanly on Mainline (Midnight 12.0+), Classic Era,
-and TBC Classic. The structural skeleton is in place; engine and tab content
+and TBC Classic. The structural skeleton is in place. Engine and tab content
 are filled in incrementally from here.
 
 ### Implemented

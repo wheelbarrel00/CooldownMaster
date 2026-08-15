@@ -1177,8 +1177,12 @@ function Engine:RebuildOffensiveEntries()
 
 	local byGUID = debuffs[UnitGUID("target")]
 	if not byGUID then return end
+	local now = GetTime()
 	for spellID, rec in pairs(byGUID) do
-		self:SyncOffensiveEntry(spellID, rec)
+		-- Rebuilding a record past its end recreates an entry the sweep pops ready a second time. The record itself stays - its removal edge, however late it lands, is the only thing that can teach a non-enumerable dot its true length.
+		if rec.start and rec.duration and rec.start + rec.duration > now then
+			self:SyncOffensiveEntry(spellID, rec)
+		end
 	end
 end
 
@@ -1213,14 +1217,9 @@ function Engine:FlushOffensivePops()
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
 			self.entries[spellID] = nil
-			-- Never leave a live-looking rec behind, or the forward-only re-anchor guard suppresses a re-render of this dot on its next cast (empty on Classic, which does not use auraRec).
+			-- Never leave a live-looking auraRec behind, or the forward-only re-anchor guard suppresses a re-render of this dot on its next cast (empty on Classic, which does not use auraRec).
 			self.auraRec[spellID]    = nil
 			self._reanchorAt[spellID] = nil
-
-			-- The Classic combat-log record outliving its entry lets a target swap rebuild the dot and pop it a second time.
-			local guid = UnitGUID and UnitGUID("target")
-			local byGUID = guid and debuffs[guid]
-			if byGUID then byGUID[spellID] = nil end
 		end
 	end
 	wipe(pending)

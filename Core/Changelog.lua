@@ -2,6 +2,16 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.9.3",
+		date = "2026-08-14",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Retail: fixed an error that fired every time one of your tracked effects on a target ran out. A tidy-up step added in 1.9.2 for the Classic flavors reached for your target's unique ID, which Midnight keeps secret on a hostile target, and looking it up at all was enough to trigger the error. Your ready boxes and lanes were behaving correctly throughout - the cost was the error itself. Retail only, and only with Offensives switched on.",
+				"Classic: an effect that leaves nothing to read on your target now keeps improving its own timing. Something like a Paladin's Consecration puts nothing on your target that Cooldown Master can inspect, so it works out the length from when the combat log says the effect ended, and revises upward as it sees longer runs. The same 1.9.2 step was discarding the record it needed, so the estimate was pinned to whatever the first run gave - and if that run was cut short, the ready box fired early on every cast afterwards. Estimates now keep correcting themselves as you play.",
+			} },
+		},
+	},
+	{
 		version = "1.9.2",
 		date = "2026-08-13",
 		sections = {
@@ -297,11 +307,11 @@ ns.Changelog = {
 			{ head = "Bug Fixes", items = {
 				"The What's New popup, the first-run welcome, and automatic profile switching by specialization now run reliably on a fresh login instead of only after a /reload.",
 				"Fixed the color picker's opacity being inverted on modern (12.0) clients, so a color's transparency now matches what you set and Cancel restores the correct alpha.",
-				"The Filters options no longer rebuild and leak interface frames on every spec, talent, or spellbook change while the options window is closed; the rebuild now happens only while the panel is open.",
+				"The Filters options no longer rebuild and leak interface frames on every spec, talent, or spellbook change while the options window is closed. The rebuild now happens only while the panel is open.",
 				"Fixed the Filters tab sometimes coming up blank after a profile change or options rebuild.",
 				"Merely viewing a spell in Filters no longer saves an empty per-spell override into your settings.",
-				"Fixed the secondary tracking bar (GCD and Swing) on vertical lanes, which was sized and oriented for a horizontal lane; it now travels correctly along the full length of vertical lanes.",
-				"Fixed a post-combat flicker on ready boxes holding a pinned icon; pinned icons stay shown while unpinned ones clear, and the box no longer relayouts every frame.",
+				"Fixed the secondary tracking bar (GCD and Swing) on vertical lanes, which was sized and oriented for a horizontal lane. It now travels correctly along the full length of vertical lanes.",
+				"Fixed a post-combat flicker on ready boxes holding a pinned icon. Pinned icons stay shown while unpinned ones clear, and the box no longer relayouts every frame.",
 				"The selected Options tab now keeps its yellow highlight when you hover or click it instead of briefly flashing red.",
 				"Classic Era and Burning Crusade (Anniversary) no longer set up specialization-change tracking that does not apply on those flavors.",
 			} },
@@ -344,7 +354,7 @@ ns.Changelog = {
 		sections = {
 			{ head = "Bug Fixes", items = {
 				"Fixed a Lua error that could fire repeatedly in dungeons and instances and quietly interrupt cooldown tracking (a combat-protected value was being read at the wrong moment).",
-				"Fixed cooldown icons sometimes appearing at the front of the lane already counting down, instead of traveling from the start. This was most noticeable on charge and builder abilities such as Blade of Justice and Templar Strike during fast rotations; the lane now anchors each cooldown to when it actually started.",
+				"Fixed cooldown icons sometimes appearing at the front of the lane already counting down, instead of traveling from the start. This was most noticeable on charge and builder abilities such as Blade of Justice and Templar Strike during fast rotations. The lane now anchors each cooldown to when it actually started.",
 				"Fixed a brief one-frame flash an icon could show at the wrong spot when cooldowns started or reordered.",
 				"Newly talented abilities are now picked up without a /reload.",
 			} },
@@ -360,7 +370,7 @@ ns.Changelog = {
 		date = "2026-07-04",
 		sections = {
 			{ head = "New Features", items = {
-				"GCD and Swing tracking on the lanes: each lane can show your global cooldown or main-hand swing timer as a recurring indicator, either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with size, color, and direction. Classic flavors only; on retail this is handled by Blizzard's Cooldown Manager.",
+				"GCD and Swing tracking on the lanes: each lane can show your global cooldown or main-hand swing timer as a recurring indicator, either a fill across the whole lane (Primary Tracking) or a small bar that slides along it (Secondary Tracking), configurable under Lanes > General with size, color, and direction. Classic flavors only. On retail this is handled by Blizzard's Cooldown Manager.",
 				"Max Ready Icons: each ready box now caps how many ready icons show at once (Ready > General), so a burst of cooldowns coming off together no longer floods the box. Newest readies take priority.",
 				"The /cm shortcut: every slash command now also works as /cm (for example /cm, /cm lock, /cm test) in addition to /cdmaster.",
 			} },
@@ -381,7 +391,7 @@ ns.Changelog = {
 				"Mists of Pandaria Classic support: Cooldown Master now runs on the MoP Classic client (5.5.x), using the same spellbook-scan cooldown tracking as the other Classic flavors. The Colors tab covers MoP's full class list, including Death Knight and Monk.",
 			} },
 			{ head = "Bug Fixes", items = {
-				"Fixed the Profiles tab showing blank (with a Lua error) on Mists of Pandaria Classic. The per-specialization auto-switch controls now use that client's specialization API; the same fix also covers spec-based profile auto-switching at login.",
+				"Fixed the Profiles tab showing blank (with a Lua error) on Mists of Pandaria Classic. The per-specialization auto-switch controls now use that client's specialization API. The same fix also covers spec-based profile auto-switching at login.",
 			} },
 			{ head = "Improvements", items = {
 				"Renamed the lane's 'Background' appearance settings to 'Lane' (Lane, Lane Texture, Lane Color, Use Class Color), since they control the visible lane strip.",
@@ -466,7 +476,7 @@ ns.Changelog = {
 				"Added tooltips to the Auto-hide Frames, Override Autohide, and per-category Enabled / Show by Default options so their effect is clear at a glance.",
 			} },
 			{ head = "Bug Fixes", items = {
-				"Locked lanes no longer capture mouse clicks over their area; clicks now pass through to the game world beneath them.",
+				"Locked lanes no longer capture mouse clicks over their area. Clicks now pass through to the game world beneath them.",
 			} },
 		},
 	},
@@ -502,7 +512,7 @@ ns.Changelog = {
 		sections = {
 			{ head = "Improvements", items = {
 				"Detect Shared Spell Cooldowns now also collapses duplicate ready-frame pops: an ability tracked under two spell IDs that share a cooldown pops a single ready icon instead of one per ID, mirroring the lane dedupe. Off by default, gated on the same Global option.",
-				"Minor internal code cleanup (comment tidy-up; no behavior change).",
+				"Minor internal code cleanup (comment tidy-up, no behavior change).",
 			} },
 		},
 	},
@@ -520,14 +530,14 @@ ns.Changelog = {
 		date = "2026-06-22",
 		sections = {
 			{ head = "New Features", items = {
-				"Icon Zoom (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look; higher crops the icon border further.",
+				"Icon Zoom (Global tab): a slider to zoom lane and ready-frame icons in. 1 = the default look. Higher crops the icon border further.",
 				"Unusable icon tint (Global tab): tint and/or desaturate icons for spells you currently can't cast, in a color you choose (Tint Unusable Icons, Desaturate Unusable Icons, Unusable Tint Color).",
 				"Spread stacking (Lanes > Stacking): a new stacking style that pushes overlapping icons apart along the lane instead of into rows.",
 				"Detect Shared Spell Cooldowns (Global tab): collapse spells that share a cooldown into a single lane icon instead of showing duplicates.",
 			} },
 			{ head = "Bug Fixes", items = {
 				"Fixed certain cooldowns (such as Rising Sun Kick and Strike of the Windlord) tracking at the wrong spot on the lane. The addon now uses the exact learned cooldown length, re-anchors the timer to each cast, and re-learns lengths that changed in a patch.",
-				"Fixed multi-charge spells (such as Roll) briefly flashing onto the lane and popping a ready frame on each charge use; they now appear only once you're fully out of charges.",
+				"Fixed multi-charge spells (such as Roll) briefly flashing onto the lane and popping a ready frame on each charge use. They now appear only once you're fully out of charges.",
 			} },
 		},
 	},
@@ -564,7 +574,7 @@ ns.Changelog = {
 				"Cooldown Tint slider (Lanes > Appearance > Icons) lightens the cooldown darkening so you can see the spell art, or turns it off at 0.",
 			} },
 			{ head = "Bug Fixes", items = {
-				"Locking the frames no longer hides lanes; it only disables dragging now. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.",
+				"Locking the frames no longer hides lanes. It only disables dragging now. Lane visibility follows your Always / In Group / In Instance and Auto-hide settings.",
 				"Using a single potion no longer pops several ready frames at once: combat potions share one cooldown, so they show and notify as a single icon.",
 			} },
 		},
@@ -575,7 +585,7 @@ ns.Changelog = {
 		sections = {
 			{ head = "New Features", items = {
 				"Added a Show Minimap Button checkbox to the Global tab to hide or show the minimap icon.",
-				"Hovering a lane icon now shows the spell or item tooltip. Turn it on with the Enable tooltips option on the Global tab (off by default); while frames are unlocked the icons stay click-through, so you can still drag lanes freely.",
+				"Hovering a lane icon now shows the spell or item tooltip. Turn it on with the Enable tooltips option on the Global tab (off by default). While frames are unlocked the icons stay click-through, so you can still drag lanes freely.",
 			} },
 		},
 	},
@@ -598,7 +608,7 @@ ns.Changelog = {
 		date = "2026-06-21",
 		sections = {
 			{ head = "Bug Fixes", items = {
-				"Fixed a repeating Lua error in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count; multi-charge spells are detected from their maximum charges, so the recharge still shows once fully on cooldown.",
+				"Fixed a repeating Lua error in combat for multi-charge spells (such as Shimmer). The addon no longer reads the protected in-combat charge count. Multi-charge spells are detected from their maximum charges, so the recharge still shows once fully on cooldown.",
 				"Creating a profile now warns on an empty, duplicate, or current name, and clears the box with a confirmation on success.",
 				"Hardened active-profile switching so the dropdown can't tear itself down mid-click.",
 			} },
@@ -700,11 +710,11 @@ ns.Changelog = {
 				"Continuous M:SS countdown text (4:59, 4:58, ...) for spells and potions.",
 			} },
 			{ head = "Improvements", items = {
-				"Event-driven engine keyed on cooldown-state changes; removed unused curve-evaluation code from the live path.",
+				"Event-driven engine keyed on cooldown-state changes. Removed unused curve-evaluation code from the live path.",
 				"Removed developer chat output on login and reload (still available on demand via /cdmaster api).",
 			} },
 			{ head = "Known Limitations", items = {
-				"Icon position is approximate for haste- or talent-scaled cooldowns; the countdown number is always exact.",
+				"Icon position is approximate for haste- or talent-scaled cooldowns. The countdown number is always exact.",
 				"Charge-based spells may not show their recharge until fully on cooldown.",
 			} },
 		},
@@ -741,7 +751,7 @@ ns.Changelog = {
 				"Multi-lane rendering now gates each entry by its resolved lane, so spells only appear in the lane they are routed to.",
 			} },
 			{ head = "Migration", items = {
-				"Legacy perSpellRouting folded into spellOverrides; the obsolete key is removed (idempotent).",
+				"Legacy perSpellRouting folded into spellOverrides. The obsolete key is removed (idempotent).",
 			} },
 		},
 	},
