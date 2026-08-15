@@ -4,8 +4,8 @@
 
 ### New Features
 
-- **Cooldown Master is now translated.** Every piece of text the addon draws — options, tooltips, ready boxes, the What's New popup — reads in your client's language where a translation exists, and falls back to English where it does not. Simplified Chinese is complete. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons, and will fill in over time.
-- **Simplified Chinese is 100% complete**, translated by 失眠啤酒.
+- **Cooldown Master is now translated.** Every piece of text the addon draws — options, tooltips, ready boxes, the What's New popup — reads in your client's language where a translation exists, and falls back to English where it does not. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons, and will fill in over time.
+- **Simplified Chinese covers the whole addon**, but honestly: only the phrases shared with my other addons are human-translated, from 失眠啤酒's work there. The rest is a machine-assisted first pass that no native speaker has reviewed yet. It should be understandable throughout and wrong in places. Corrections are very welcome — see the repo, or the Discord.
 - Translations are bundled in the addon itself, so there is nothing to install and nothing to download. Your client language decides, and switching languages switches the addon with it.
 
 ### Bug Fixes

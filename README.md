@@ -13,10 +13,10 @@ traveling **lanes**, depleting **bar frames**, and **ready-notification boxes**
 that a cooldown pops into the moment it comes up. Every cooldown can be routed to
 any combination of the three, per category or per individual spell.
 
-Supports **Midnight (retail 12.0+)**, **Classic Era**, **Burning Crusade
-Classic**, and **Mists of Pandaria Classic**, and registers a LibDataBroker
-launcher + minimap button so panel addons like Titan Panel, Bazooka, and
-ChocolateBar pick it up automatically.
+Supports **Midnight (retail 12.1)**, **Classic Era**, **Burning Crusade
+Classic**, and **Mists of Pandaria Classic** from one code base, ships in **five
+languages**, and registers a LibDataBroker launcher + minimap button so panel
+addons like Titan Panel, Bazooka, and ChocolateBar pick it up automatically.
 
 > **Cooldown Master** carries forward the idea behind **CooldownTimeline2
 > (CDTL2)** by cliffclive / Vreenak. After Midnight changed how cooldowns work,
@@ -188,8 +188,44 @@ used to.
 - **What's New popup** — a short digest after an update, with a quiet chat-link
   mode or off entirely.
 
+## Localization
+
+Ships in **English, French, Russian, Korean, and Simplified Chinese** since
+v1.10.0. Translations are bundled in `Locales/`, selected from `GetLocale()`, and
+fall back to English per-phrase, so a partial language renders as itself where it
+has a translation and as English where it does not. Simplified Chinese is
+complete; French, Russian and Korean are partial and growing.
+
+**`Locales/*.lua` are generated — never hand-edit one.** They are built from the
+[EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared
+store, which CooldownMaster joined as a third addon alongside Everything Quests
+and EQ Objective Tracker. That store keys a translation on its **English phrase**
+rather than on any addon, so a phrase CDM shares with the other two arrived
+already translated — 45 of them did, in four languages, on day one. Editing a
+generated file here is overwritten on the next build, and that repo's drift check
+exists to catch exactly that.
+
+`Locales/enUS.lua` is the manifest and creates `ns.L`. It must load after
+`embeds.xml` and before `Core\Constants.lua` in all four `.toc` files. `ns.L`
+carries an `__index` that returns the key, so a missing phrase degrades to English
+rather than erroring.
+
+Run `python docs/_verify_locale.py` (exit 0) alongside `luacheck .` after any
+user-facing string change — it checks code keys against the manifest and every
+translation for orphans and `string.format` mismatches, without needing the store
+repo checked out.
+
+> ⛔ **Displayed does not mean translatable.** A string that is also persisted to
+> SavedVariables or used as a lookup key must stay bare English. AceDB `rawset`s
+> scalar defaults straight into the saved profile, so a translated default is
+> written to disk and outlives a client language change. Dropdowns take
+> `{ value = <bare>, text = L["..."] }`, and anything Blizzard already localizes
+> should use the Blizzard global instead.
+
 ## Planned
 
+- **More languages, and fuller coverage** in the ones already shipped —
+  contributions welcome, and no tooling or GitHub account is needed to help.
 - **More tracking indicator types** (Classic) — the per-lane secondary tracking
   covers the GCD and your main-hand swing timer today; further indicator types are
   on the list.
