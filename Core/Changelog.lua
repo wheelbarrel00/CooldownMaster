@@ -27,7 +27,7 @@ ns.Changelog = {
 		date = "2026-08-15",
 		sections = {
 			{ head = "New Features", items = {
-				"Cooldown Master is now translated. Everything the addon draws - options, tooltips, ready boxes, this popup - reads in your client's language where a translation exists, and falls back to English where it does not. Simplified Chinese is complete, with thanks to the translator who contributed it. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons and will fill in over time.",
+				"Cooldown Master is now translated. Everything the addon draws - options, tooltips, ready boxes, this popup - reads in your client's language where a translation exists, and falls back to English where it does not. French, Russian and Korean cover the phrases Cooldown Master shares with my other addons and will fill in over time. Simplified Chinese covers the whole addon, but only the shared phrases are the work of the translator credited on my other addons - the rest was a machine-assisted first pass that no native speaker had reviewed.",
 				"Translations are bundled in the addon, so there is nothing to install and nothing to download. Your client language decides, and switching languages switches the addon with it.",
 			} },
 			{ head = "Bug Fixes", items = {
