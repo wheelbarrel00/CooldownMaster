@@ -191,10 +191,11 @@ used to.
 ## Localization
 
 Ships in **English, French, Russian, Korean, and Simplified Chinese** since
-v1.10.0. Translations are bundled in `Locales/`, selected from `GetLocale()`, and
-fall back to English per-phrase, so a partial language renders as itself where it
-has a translation and as English where it does not. Simplified Chinese is
-complete; French, Russian and Korean are partial and growing.
+v1.10.0, plus a partial **Traditional Chinese**. Translations are bundled in
+`Locales/`, selected from `GetLocale()`, and fall back to English per-phrase, so
+a partial language renders as itself where it has a translation and as English
+where it does not. Simplified Chinese is complete; French, Russian, Korean and
+Traditional Chinese are partial and growing.
 
 **`Locales/*.lua` are generated — never hand-edit one.** They are built from the
 [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared

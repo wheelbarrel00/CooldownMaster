@@ -17,6 +17,7 @@ Locales\frFR.lua
 Locales\ruRU.lua
 Locales\koKR.lua
 Locales\zhCN.lua
+Locales\zhTW.lua
 
 Core\Constants.lua
 Core\Changelog.lua
