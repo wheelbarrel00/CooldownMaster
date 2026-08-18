@@ -1,5 +1,30 @@
 # Cooldown Master Changelog
 
+## 1.11.0 (2026-08-18) — Five languages, all the way through
+
+### New Features
+
+- **Cooldown Master is now fully translated in all five languages.** French, Russian and Korean went from covering only the phrases shared with my other addons to covering the whole addon, and Traditional Chinese went from a third of it to all of it. Every options label, tooltip, message and popup now reads in your client's language. Written in-house with each translator's permission and in their own style, then reviewed end to end.
+- **The tag help now translates.** The panel you get when you hover a Text or Label Text box — the one listing `[cd.name]`, `[cd.next]` and the rest — was English for everyone. It was the largest block of untranslated text left in the addon.
+
+### A note on the translations
+
+I am not able to test these in a non-English client — I do not have the other languages installed. Everything passes the automated checks (format specifiers, colour codes, key coverage, cross-references), but those cannot catch a label that runs off its button or a tooltip that sends you to a setting you cannot find.
+
+**So if you see anything off, please tell me and I will fix it.** The Discord button on the addon's About tab, the comments on the CurseForge page, or a [GitHub issue](https://github.com/wheelbarrel00/CooldownMaster/issues) all reach me. Corrections from native speakers are very welcome — a screenshot and the language is plenty to go on.
+
+### Bug Fixes
+
+- **Fixed the Default Lane dropdown in Filters falling back to English.** It was built with translated lane names and then quietly overwritten with hardcoded English ones every time the list refreshed, so on any translated client it reverted the moment you toggled a lane.
+- The **Edit** button on each custom cooldown, and the message shown when a profile export fails, were hardcoded English. Both translate now.
+- The icon nudge slider on the Lanes and Ready tabs shared a name with the **Offset** stacking style, so one word had to serve as both an adjective and a noun. It has its own name now and reads correctly in every language.
+- Corrected three Simplified Chinese tooltips that pointed you at controls using words those controls do not use, so following the instructions led nowhere.
+
+### Improvements
+
+- Swept every language for tooltips naming a setting differently from that setting's own label, for two different settings ending up with the same name on one panel, and for text overflowing its button.
+- Simplified Chinese had its machine-assisted first pass reviewed against the English throughout. Wording, terminology and punctuation are consistent with the human-translated phrases now, rather than sitting beside them in a different register.
+
 ## 1.10.0 (2026-08-15) — Cooldown Master speaks five languages
 
 ### New Features

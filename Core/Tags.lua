@@ -118,24 +118,24 @@ end
 
 do
 	local lines = {
-		"Type text and these tags fill in live.",
-		"Per cooldown (icon labels only):",
-		"[cd.name] - spell or item name",
-		"[cd.type] - category (Spell, Buff, Potion...)",
+		L["Type text and these tags fill in live."],
+		L["Per cooldown (icon labels only):"],
+		L["[cd.name] - spell or item name"],
+		L["[cd.type] - category (Spell, Buff, Potion...)"],
 	}
-	if CLASSIC then lines[#lines + 1] = "[cd.time] - remaining time" end
-	lines[#lines + 1] = "Global (status line, or icons):"
-	lines[#lines + 1] = "[cd.next] - name of the next cooldown up"
-	lines[#lines + 1] = "[cd.count] - how many are on cooldown"
+	if CLASSIC then lines[#lines + 1] = L["[cd.time] - remaining time"] end
+	lines[#lines + 1] = L["Global (status line, or icons):"]
+	lines[#lines + 1] = L["[cd.next] - name of the next cooldown up"]
+	lines[#lines + 1] = L["[cd.count] - how many are on cooldown"]
+	-- Bare tag tokens, no prose to translate.
 	if CLASSIC then lines[#lines + 1] = "[player.hp.pct] / [player.power.pct]" end
 	lines[#lines + 1] = "[player.class] / [player.name]"
-	lines[#lines + 1] = "[target.name] / [target.class] - blank if hidden"
+	lines[#lines + 1] = L["[target.name] / [target.class] - blank if hidden"]
 	ns.TAG_HELP = table.concat(lines, "\n")
 
 	-- The picker only offers global tags, but the box accepts anything typed.
-	ns.TAG_HELP_STATUS = "This line belongs to the frame, not to one cooldown, so per-cooldown tags"
-		.. " like [cd.name] and [cd.type] stay blank here. Put those on an Icon Label instead.\n\n"
-		.. ns.TAG_HELP
+	ns.TAG_HELP_STATUS = L["This line belongs to the frame, not to one cooldown, so per-cooldown tags like [cd.name] and [cd.type] stay blank here. Put those on an Icon Label instead."]
+		.. "\n\n" .. ns.TAG_HELP
 end
 
 -- Split by context: per-cooldown tags need an entry, so they fill in only on an icon label, not the frame status line.

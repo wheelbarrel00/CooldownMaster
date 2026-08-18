@@ -1087,7 +1087,7 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = L["Offset"], min = -30, max = 30, step = 1,
+		label = L["Icon Offset"], min = -30, max = 30, step = 1,
 		value = cfg.iconOffset, width = 240,
 		onChange = function(v) cfg.iconOffset = v; RefreshLane(laneIndex) end,
 	}))
@@ -1676,7 +1676,8 @@ local function RefreshLaneOptionLabels()
 	local lanes = ns.CDM and ns.CDM.db and ns.CDM.db.profile.lanes
 	for i = 1, 3 do
 		local cfg = lanes and lanes[i]
-		local text = (cfg and cfg.enabled == false) and ("Lane " .. i .. " (off)") or ("Lane " .. i)
+		local text = (cfg and cfg.enabled == false)
+			and string.format(L["Lane %d (off)"], i) or string.format(L["Lane %d"], i)
 		FILTER_LANE_OPTIONS[i + 1].text = text
 		FILTER_LANE_FOR_DEFAULTS[i].text = text
 	end
@@ -2542,7 +2543,7 @@ local function BuildCustomListRow(parent, def, y, selected)
 	del:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -pad, y + 1)
 
 	local edit = W.CreateButton(parent, {
-		label = selected and "Editing" or "Edit", width = 62,
+		label = selected and L["Editing"] or L["Edit"], width = 62,
 		onClick = function()
 			local opening = filtersState.customSelected ~= id
 			filtersState.customSelected = opening and id or nil
@@ -2584,6 +2585,7 @@ end
 
 local function BuildFiltersCustomForm(parent)
 	local W = ns.Widgets
+	RefreshLaneOptionLabels()
 	local pad, rowGap = 12, 10
 	local y = -pad
 	local function place(widget, height)
@@ -3119,7 +3121,7 @@ local function BuildProfilesTab(content)
 	exportBtn:SetPoint("TOPLEFT", resetBtn, "BOTTOMLEFT", 0, -12)
 	exportBtn:SetScript("OnClick", function()
 		local s = ProfileExportString()
-		if s and ns.ShowURL then ns.ShowURL(s) else ns.CDM:Print("Export failed.") end
+		if s and ns.ShowURL then ns.ShowURL(s) else ns.CDM:Print(L["Export failed."]) end
 	end)
 	local importBtn = Theme.CreateButton(content, L["Import"], 130, 24)
 	importBtn:SetPoint("TOPLEFT", exportBtn, "TOPRIGHT", 16, 0)
@@ -3617,7 +3619,7 @@ local function BuildReadyIconsForm(parent, i)
 		onChange = function(v) cfg.iconAlpha = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = L["Offset"], min = -30, max = 30, step = 1, value = cfg.iconOffset, width = 240,
+		label = L["Icon Offset"], min = -30, max = 30, step = 1, value = cfg.iconOffset, width = 240,
 		onChange = function(v) cfg.iconOffset = v; ReadyApply(i) end,
 	}))
 	place(W.CreateSlider(parent, {
