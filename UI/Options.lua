@@ -3206,6 +3206,16 @@ local ABOUT_MUTED = "|cffb3b3b3"
 local ABOUT_WHITE = "|cffe6e6e6"
 local ABOUT_CLOSE = "|r"
 
+-- Latin handles, matching Everything Quests. A CJK name renders as empty boxes in the
+-- Western game font, so these must never be swapped for a translator's native-script name.
+local ABOUT_TRANSLATORS = {
+	{ name = "Zox",      line = L["Thanks to %s, who translated my other addons into French."] },
+	{ name = "Malevi4",  line = L["Thanks to %s, who translated my other addons into Russian."] },
+	{ name = "labrie75", line = L["Thanks to %s, who translated my other addons into Korean."] },
+	{ name = "Keriaovo", line = L["Thanks to %s, who translated my other addons into Simplified Chinese."] },
+	{ name = "BNS333",   line = L["Thanks to %s, who translated my other addons into Traditional Chinese."] },
+}
+
 local ABOUT_GITHUB_URL   = "https://github.com/wheelbarrel00/CooldownMaster"
 local ABOUT_BUG_URL      = "https://github.com/wheelbarrel00/CooldownMaster/issues"
 local ABOUT_RELEASES_URL = "https://github.com/wheelbarrel00/CooldownMaster/releases"
@@ -3382,6 +3392,14 @@ local function BuildAboutTab(content)
 	body(ABOUT_WHITE .. string.format(
 		L["Cooldown Master carries forward the idea behind |cffEBB706%1$s|r by |cffEBB706%2$s|r - the timeline-cooldown addon that inspired this one. After Midnight changed how cooldowns work, I rebuilt the concept from the ground up for 12.0 with his blessing. Full credit for the original timeline-cooldown idea goes to him. Thank you, cliffclive."],
 		"CooldownTimeline2 (CDTL2)", "cliffclive") .. ABOUT_CLOSE)
+	gap(10)
+
+	header(L["Translations"])
+	body(ABOUT_WHITE .. L["Cooldown Master shares part of its text with my other addons, and those phrases are the work of the translators below. The rest was written in-house in their style and with their permission, so anything wrong in it is my mistake and not theirs. Corrections are very welcome."] .. ABOUT_CLOSE)
+	-- The name is a %s so a translator can place it where their language wants it.
+	for _, t in ipairs(ABOUT_TRANSLATORS) do
+		body(ABOUT_WHITE .. string.format(t.line, ABOUT_GOLD .. t.name .. ABOUT_CLOSE .. ABOUT_WHITE) .. ABOUT_CLOSE)
+	end
 	gap(10)
 
 	header(L["Thanks"])

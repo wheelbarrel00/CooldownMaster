@@ -196,7 +196,22 @@ Chinese**, all six complete as of v1.11.0. Translations are bundled in
 a language renders as itself where it has a translation and as English where it
 does not.
 
-Corrections are always welcome — open an issue or say so in the Discord.
+### Translators
+
+| | |
+|---|---|
+| French | **Zox** |
+| Russian | **Malevi4** |
+| Korean | **labrie75** |
+| Simplified Chinese | **Keriaovo** |
+| Traditional Chinese | **BNS333** |
+
+⚠ **Credit where it is actually due.** These five translated *my other addons*.
+Cooldown Master shares a portion of its text with those, and inherited their
+work for free through the shared store. Everything beyond that was written
+in-house in each translator's established style and with their permission — so
+any mistake in it is mine, not theirs. The same note is on the addon's About
+tab, and corrections are very welcome: open an issue or say so in the Discord.
 
 **`Locales/*.lua` are generated — never hand-edit one.** They are built from the
 [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared
