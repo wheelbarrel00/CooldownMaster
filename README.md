@@ -14,7 +14,7 @@ that a cooldown pops into the moment it comes up. Every cooldown can be routed t
 any combination of the three, per category or per individual spell.
 
 Supports **Midnight (retail 12.1)**, **Classic Era**, **Burning Crusade
-Classic**, and **Mists of Pandaria Classic** from one code base, ships in **five
+Classic**, and **Mists of Pandaria Classic** from one code base, ships in **seven
 languages**, and registers a LibDataBroker launcher + minimap button so panel
 addons like Titan Panel, Bazooka, and ChocolateBar pick it up automatically.
 
@@ -190,8 +190,8 @@ used to.
 
 ## Localization
 
-Ships in **English, French, Russian, Korean, Simplified Chinese, and Traditional
-Chinese**, all six complete as of v1.11.0. Translations are bundled in
+Ships in **English, French, Russian, Korean, Simplified Chinese, Traditional
+Chinese, and German**, all seven complete. Translations are bundled in
 `Locales/`, selected from `GetLocale()`, and fall back to English per-phrase, so
 a language renders as itself where it has a translation and as English where it
 does not.
@@ -205,8 +205,9 @@ does not.
 | Korean | **labrie75** |
 | Simplified Chinese | **Keriaovo** |
 | Traditional Chinese | **BNS333** |
+| German | **Stonetwist** |
 
-⚠ **Credit where it is actually due.** These five translated *my other addons*.
+**Credit where it is actually due.** These six translated *my other addons*.
 Cooldown Master shares a portion of its text with those, and inherited their
 work for free through the shared store. Everything beyond that was written
 in-house in each translator's established style and with their permission — so
@@ -241,7 +242,7 @@ repo checked out.
 
 ## Planned
 
-- **More languages** — the five shipped are complete, and contributions are
+- **More languages** — the six translations are complete, and contributions are
   welcome, with no tooling or GitHub account needed to help. Corrections to the
   existing ones are just as welcome.
 - **More tracking indicator types** (Classic) — the per-lane secondary tracking

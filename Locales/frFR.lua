@@ -327,6 +327,7 @@ L["Thanks to %s, who translated my other addons into Russian."] = "Merci à %s, 
 L["Thanks to %s, who translated my other addons into Korean."] = "Merci à %s, qui a traduit mes autres addons en coréen."
 L["Thanks to %s, who translated my other addons into Simplified Chinese."] = "Merci à %s, qui a traduit mes autres addons en chinois simplifié."
 L["Thanks to %s, who translated my other addons into Traditional Chinese."] = "Merci à %s, qui a traduit mes autres addons en chinois traditionnel."
+L["Thanks to %s, who translated my other addons into German."] = "Merci à %s, qui a traduit mes autres addons en allemand."
 L["Open or close the options window (or /cdmaster)"] = "Ouvrir ou fermer la fenêtre d'options (ou /cdmaster)"
 L["Lock the lane frames"] = "Verrouiller les cadres de piste"
 L["Unlock the lane frames for moving"] = "Déverrouiller les cadres de piste pour les déplacer"

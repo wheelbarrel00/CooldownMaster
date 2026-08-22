@@ -327,6 +327,7 @@ L["Thanks to %s, who translated my other addons into Russian."] = "感谢 %s 将
 L["Thanks to %s, who translated my other addons into Korean."] = "感谢 %s 将我的其他插件翻译为韩语。"
 L["Thanks to %s, who translated my other addons into Simplified Chinese."] = "感谢 %s 将我的其他插件翻译为简体中文。"
 L["Thanks to %s, who translated my other addons into Traditional Chinese."] = "感谢 %s 将我的其他插件翻译为繁体中文。"
+L["Thanks to %s, who translated my other addons into German."] = "感谢 %s 将我的其他插件翻译为德语。"
 L["Open or close the options window (or /cdmaster)"] = "打开或关闭设置窗口（也可用 /cdmaster）"
 L["Lock the lane frames"] = "锁定轨道框体"
 L["Unlock the lane frames for moving"] = "解锁轨道框体以便移动"

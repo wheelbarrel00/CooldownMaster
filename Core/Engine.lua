@@ -9,6 +9,7 @@ Engine.trackedItems    = {}
 Engine.itemUseSpell    = {}   -- [itemID] = use spellID
 Engine.itemSpells      = {}   -- [use spellID] = true
 Engine.lastUsedSpell   = nil
+Engine.restoredOwner   = {}   -- [itemID] = true, owner re-bound from SavedVariables after a reload
 Engine.trackedOffensives = {}
 Engine.auraDurations   = {}
 Engine.auraObserved    = {}
@@ -106,8 +107,10 @@ end
 
 
 function ns.IsLastUsedItem(e)
+	if e.itemID == nil then return false end
+	if Engine.restoredOwner[e.itemID] then return true end
 	local spellID = Engine.lastUsedSpell
-	if spellID == nil or e.itemID == nil then return false end
+	if spellID == nil then return false end
 	return Engine.itemUseSpell[e.itemID] == spellID
 end
 
@@ -2224,19 +2227,34 @@ function Engine:RunItemDump()
 	cdm:Print("lastUsedSpell = " .. tostring(self.lastUsedSpell)
 		.. "  (nil means no item cast has matched the map yet)")
 
+	local rec = cdm.db and cdm.db.char and cdm.db.char.lastItemUse
+	local owners = 0
+	if rec then
+		for itemID, start in pairs(rec) do
+			owners = owners + 1
+			cdm:Print(string.format("  persisted owner: item %s @ start %.2f  re-bound=%s",
+				tostring(itemID), start or 0, tostring(self.restoredOwner[itemID] or false)))
+		end
+	end
+	if owners == 0 then cdm:Print("  no persisted item owners (set on a cast, re-bound after a reload)") end
+
 	cdm:Print("--- live item entries (what the merge actually chooses between) ---")
-	local live, now = 0, GetTime()
+	local live, now, orphan = 0, GetTime(), false
 	for id, e in pairs(self.entries) do
 		if e.itemID then
 			live = live + 1
+			local mine = ns.IsLastUsedItem(e)
+			if not mine then orphan = true end
 			cdm:Print(string.format("  ENTRY [%s] %s | itemID=%s start=%.2f remaining=%.1fs lastUsed=%s",
 				tostring(id), tostring(e.name), tostring(e.itemID), e.startTime or 0,
-				(e.endTime or now) - now, tostring(ns.IsLastUsedItem(e))))
+				(e.endTime or now) - now, tostring(mine)))
 		end
 	end
 	if live == 0 then cdm:Print("  |cffff5555no live item entries|r") end
-	if live == 1 then cdm:Print("  only ONE item entry - so nothing is being merged, and the potion you") end
-	if live == 1 then cdm:Print("  drank never produced an entry of its own.") end
+	if live == 1 and orphan then
+		cdm:Print("  only ONE item entry and it is not the item you last used - the item")
+		cdm:Print("  you used never produced an entry of its own.")
+	end
 end
 
 
@@ -2629,7 +2647,7 @@ function Engine:RunOffensiveDump()
 			cdm:Print(string.format("  |cffffff00unresolved|r inst=%s from cast %s solo=%s - needs an out-of-combat look",
 				tostring(inst), tostring(p.cast and GetSpellNameIcon(p.cast) or "none"), tostring(p.solo)))
 		end
-		if n3 > 0 then cdm:Print("  (unresolved instances are learnt out of combat; multi-debuff casts need /cm offlearn)") end
+		if n3 > 0 then cdm:Print("  (unresolved instances are learned out of combat; multi-debuff casts need /cm offlearn)") end
 
 		local n4 = 0
 		for castID, map in pairs(self.castMap) do
@@ -2758,6 +2776,54 @@ function Engine:BuildTrackedItems()
 			local itemID = GetInventoryItemID("player", eslot)
 			if itemID and C_Item.GetItemSpell(itemID) then
 				addItem(itemID, ns.CONST.TRINKET_CATEGORY, eslot)
+			end
+		end
+	end
+end
+
+
+-- Keyed per item, not one global slot: a trinket used after the potion would overwrite its claim.
+local function SaveItemOwner(itemID, startTime)
+	local addon = ns.CDM
+	if not (addon and addon.db and addon.db.char) then return end
+	local rec = addon.db.char.lastItemUse
+	if not rec then
+		rec = {}
+		addon.db.char.lastItemUse = rec
+	end
+	if rec[itemID] == startTime then return end
+	rec[itemID] = startTime
+end
+
+
+local function ClearItemOwner(itemID)
+	local addon = ns.CDM
+	local rec = addon and addon.db and addon.db.char and addon.db.char.lastItemUse
+	if rec then rec[itemID] = nil end
+end
+
+
+-- lastUsedSpell dies with a reload but the cooldown does not. GetTime is client-relative, so a persisted start still identifies that same run.
+function Engine:RestoreItemOwner()
+	wipe(self.restoredOwner)
+	local addon = ns.CDM
+	if not (addon and addon.db and addon.db.char) then return end
+	local rec = addon.db.char.lastItemUse
+	if not rec then return end
+	local now = GetTime()
+	for itemID, start in pairs(rec) do
+		if start > now + 1 then
+			-- A start a second into the future means GetTime restarted with the client, so this is another boot's record.
+			rec[itemID] = nil
+		else
+			local tracked = self.trackedItems[itemID]
+			if tracked then
+				-- Never prune on an inactive read: cooldowns sync late after a loading screen.
+				local active, startTime = self:PollOneItem(itemID, tracked)
+				-- Not an equality test: SavedVariables writes at most 16 significant digits, one short of a double's round trip.
+				if active and math.abs(startTime - start) <= SHARED_CD_TOL then
+					self.restoredOwner[itemID] = true
+				end
 			end
 		end
 	end
@@ -2940,7 +3006,7 @@ function Engine:StoreAuraDuration(spellID, total)
 end
 
 
--- Beyond this a debuff is a permanent or out-of-combat one, not a dot worth travelling a lane.
+-- Beyond this a debuff is a permanent or out-of-combat one, not a dot worth traveling a lane.
 local MAX_AURA_DURATION = 600
 
 -- Fallback for a length that never reads plain, timed off the combat log. Converges up only: a dot cut short by an evade or a dispel must never pin the length low for good.
@@ -3457,11 +3523,21 @@ local function ByLastUsedThenID(a, b)
 		local bu = Engine.itemUseSpell[b] == used
 		if au ~= bu then return au end
 	end
+
+	-- After a reload there is no cast to rank on, so the persisted owner is all that is left.
+	local ra = Engine.restoredOwner[a] or false
+	local rb = Engine.restoredOwner[b] or false
+	if ra ~= rb then return ra end
+
 	return a < b
 end
 
 
 function Engine:PollAllItems()
+	-- Rebuilt every pass rather than latched once: an unrelated trinket cast sets lastUsedSpell, and
+	-- a latch would let that starve a potion whose owner has not re-bound yet.
+	self:RestoreItemOwner()
+
 	self._seenItems = self._seenItems or {}
 	local seen = self._seenItems
 	wipe(seen)
@@ -3510,6 +3586,10 @@ function Engine:PollAllItems()
 		elseif tracked and active and not cdSeen[startTime] then
 			cdSeen[startTime] = true
 			seen[itemID] = true
+			-- Only a cast-confirmed claim is persisted, never a lowest-itemID fallback.
+			if self.lastUsedSpell and self.itemUseSpell[itemID] == self.lastUsedSpell then
+				SaveItemOwner(itemID, startTime)
+			end
 			-- itemIDs overlap the spellID range (5512 is both), so a spell already on this key keeps it.
 			local existing = self.entries[itemID]
 			if existing and existing.kind ~= "item" then existing = nil end
@@ -3540,12 +3620,17 @@ function Engine:PollAllItems()
 	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
 	for itemID, entry in pairs(self.entries) do
 		if entry.kind == "item" and not seen[itemID] and not blackout then
+			-- An unequipped trinket lingers in trackedItems through the 0.5s rebuild debounce, so silence the pop rather than defer it.
+			local tracked = self.trackedItems[itemID]
+			local unequipped = tracked and tracked.slot and GetInventoryItemID
+				and GetInventoryItemID("player", tracked.slot) ~= itemID
 			-- A used-up potion is held above until its cooldown finishes, so it pops under the name
 			-- that held the icon. Anything that left inventory another way was dropped up there.
-			if ns.ReadyFrames_OnReadyTransition then
+			if not unequipped and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(itemID, entry)
 			end
 			self.entries[itemID] = nil
+			ClearItemOwner(itemID)
 		end
 	end
 end
@@ -4184,8 +4269,8 @@ function Engine:Start(addon)
 			local p = Engine._probe
 			p.seen, p.lastSeenAt, p.lastID = p.seen + 1, GetTime(), spellID
 			p.lastSecret = secret
-			Engine:OnTrackedCast(spellID)
 			-- Never index a table with a secret spellID (Midnight) - it would not match a plain-number key anyway.
+			if not secret then Engine:OnTrackedCast(spellID) end
 			if isPlayer and not p.lastSecret then Engine:FireCustomSpellTrigger(spellID) end
 			if isPlayer and not p.lastSecret and not ns.Compat.HAS_COMBAT_LOG then
 				Engine:OnCastForAuras(spellID, GetTime())

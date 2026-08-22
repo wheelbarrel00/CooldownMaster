@@ -327,6 +327,7 @@ L["Thanks to %s, who translated my other addons into Russian."] = "Спасиб�
 L["Thanks to %s, who translated my other addons into Korean."] = "Спасибо %s за перевод моих других аддонов на корейский."
 L["Thanks to %s, who translated my other addons into Simplified Chinese."] = "Спасибо %s за перевод моих других аддонов на упрощённый китайский."
 L["Thanks to %s, who translated my other addons into Traditional Chinese."] = "Спасибо %s за перевод моих других аддонов на традиционный китайский."
+L["Thanks to %s, who translated my other addons into German."] = "Спасибо %s за перевод моих других аддонов на немецкий."
 L["Open or close the options window (or /cdmaster)"] = "Открыть или закрыть окно настроек (или /cdmaster)"
 L["Lock the lane frames"] = "Заблокировать рамки дорожек"
 L["Unlock the lane frames for moving"] = "Разблокировать рамки дорожек для перемещения"

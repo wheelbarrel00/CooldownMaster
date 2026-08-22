@@ -327,6 +327,7 @@ L["Thanks to %s, who translated my other addons into Russian."] = "제 다른 �
 L["Thanks to %s, who translated my other addons into Korean."] = "제 다른 애드온을 한국어로 번역해 주신 %s 님께 감사드립니다."
 L["Thanks to %s, who translated my other addons into Simplified Chinese."] = "제 다른 애드온을 중국어 간체로 번역해 주신 %s 님께 감사드립니다."
 L["Thanks to %s, who translated my other addons into Traditional Chinese."] = "제 다른 애드온을 중국어 번체로 번역해 주신 %s 님께 감사드립니다."
+L["Thanks to %s, who translated my other addons into German."] = "제 다른 애드온을 독일어로 번역해 주신 %s 님께 감사드립니다."
 L["Open or close the options window (or /cdmaster)"] = "설정 창 열기 또는 닫기(/cdmaster 도 가능)"
 L["Lock the lane frames"] = "레인 프레임 잠그기"
 L["Unlock the lane frames for moving"] = "레인 프레임 잠금을 풀어 옮기기"

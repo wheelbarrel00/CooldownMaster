@@ -384,6 +384,11 @@ local trackMon
 function ns.Lanes_TrackingReport()
 	local addon = ns.CDM
 	if not addon then return end
+	-- The 5s sampler below runs CalcTracking at frame rate, and on retail that cooldown read is secret in combat so the arithmetic throws.
+	if not TRACKING_ENABLED then
+		addon:Print("Lane tracking is Classic-only - retail's Cooldown Manager owns the GCD and swing bars, so there is nothing to sample.")
+		return
+	end
 	addon:Print(string.format("Tracking enabled: %s | swingActive: %s | swingSpeed: %s",
 		tostring(TRACKING_ENABLED), tostring(swingActive), tostring(swingSpeed)))
 	for i = 1, 3 do

@@ -1,5 +1,20 @@
 # Cooldown Master Changelog
 
+## 1.12.0 (2026-08-21) — German makes six, and the potion that wore the wrong name
+
+### New Features
+
+- **German (deDE).** Cooldown Master now ships in German, complete — every options label, tooltip, message and popup. It joins French, Russian, Korean, Simplified Chinese and Traditional Chinese, so six languages are covered end to end. Contributed through the shared translation store by **Stonetwist**.
+- **The translators are credited on the About tab.** The people whose work Cooldown Master inherited through the shared store now appear by name under Translations, with a note about which part of the text is actually theirs.
+
+### Bug Fixes
+
+- **A potion could spend its whole cooldown wearing another potion's name.** Every potion shares one cooldown, so Cooldown Master works out which one to show from the potion you actually drank. That knowledge did not survive a `/reload` or a login — so if a potion cooldown was still running, it fell back to picking whichever potion had the lowest item ID and kept that name for the rest of the run. It now remembers which potion started the cooldown and picks it back up.
+- **Unequipping an on-use trinket no longer announces it as ready.** Taking the trinket off mid-cooldown popped a ready box for it, minutes early.
+- **`/cm tracking` no longer fills your chat with Lua errors on retail.** It samples the global cooldown and swing timer, which are Classic-only features, and it asked you to be in combat to do it — where retail will not hand those numbers to addons at all. It now says so and stops.
+- **Closed a rare Lua error that could break cooldown tracking for the rest of a session.** A cast whose spell ID retail declines to reveal was being used as a lookup key, which could poison the table Cooldown Master tracks your spells in.
+- **Corrected the Simplified Chinese credit** in the v1.10.0 entry below.
+
 ## 1.11.0 (2026-08-18) — Five languages, all the way through
 
 ### New Features
@@ -9,7 +24,7 @@
 
 ### A note on the translations
 
-I am not able to test these in a non-English client — I do not have the other languages installed. Everything passes the automated checks (format specifiers, colour codes, key coverage, cross-references), but those cannot catch a label that runs off its button or a tooltip that sends you to a setting you cannot find.
+I am not able to test these in a non-English client — I do not have the other languages installed. Everything passes the automated checks (format specifiers, color codes, key coverage, cross-references), but those cannot catch a label that runs off its button or a tooltip that sends you to a setting you cannot find.
 
 **So if you see anything off, please tell me and I will fix it.** The Discord button on the addon's About tab, the comments on the CurseForge page, or a [GitHub issue](https://github.com/wheelbarrel00/CooldownMaster/issues) all reach me. Corrections from native speakers are very welcome — a screenshot and the language is plenty to go on.
 
@@ -62,7 +77,7 @@ I am not able to test these in a non-English client — I do not have the other 
 
 ### Improvements
 
-- **Offensives is described as what it actually tracks.** The panel and the README both called it "your damage-over-time effects", but it tracks every harmful effect you put on your target — a stun like Hammer of Justice counts, and always did. The wording now matches the behaviour.
+- **Offensives is described as what it actually tracks.** The panel and the README both called it "your damage-over-time effects", but it tracks every harmful effect you put on your target — a stun like Hammer of Justice counts, and always did. The wording now matches the behavior.
 
 ## 1.9.1 (2026-08-11) — A retail combat error, and diagnostics that survive it
 
@@ -102,12 +117,12 @@ I am not able to test these in a non-English client — I do not have the other 
 ### Bug Fixes
 
 - **Retail: ready boxes no longer pop before the cooldown is actually up.** When a cooldown's last second ran out underneath the global cooldown, the game reported it identically to a spell that was already ready, and Cooldown Master read that as the cooldown ending. The ready box fired early and the lane icon vanished before finishing its travel. Measured at 0.7 to 0.9 seconds early on a 9.3 second cooldown. Any cooldown whose real length has been learned now holds until it genuinely finishes.
-- **Lane time markers line up with the icons again.** The 25% and 75% labels sat about 9 pixels off the icons they were labelling, in opposite directions. Markers measured across the whole lane, while an icon travels across the lane minus its own width. All five markers ship switched on, so every lane showed this out of the box. They now stay aligned at any icon size.
+- **Lane time markers line up with the icons again.** The 25% and 75% labels sat about 9 pixels off the icons they were labeling, in opposite directions. Markers measured across the whole lane, while an icon travels across the lane minus its own width. All five markers ship switched on, so every lane showed this out of the box. They now stay aligned at any icon size.
 - **Frame Scale no longer knocks your frames out of place.** Rescaling rewrites every lane, box and bar offset so they hold their position on screen, and at smaller scales those numbers could run past what the X and Y Offset sliders were able to represent. The next nudge of one of those sliders then clamped your frame somewhere else entirely. Those sliders now widen as the scale shrinks, so the value always fits.
 - **Turning off a Masque group gives Cooldown Master its icon zoom and border back.** Unticking Enabled on one of its groups in Masque left the icons stripped of the skin *and* of Cooldown Master's own zoom and border, with no way to recover them. Masque re-skins a disabled group with its default skin rather than releasing it, which was being read as still skinned.
 - **Your pet dying no longer pops a ready box for each of its abilities.** A dead pet stops reporting its cooldowns all at once, which read as every pet ability coming off cooldown together. They now leave quietly while the pet is down.
 - **Classic: dying no longer pops a ready box for every buff you were tracking.** Death strips your buffs in a single pass, and each one fired its own box and sound, filling the display and pushing out anything real. They now clear silently.
-- **Hovering a stacked lane icon no longer drops it underneath its neighbours.** Moving the mouse away returned the icon to the bottom of the stack instead of its own layer, where it stayed until its position in the stack happened to change. Needs Stacking and Raise On Mouseover, both off by default.
+- **Hovering a stacked lane icon no longer drops it underneath its neighbors.** Moving the mouse away returned the icon to the bottom of the stack instead of its own layer, where it stayed until its position in the stack happened to change. Needs Stacking and Raise On Mouseover, both off by default.
 - **A frame that hides mid-drag no longer chases your cursor.** If a lane, ready box or bar frame hid while you were dragging it, it kept believing the drag was still going and snapped to wherever your cursor had reached by the time it reappeared.
 - **A dragged lane's border is crisp again.** Dropping a lane left it sitting between physical pixels, which smears a one-pixel border across two rows until some unrelated setting changed. Lanes, ready boxes and bar frames all re-align the moment you let go now.
 
@@ -119,7 +134,7 @@ I am not able to test these in a non-English client — I do not have the other 
 
 ### New Features
 
-- **Conjured mana gems and healthstones are now tracked.** A Mage's Mana Agate through Mana Emerald, and a Warlock's healthstones including the Improved and Master ranks, now appear under Filters > Potions without you adding them by hand. CDM only recognised what Blizzard files as a potion, elixir or flask, and conjured items sit outside all three — so they were invisible to it. They also tend to carry their cooldown on the spell they cast rather than on the item itself, which CDM now reads as well. Thanks to Dr. Hangover for the report.
+- **Conjured mana gems and healthstones are now tracked.** A Mage's Mana Agate through Mana Emerald, and a Warlock's healthstones including the Improved and Master ranks, now appear under Filters > Potions without you adding them by hand. CDM only recognized what Blizzard files as a potion, elixir or flask, and conjured items sit outside all three — so they were invisible to it. They also tend to carry their cooldown on the spell they cast rather than on the item itself, which CDM now reads as well. Thanks to Dr. Hangover for the report.
   - **Heads up:** if you play a Warlock, your healthstone will start appearing where it didn't before. Untick **Show** on its row under Filters > Potions if you'd rather it stayed hidden.
 
 ### Bug Fixes
@@ -288,7 +303,7 @@ But anything you left alone follows the default, and the defaults have all moved
 - **Lane 2 and Lane 3 are off.** They used to be on by default, so if you never touched them, they will simply not be there anymore. Tick Enabled under Lanes > Lane 2 / Lane 3 to bring them back.
 - **Lanes are thinner** — 10px tall instead of 17.
 - **Icons have a thin border now**, on both lanes and ready boxes.
-- **Backgrounds and borders are much lighter.** The background went from near-black at 85% opacity to a paler grey at 58%, and the border from a solid 2px black to a soft 1px at about half opacity. The overall effect is a lot quieter.
+- **Backgrounds and borders are much lighter.** The background went from near-black at 85% opacity to a paler gray at 58%, and the border from a solid 2px black to a soft 1px at about half opacity. The overall effect is a lot quieter.
 - **A Bars 1 frame shows up.** Bar frames are new in this release and the first one is on by default.
 
 **Why:** the beta defaults accumulated one release at a time across about thirty versions, and nobody ever stopped to ask what a brand-new user should actually see on their first login. Three lanes stacked up behind heavy black borders was a lot to hand someone before they'd changed a single setting. 1.0 is a deliberate pass at a clean, quiet starting point.

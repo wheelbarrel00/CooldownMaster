@@ -3206,14 +3206,14 @@ local ABOUT_MUTED = "|cffb3b3b3"
 local ABOUT_WHITE = "|cffe6e6e6"
 local ABOUT_CLOSE = "|r"
 
--- Latin handles, matching Everything Quests. A CJK name renders as empty boxes in the
--- Western game font, so these must never be swapped for a translator's native-script name.
+-- Latin handles only: a CJK name renders as empty boxes in the Western game font.
 local ABOUT_TRANSLATORS = {
 	{ name = "Zox",      line = L["Thanks to %s, who translated my other addons into French."] },
 	{ name = "Malevi4",  line = L["Thanks to %s, who translated my other addons into Russian."] },
 	{ name = "labrie75", line = L["Thanks to %s, who translated my other addons into Korean."] },
 	{ name = "Keriaovo", line = L["Thanks to %s, who translated my other addons into Simplified Chinese."] },
 	{ name = "BNS333",   line = L["Thanks to %s, who translated my other addons into Traditional Chinese."] },
+	{ name = "Stonetwist", line = L["Thanks to %s, who translated my other addons into German."] },
 }
 
 local ABOUT_GITHUB_URL   = "https://github.com/wheelbarrel00/CooldownMaster"

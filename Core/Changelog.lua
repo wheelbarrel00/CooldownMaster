@@ -2,6 +2,23 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.12.0",
+		date = "2026-08-21",
+		sections = {
+			{ head = "New Features", items = {
+				"German is here, and it covers the whole addon. Every options label, tooltip, message and popup reads in German, joining French, Russian, Korean, Simplified Chinese and Traditional Chinese. That makes six languages complete end to end. Contributed through the shared translation store by Stonetwist.",
+				"The translators are credited on the About tab, under Translations, with a note about which part of the text is actually their work.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Fixed a potion spending its whole cooldown wearing another potion's name. Every potion shares one cooldown, so Cooldown Master works out which one to show from the potion you actually drank. That did not survive a /reload or a login, so with a potion cooldown still running it fell back to whichever potion had the lowest item ID and kept that name for the rest of the run.",
+				"Unequipping an on-use trinket no longer pops a ready box for it minutes early.",
+				"/cm tracking no longer fills your chat with Lua errors on retail. It samples the global cooldown and swing timer, which are Classic-only, and asked you to be in combat to do it, where retail will not hand those numbers to addons at all. It now says so and stops.",
+				"Closed a rare Lua error that could break cooldown tracking for the rest of a session. A cast whose spell ID retail declines to reveal was being used as a lookup key.",
+				"Corrected the Simplified Chinese credit in the 1.10.0 entry below.",
+			} },
+		},
+	},
+	{
 		version = "1.11.0",
 		date = "2026-08-18",
 		sections = {
@@ -103,12 +120,12 @@ ns.Changelog = {
 		sections = {
 			{ head = "Bug Fixes", items = {
 				"Retail: ready boxes no longer pop before the cooldown is actually up. When a cooldown's last second ran out underneath the global cooldown, the game reported it identically to a spell that was already ready, and Cooldown Master read that as the cooldown ending. The ready box fired early and the lane icon vanished before finishing its travel - measured at 0.7 to 0.9 seconds early on a 9.3 second cooldown. Any cooldown whose real length has been learned now holds until it genuinely finishes.",
-				"Lane time markers line up with the icons again. The 25% and 75% labels sat about 9 pixels off the icons they were labelling, in opposite directions. Markers measured across the whole lane, while an icon travels across the lane minus its own width. All five markers ship switched on, so every lane showed this out of the box. They now stay aligned at any icon size.",
+				"Lane time markers line up with the icons again. The 25% and 75% labels sat about 9 pixels off the icons they were labeling, in opposite directions. Markers measured across the whole lane, while an icon travels across the lane minus its own width. All five markers ship switched on, so every lane showed this out of the box. They now stay aligned at any icon size.",
 				"Frame Scale no longer knocks your frames out of place. Rescaling rewrites every lane, box and bar offset so they hold their position on screen, and at smaller scales those numbers could run past what the X and Y Offset sliders were able to represent. The next nudge of one of those sliders then clamped your frame somewhere else entirely. Those sliders now widen as the scale shrinks, so the value always fits.",
 				"Turning off a Masque group gives Cooldown Master its icon zoom and border back. Unticking Enabled on one of its groups in Masque left the icons stripped of the skin and of Cooldown Master's own zoom and border, with no way to recover them. Masque re-skins a disabled group with its default skin rather than releasing it, which was being read as still skinned.",
 				"Your pet dying no longer pops a ready box for each of its abilities. A dead pet stops reporting its cooldowns all at once, which read as every pet ability coming off cooldown together. They now leave quietly while the pet is down.",
 				"Classic: dying no longer pops a ready box for every buff you were tracking. Death strips your buffs in a single pass, and each one fired its own box and sound, filling the display and pushing out anything real. They now clear silently.",
-				"Hovering a stacked lane icon no longer drops it underneath its neighbours. Moving the mouse away returned the icon to the bottom of the stack instead of its own layer, where it stayed until its position in the stack happened to change. Needs Stacking and Raise On Mouseover, both off by default.",
+				"Hovering a stacked lane icon no longer drops it underneath its neighbors. Moving the mouse away returned the icon to the bottom of the stack instead of its own layer, where it stayed until its position in the stack happened to change. Needs Stacking and Raise On Mouseover, both off by default.",
 				"A frame that hides mid-drag no longer chases your cursor. If a lane, ready box or bar frame hid while you were dragging it, it kept believing the drag was still going and snapped to wherever your cursor had reached by the time it reappeared.",
 				"A dragged lane's border is crisp again. Dropping a lane left it sitting between physical pixels, which smears a one-pixel border across two rows until some unrelated setting changed. Lanes, ready boxes and bar frames all re-align the moment you let go now.",
 			} },
@@ -122,7 +139,7 @@ ns.Changelog = {
 		date = "2026-07-31",
 		sections = {
 			{ head = "New Features", items = {
-				"Conjured mana gems and healthstones are now tracked. A Mage's Mana Agate through Mana Emerald, and a Warlock's healthstones including the Improved and Master ranks, now appear under Filters > Potions without you adding them by hand. CDM only recognised what Blizzard files as a potion, elixir or flask, and conjured items sit outside all three, so they were invisible to it. They also tend to carry their cooldown on the spell they cast rather than on the item itself, which CDM now reads as well. Thanks to Dr. Hangover for the report. Heads up: if you play a Warlock, your healthstone will start appearing where it did not before - untick Show on its row under Filters > Potions if you would rather it stayed hidden.",
+				"Conjured mana gems and healthstones are now tracked. A Mage's Mana Agate through Mana Emerald, and a Warlock's healthstones including the Improved and Master ranks, now appear under Filters > Potions without you adding them by hand. CDM only recognized what Blizzard files as a potion, elixir or flask, and conjured items sit outside all three, so they were invisible to it. They also tend to carry their cooldown on the spell they cast rather than on the item itself, which CDM now reads as well. Thanks to Dr. Hangover for the report. Heads up: if you play a Warlock, your healthstone will start appearing where it did not before - untick Show on its row under Filters > Potions if you would rather it stayed hidden.",
 			} },
 			{ head = "Bug Fixes", items = {
 				"Retail: the Potions list no longer shows potions you are not carrying. CDM was seeding a small built-in set of retail potion IDs on top of scanning your bags. One of them no longer exists in the game and appeared as a nameless \"Item 258318\" row that could never do anything, and two others were alternate versions sharing a name with potions you would actually have, so Light's Potential and Flask of the Magisters each showed up twice. Your bags are the only source now, on every flavor.",
@@ -290,7 +307,7 @@ ns.Changelog = {
 			{ head = "Out of Beta - Please Read", items = {
 				"Cooldown Master is officially out of beta. Thank you to everyone who tested, reported bugs, and asked for features along the way. This release earns the 1.0 by rebuilding the default look from scratch, and I owe you an apology up front, because that may change how the addon looks for you.",
 				"What happens to your settings: anything you personally changed is kept exactly as it is. Your saved settings are never overwritten. But any setting you never touched follows the default, so it picks up the new value. If you have customized things heavily, you will likely notice nothing. If you have been running the addon as it came, you will see a difference.",
-				"The most visible changes, if you never adjusted them: Lane 2 and Lane 3 now start turned off (they used to be on), lanes are thinner (height 10 instead of 17), lane and ready-box icons now have a thin border, backgrounds are a lighter grey and more transparent, borders are thinner and softer, and a Bars 1 frame is now on by default.",
+				"The most visible changes, if you never adjusted them: Lane 2 and Lane 3 now start turned off (they used to be on), lanes are thinner (height 10 instead of 17), lane and ready-box icons now have a thin border, backgrounds are a lighter gray and more transparent, borders are thinner and softer, and a Bars 1 frame is now on by default.",
 				"Why I did it: the beta defaults grew one piece at a time over about thirty releases, and nobody ever sat down and asked what a brand new user should actually see on their first login. Three lanes stacked up with heavy black borders was a lot to hand someone before they had changed a single setting. The 1.0 defaults are a deliberate pass at a clean, quiet starting point.",
 				"How to put it back the way it was: every one of these is a normal option. Lanes tab, pick Lane 2 or Lane 3, and tick Enabled to bring the extra lanes back. Lanes > Appearance sets Height back to 17 and Border Size back to 2. Lanes > Icons unticks Icon Border. Bars tab, pick Bars 1, and untick Enabled to remove the new bar frame. If you would rather start over completely, Profiles > Reset Profile gives you the new defaults from a clean slate.",
 			} },

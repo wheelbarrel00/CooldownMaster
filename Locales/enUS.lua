@@ -343,6 +343,7 @@ L["Thanks to %s, who translated my other addons into Russian."] = true
 L["Thanks to %s, who translated my other addons into Korean."] = true
 L["Thanks to %s, who translated my other addons into Simplified Chinese."] = true
 L["Thanks to %s, who translated my other addons into Traditional Chinese."] = true
+L["Thanks to %s, who translated my other addons into German."] = true
 L["Open or close the options window (or /cdmaster)"] = true
 L["Lock the lane frames"] = true
 L["Unlock the lane frames for moving"] = true
