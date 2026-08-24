@@ -529,6 +529,19 @@ local STATUS_ANCHOR_OPTIONS = {
 	{ value = "RIGHT",  text = L["Right"]       },
 }
 
+local LANE_TEXT_ANCHOR_OPTIONS = {
+	{ value = "TOP",    text = L["Above lane"] },
+	{ value = "CENTER", text = L["On lane"]    },
+	{ value = "BOTTOM", text = L["Below lane"] },
+}
+
+local MARKER_ANCHOR_MODE_OPTIONS = {
+	{ value = "PERCENT",      text = L["Percent of lane"]              },
+	{ value = "PERCENT_AUTO", text = L["Percent of lane (auto label)"] },
+	{ value = "TIME",         text = L["Time (seconds)"]               },
+	{ value = "TIME_AUTO",    text = L["Time (auto label)"]            },
+}
+
 local function BuildFontOptions()
 	local opts = {}
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -744,6 +757,9 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 			local cached = lanesState.formFrames[laneIndex]
 			if cached and cached["appearance"] then
 				cached["appearance"]:Hide()
+				-- Unparent as well as drop. Left parented it stays a child of the panel area while
+				-- gone from formFrames, and the hide loops there iterate the table, never the children.
+				cached["appearance"]:SetParent(nil)
 				cached["appearance"] = nil
 			end
 			RefreshLane(laneIndex)
@@ -761,7 +777,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	}))
 
 	place(W.CreateSlider(parent, {
-		label = L["Max Time (seconds)"], min = 10, max = 180, step = 1,
+		label = L["Max Time (seconds)"], min = 10, max = 360, step = 1,
 		value = cfg.maxTime, width = 240,
 		onChange = function(v) cfg.maxTime = v; RefreshLane(laneIndex) end,
 	}))
@@ -787,7 +803,7 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	for i = 1, 3 do
 		local pt = cfg.split.points[i]
 		place(W.CreateSlider(parent, {
-			label = string.format(L["Point %d Time (sec)"], i), min = 1, max = 180, step = 1,
+			label = string.format(L["Point %d Time (sec)"], i), min = 1, max = 360, step = 1,
 			value = pt.t, width = 240,
 			onChange = function(v) pt.t = v; RefreshLane(laneIndex) end,
 		}))
@@ -1268,6 +1284,26 @@ local function BuildLaneTextForm(parent, laneIndex)
 		place(secDef, 18)
 	end
 
+	place(W.CreateDropdown(parent, {
+		label = L["Label Placement"], value = cfg.laneTextAnchor or "CENTER",
+		options = LANE_TEXT_ANCHOR_OPTIONS, width = 240,
+		tooltip = L["Where the labels sit relative to the lane bar. Move them off the bar when tall icons cover them. On a vertical lane, Above places them to the right of it and Below to the left."],
+		onChange = function(v) cfg.laneTextAnchor = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = L["X Offset"], min = -100, max = 100, step = 1,
+		value = cfg.laneTextOffX or 0, width = 240,
+		tooltip = L["Nudges every label sideways from its placement."],
+		onChange = function(v) cfg.laneTextOffX = v; RefreshLane(laneIndex) end,
+	}))
+	place(W.CreateSlider(parent, {
+		label = L["Y Offset"], min = -100, max = 100, step = 1,
+		value = cfg.laneTextOffY or 0, width = 240,
+		tooltip = L["Nudges every label up or down from its placement."],
+		onChange = function(v) cfg.laneTextOffY = v; RefreshLane(laneIndex) end,
+	}))
+
+	local anchorRows = {}
 	for i = 1, 5 do
 		local def = cfg.laneText and cfg.laneText[i]
 		if def then
@@ -1278,21 +1314,84 @@ local function BuildLaneTextForm(parent, laneIndex)
 					RefreshLane(laneIndex)
 				end,
 			}))
+			place(W.CreateDropdown(parent, {
+				label = L["Anchor By"], value = def.anchorMode or "PERCENT",
+				options = MARKER_ANCHOR_MODE_OPTIONS, width = 240,
+				tooltip = L["Percent holds the label at a fixed spot on the bar. Time holds it at a number of seconds and moves the label to match. The auto label choices write the text for you from the lane's current Mode and Max Time, so the label stays true after you change either one - seconds on Timeline, Logarithmic and Split, and a percent on Linear, which has no shared clock to read."],
+				onChange = function(v)
+					cfg.laneText[i].anchorMode = v
+					RefreshLane(laneIndex)
+				end,
+			}))
 			place(W.CreateEditBox(parent, {
 				label = L["Text"], value = def.text or "", width = 200, maxLetters = 24,
+				tooltip = L["What the label reads. The auto label choices ignore this and write the text themselves."],
 				onChange = function(text)
 					cfg.laneText[i].text = text
 					RefreshLane(laneIndex)
 				end,
 			}))
-			place(W.CreateSlider(parent, {
+			-- Both sliders write both fields. Anchor By only picks which one survives a Mode change.
+			local pctSlider, secSlider
+			pctSlider = place(W.CreateSlider(parent, {
 				label = L["Position (percent)"], min = 0, max = 100, step = 1,
 				value = math.floor((def.pos or 0) * 100 + 0.5), width = 240,
+				tooltip = L["Where the label sits, as a percent along the lane. Moving this also updates Position (seconds) to match."],
 				onChange = function(v)
-					cfg.laneText[i].pos = v / 100
+					local d = cfg.laneText[i]
+					d.pos = v / 100
+					local t = ns.Lanes_PosToTime and ns.Lanes_PosToTime(cfg, d.pos)
+					if t then
+						-- Stored unrounded: on a LOG lane the first several percent all round to zero
+						-- seconds, which would freeze the label at the ready end.
+						d.t = t
+						if secSlider then secSlider:SetValue(math.floor(t + 0.5)) end
+					end
 					RefreshLane(laneIndex)
 				end,
 			}))
+			secSlider = place(W.CreateSlider(parent, {
+				label = L["Position (seconds)"], min = 0, max = 360, step = 1,
+				value = def.t or 0, width = 240,
+				tooltip = L["Where the label sits, as seconds left on a cooldown. Moving this also updates Position (percent) to match. Linear has no seconds axis, so this does nothing there."],
+				onChange = function(v)
+					local d = cfg.laneText[i]
+					-- Past Max Time the lane saturates, so every higher value would look identical.
+					local maxT = cfg.maxTime or 120
+					if v > maxT then
+						v = maxT
+						if secSlider then secSlider:SetValue(v) end
+					end
+					local p = ns.Lanes_TimeToPos and ns.Lanes_TimeToPos(cfg, v)
+					if p then
+						d.t   = v
+						d.pos = p
+						if pctSlider then pctSlider:SetValue(math.floor(p * 100 + 0.5)) end
+					end
+					RefreshLane(laneIndex)
+				end,
+			}))
+			anchorRows[i] = { pct = pctSlider, sec = secSlider }
+		end
+	end
+
+	-- Section surfaces are cached, so a Mode change made on another page leaves these sliders stale.
+	parent._refreshAnchors = function()
+		for idx, row in pairs(anchorRows) do
+			local d = cfg.laneText and cfg.laneText[idx]
+			if d then
+				if d.anchorMode == "TIME" or d.anchorMode == "TIME_AUTO" then
+					local pp = ns.Lanes_TimeToPos and ns.Lanes_TimeToPos(cfg, d.t or 0)
+					if pp then d.pos = pp end
+				else
+					local tt = ns.Lanes_PosToTime and ns.Lanes_PosToTime(cfg, d.pos or 0)
+					if tt then d.t = tt end
+				end
+				row.pct:SetValue(math.floor((d.pos or 0) * 100 + 0.5))
+				-- Clamp the DISPLAY only. Writing it back would flatten every marker's seconds
+				-- the moment Max Time was lowered, and that is not something the user can undo.
+				row.sec:SetValue(math.floor(math.min(d.t or 0, cfg.maxTime or 120) + 0.5))
+			end
 		end
 	end
 
@@ -1365,16 +1464,24 @@ local function BuildLaneFormSurface(panelArea, laneIndex, sectionID)
 	child:SetSize(panelArea:GetWidth() - 26, 1)
 	scroll:SetScrollChild(child)
 
-	if sectionID == "general" then
-		BuildLaneGeneralForm(child, laneIndex)
-	elseif sectionID == "appearance" then
-		BuildLaneAppearanceForm(child, laneIndex)
-	elseif sectionID == "stacking" then
-		BuildLaneStackingForm(child, laneIndex)
-	elseif sectionID == "icons" then
-		BuildLaneIconsForm(child, laneIndex)
-	elseif sectionID == "text" then
-		BuildLaneTextForm(child, laneIndex)
+	-- A ScrollFrame is created SHOWN, so a builder that throws leaves this one visible AND
+	-- unreturned, which strands it over every later section until a reload. Contain the throw.
+	local ok, err = pcall(function()
+		if sectionID == "general" then
+			BuildLaneGeneralForm(child, laneIndex)
+		elseif sectionID == "appearance" then
+			BuildLaneAppearanceForm(child, laneIndex)
+		elseif sectionID == "stacking" then
+			BuildLaneStackingForm(child, laneIndex)
+		elseif sectionID == "icons" then
+			BuildLaneIconsForm(child, laneIndex)
+		elseif sectionID == "text" then
+			BuildLaneTextForm(child, laneIndex)
+		end
+	end)
+	if not ok and _G.CooldownMaster then
+		_G.CooldownMaster:Print(string.format("|cffff4040lane form error (lane %s / %s):|r %s",
+			tostring(laneIndex), tostring(sectionID), tostring(err)))
 	end
 
 	scroll:Hide()
@@ -1398,7 +1505,12 @@ local function ShowLaneSection(panelArea, laneIndex, sectionID)
 		surf = BuildLaneFormSurface(panelArea, laneIndex, sectionID)
 		lanesState.formFrames[laneIndex][sectionID] = surf
 	end
+	for _, kid in ipairs({ panelArea:GetChildren() }) do
+		if kid ~= surf and kid.GetScrollChild then kid:Hide() end
+	end
 	surf:Show()
+	local formChild = surf.GetScrollChild and surf:GetScrollChild()
+	if formChild and formChild._refreshAnchors then formChild._refreshAnchors() end
 
 	lanesState.laneIndex = laneIndex
 	lanesState.sectionID = sectionID
@@ -1419,7 +1531,6 @@ end
 
 
 YELLOW = ns.CONST.RGB.YELLOW
-
 
 local function BuildLanesTab(content)
 	local pad = Theme.PANEL.CONTENT_PAD
@@ -3981,6 +4092,9 @@ function ns.Options_DropAppearanceForms()
 			local surf = sections["appearance"]
 			if surf then
 				surf:Hide()
+				-- Unparent as well as drop, or it stays a child of the panel area while gone from
+				-- formFrames, where every hide loop looks for it.
+				surf:SetParent(nil)
 				sections["appearance"] = nil
 			end
 		end

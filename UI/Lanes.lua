@@ -12,6 +12,10 @@ local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
 -- snap to the exact ready edge with the widget still counting down; this holds it a hair short.
 local ICON_READY_FLOOR = 0.02
 
+-- Lane icons want OnEnter for the tooltip but must never take mouse-down, or hovering one
+-- swallows the right-click drag and blocks mouse-turning. EnableMouse grabs clicks too.
+local HAS_SPLIT_MOUSE = type(UIParent.SetMouseMotionEnabled) == "function"
+
 -- UI units per physical pixel numerator (768/screen height); a coordinate divided by
 -- (PIXEL_FACTOR / effectiveScale) is in physical pixels. Verified against Blizzard's
 -- PixelUtil.GetPixelToUIUnitFactor on a live 4K/0.5-scale setup.
@@ -686,11 +690,13 @@ local function ModeProgress(cfg, remaining, duration)
 		if pts then
 			for i = 1, n do
 				local pt = pts[i]
-				if pt and v <= pt.t then
-					local span = pt.t - pv
-					p = (span > 0) and (pp + (pt.p - pp) * ((v - pv) / span)) or pp
-					break
-				elseif pt then
+				-- A point past Max Time, or one not advancing BOTH axes, folds the curve and leaves InverseModeProgress no unique inverse.
+				if pt and pt.t < maxT and pt.t > pv and pt.p > pp then
+					if v <= pt.t then
+						local span = pt.t - pv
+						p = (span > 0) and (pp + (pt.p - pp) * ((v - pv) / span)) or pp
+						break
+					end
 					pv, pp = pt.t, pt.p
 				end
 			end
@@ -704,6 +710,102 @@ local function ModeProgress(cfg, remaining, duration)
 	end
 	if p < 0 then return 0 elseif p > 1 then return 1 end
 	return p
+end
+
+
+-- WoW has no CENTERLEFT or CENTERCENTER point name, so a CENTER half collapses instead of joining.
+local function CombinePoint(v, h)
+	if v == "CENTER" then return (h == "CENTER") and "CENTER" or h end
+	if h == "CENTER" then return v end
+	return v .. h
+end
+
+-- LINEAR is absent: an icon there spans its own cooldown, so there is no seconds axis to place a marker on.
+local MARKER_TIME_AXIS = { TIMELINE = true, LOG = true, SPLIT = true }
+
+local function MarkerTimed(cfg, def)
+	local am = def.anchorMode
+	return ((am == "TIME" or am == "TIME_AUTO") and MARKER_TIME_AXIS[cfg.mode]) and true or false
+end
+
+-- Routed through the icons' own mapping, so a label and the cooldown it names cannot drift apart.
+local function MarkerPos(cfg, def)
+	if MarkerTimed(cfg, def) then return ModeProgress(cfg, def.t or 0, nil) end
+	return def.pos or 0
+end
+
+-- The raw solve can overshoot when a split point sits past Max Time, so the result is clamped.
+local function InverseModeProgress(cfg, p)
+	if p < 0 then p = 0 elseif p > 1 then p = 1 end
+	local m    = cfg.mode
+	local maxT = cfg.maxTime or 120
+	local t
+	if m == "TIMELINE" then
+		t = p * maxT
+	elseif m == "LOG" then
+		t = math.exp(p * math.log(1 + maxT)) - 1
+	elseif m == "SPLIT" then
+		local sp  = cfg.split
+		local n   = (sp and sp.count) or 0
+		local pts = sp and sp.points
+		local pv, pp = 0, 0
+		if pts then
+			for i = 1, n do
+				local pt = pts[i]
+				if pt and pt.t < maxT and pt.t > pv and pt.p > pp then
+					if p <= pt.p then
+						local span = pt.p - pp
+						t = (span > 0) and (pv + (pt.t - pv) * ((p - pp) / span)) or pv
+						break
+					end
+					pv, pp = pt.t, pt.p
+				end
+			end
+		end
+		if not t then
+			local span = 1 - pp
+			t = (span > 0) and (pv + (maxT - pv) * ((p - pp) / span)) or maxT
+		end
+	else
+		return 0
+	end
+	return (t > maxT) and maxT or t
+end
+
+local function FormatMarkerTime(t)
+	t = math.floor((t or 0) + 0.5)
+	if t <= 0 then return L["Ready"] end
+	if t < 60 then return string.format(L["%ds"], t) end
+	if t % 60 == 0 then return string.format(L["%dm"], t / 60) end
+	return string.format("%d:%02d", math.floor(t / 60), t % 60)
+end
+
+local function FormatMarkerPercent(p)
+	if p <= 0 then return L["Ready"] end
+	return string.format("%d%%", math.floor(p * 100 + 0.5))
+end
+
+function ns.Lanes_PosToTime(cfg, pos)
+	if not MARKER_TIME_AXIS[cfg.mode] then return nil end
+	return InverseModeProgress(cfg, pos or 0)
+end
+
+function ns.Lanes_TimeToPos(cfg, t)
+	if not MARKER_TIME_AXIS[cfg.mode] then return nil end
+	return ModeProgress(cfg, t or 0, nil)
+end
+
+local function MarkerLabel(cfg, def)
+	local am = def.anchorMode
+	if am ~= "PERCENT_AUTO" and am ~= "TIME_AUTO" then return def.text or "" end
+	if not MARKER_TIME_AXIS[cfg.mode] then return FormatMarkerPercent(def.pos or 0) end
+	if am == "TIME_AUTO" then
+		-- Position is capped at the lane end, so cap the text too or the label overstates the lane.
+		local maxT = cfg.maxTime or 120
+		local t = def.t or 0
+		return FormatMarkerTime((t > maxT) and maxT or t)
+	end
+	return FormatMarkerTime(InverseModeProgress(cfg, def.pos or 0))
 end
 
 
@@ -1183,7 +1285,10 @@ local function ApplyConfigBody(laneIndex)
 
 	if laneFrame.markers and cfg.laneText then
 		local mPath, mSize, mFlags = ns.ResolveFont(cfg.laneTextFont, cfg.laneTextSize, cfg.laneTextFlags)
-		local mc = cfg.laneTextColor or ns.CONST.RGB.YELLOW
+		local mc    = cfg.laneTextColor or ns.CONST.RGB.YELLOW
+		local cross = cfg.laneTextAnchor or "CENTER"
+		local offX  = cfg.laneTextOffX or 0
+		local offY  = cfg.laneTextOffY or 0
 		for i = 1, 5 do
 			local m = laneFrame.markers[i]
 			local def = cfg.laneText[i]
@@ -1191,35 +1296,59 @@ local function ApplyConfigBody(laneIndex)
 				if def.enabled then
 					m:SetFont(mPath, mSize, mFlags)
 					m:SetTextColor(mc.r, mc.g, mc.b, 1)
-					m:SetText(def.text or "")
+					m:SetText(MarkerLabel(cfg, def))
+					local textW = m:GetStringWidth() or 0
+					local textH = m:GetStringHeight() or 0
 					m:ClearAllPoints()
-					local pos = def.pos or 0
+					local pos = MarkerPos(cfg, def)
 					if cfg.reversed then pos = 1 - pos end
-					-- Labels at the extremes pin to the lane end (inset) so they don't clip;
-					-- everything between centers on its position.
 					-- A marker uses the ICON's mapping, not the raw lane length: an icon is placed by
 					-- its leading edge across (lane - iconSize), so its center sits half an icon in.
 					local iconSize = cfg.iconSize or 40
 					local half     = iconSize / 2
+					local mv, lv, y, mh, lh, x
 					if cfg.vertical then
 						local usableH = math.max(1, (cfg.height or 400) - iconSize)
-						if pos <= 0.02 then
-							m:SetPoint("BOTTOM", laneFrame, "BOTTOM", 0, 2)
-						elseif pos >= 0.98 then
-							m:SetPoint("TOP", laneFrame, "TOP", 0, -2)
+						local cy      = pos * usableH + half
+						-- Measured, not a fixed percent band - a LOG curve maps a whole span of seconds inside 2%, stacking labels on one pixel.
+						local offBot = cy - textH / 2 < 2
+						local offTop = cy + textH / 2 > (cfg.height or 400) - 2
+						if offBot and (not offTop or pos < 0.5) then
+							mv, lv, y = "BOTTOM", "BOTTOM", 2
+						elseif offTop then
+							mv, lv, y = "TOP", "TOP", -2
 						else
-							m:SetPoint("CENTER", laneFrame, "BOTTOM", 0, pos * usableH + half)
+							mv, lv, y = "CENTER", "BOTTOM", cy
+						end
+						-- The cross axis is horizontal on a vertical lane, so Above reads as right of it.
+						if cross == "TOP" then
+							mh, lh, x = "LEFT", "RIGHT", 2
+						elseif cross == "BOTTOM" then
+							mh, lh, x = "RIGHT", "LEFT", -2
+						else
+							mh, lh, x = "CENTER", "CENTER", 0
 						end
 					else
 						local usable = math.max(1, (cfg.width or 400) - iconSize)
-						if pos <= 0.02 then
-							m:SetPoint("LEFT", laneFrame, "LEFT", 5, 0)
-						elseif pos >= 0.98 then
-							m:SetPoint("RIGHT", laneFrame, "RIGHT", -5, 0)
+						local cx     = pos * usable + half
+						local offL = cx - textW / 2 < 5
+						local offR = cx + textW / 2 > (cfg.width or 400) - 5
+						if offL and (not offR or pos < 0.5) then
+							mh, lh, x = "LEFT", "LEFT", 5
+						elseif offR then
+							mh, lh, x = "RIGHT", "RIGHT", -5
 						else
-							m:SetPoint("CENTER", laneFrame, "LEFT", pos * usable + half, 0)
+							mh, lh, x = "CENTER", "LEFT", cx
+						end
+						if cross == "TOP" then
+							mv, lv, y = "BOTTOM", "TOP", 2
+						elseif cross == "BOTTOM" then
+							mv, lv, y = "TOP", "BOTTOM", -2
+						else
+							mv, lv, y = "CENTER", "CENTER", 0
 						end
 					end
+					m:SetPoint(CombinePoint(mv, mh), laneFrame, CombinePoint(lv, lh), x + offX, y + offY)
 					m:Show()
 				else
 					m:Hide()
@@ -1517,7 +1646,7 @@ local function RefreshBody(laneIndex)
 		end
 	end
 
-	-- Icons take mouse only when tooltips are on AND frames are locked, so an unlocked
+	-- Icons take mouse motion only when tooltips are on AND frames are locked, so an unlocked
 	-- lane still drags freely and tooltip-off play has no mouse capture at all.
 	local g       = addon.db.profile.global
 	local mouseOn = g.enableTooltip and not g.unlockFrames
@@ -1682,7 +1811,12 @@ local function RefreshBody(laneIndex)
 
 		if btn._mouseOn ~= mouseOn then
 			btn._mouseOn = mouseOn
-			btn:EnableMouse(mouseOn)
+			if HAS_SPLIT_MOUSE then
+				btn:SetMouseClickEnabled(false)
+				btn:SetMouseMotionEnabled(mouseOn)
+			else
+				btn:EnableMouse(mouseOn)
+			end
 		end
 
 		btn:Show()

@@ -71,6 +71,9 @@ local function lane(frameName, y, enabled)
 		laneTextSize   = 9,
 		laneTextFlags  = "NONE",
 		laneTextColor  = { r = 1, g = 1, b = 1, a = 0.53 },
+		laneTextAnchor = "CENTER",
+		laneTextOffX   = 0,
+		laneTextOffY   = 0,
 
 		labelFont      = DEFAULT_FONT,
 		labelSize      = 10,
@@ -85,12 +88,13 @@ local function lane(frameName, y, enabled)
 
 		highlight      = { style = "NONE", color = { r = 1, g = 0.82, b = 0, a = 0.8 } },
 
+		-- Bare, never L-wrapped: text is persisted to SavedVariables and anchorMode is compared as a key.
 		laneText = {
-			{ enabled = true, text = "Ready", pos = 0    },
-			{ enabled = true, text = "25%",   pos = 0.25 },
-			{ enabled = true, text = "50%",   pos = 0.50 },
-			{ enabled = true, text = "75%",   pos = 0.75 },
-			{ enabled = true, text = "100%",  pos = 1    },
+			{ enabled = true, text = "Ready", pos = 0,    anchorMode = "PERCENT", t = 0   },
+			{ enabled = true, text = "25%",   pos = 0.25, anchorMode = "PERCENT", t = 30  },
+			{ enabled = true, text = "50%",   pos = 0.50, anchorMode = "PERCENT", t = 60  },
+			{ enabled = true, text = "75%",   pos = 0.75, anchorMode = "PERCENT", t = 90  },
+			{ enabled = true, text = "100%",  pos = 1,    anchorMode = "PERCENT", t = 120 },
 		},
 
 		stackEnabled       = false,

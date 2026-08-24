@@ -1,5 +1,43 @@
 # Cooldown Master Changelog
 
+## 1.13.0 (2026-08-23) — Labels that write themselves, and tooltips that let go of the mouse
+
+### New Features
+
+- **Lane labels can be moved off the bar.** A new **Label Placement** setting — Above lane, On lane, Below lane — plus X and Y offsets. On a short lane with large icons the labels used to sit underneath the icons where you could not read them. Now you can drop them clear. On a vertical lane, Above and Below become right and left. Requested by **RoadBlock**.
+
+- **Lane labels can now write their own text.** Until now a label was a piece of text you typed, pinned to a fixed spot on the bar. It had no idea what the lane measured — so if you typed `30s` and later changed the lane's Mode or Max Time, the label stayed put and quietly became wrong.
+
+  Each label now has an **Anchor By** setting with four choices:
+
+  - **Percent of lane** — what you have today. You type the text, you pick the spot.
+  - **Percent of lane (auto label)** — you still pick the spot, and Cooldown Master writes the text. Park a label at the halfway mark of a two-minute Timeline lane and it reads `1m`. Switch that lane to Logarithmic and the same label re-reads itself as `10s`. Push Max Time to six minutes and it becomes `3m`. It never moves, and it is never out of date.
+  - **Time (seconds)** — the other way round. You pin the label to a number of seconds and it finds its own spot. A label pinned to 30s sits at the quarter mark of a two-minute lane and slides to roughly three-quarters on Logarithmic, because that is where thirty seconds genuinely falls on a log curve.
+  - **Time (auto label)** — the same, with the text written for you.
+
+  The two Position sliders are two views of one place, so moving either moves the other to match.
+
+  On a **Linear** lane an auto label reads a percent rather than a time. Linear gives every icon its own clock — halfway along the bar means halfway through *that spell's* cooldown, which is thirty seconds for one spell and ninety for another. No single number of seconds is true there, but the percent is true for all of them, so that is what the label names.
+
+- **Lanes can now cover six minutes.** Max Time used to stop at three. It reaches 360 seconds now, and Split mode's point timers go with it, so a long lane can still be shaped across its whole length.
+
+### Bug Fixes
+
+- **Tooltips on lane icons no longer block mouse-turning.** With Enable Tooltips on and frames locked, hovering an icon swallowed the right mouse button, so you could not turn your character while the cursor sat over one. Icons now take mouse movement without taking clicks. Reported by **RoadBlock**.
+- **The Lanes options panel no longer garbles itself.** Opening a lane's General or Appearance section can exceed the game's script watchdog on Classic clients and get cut short. A section's frame is created visible, so an interrupted build was left on screen but never registered — nothing could hide it again, and it stacked on top of every section opened afterwards until a reload. Interrupted builds are now contained and reported instead. Present since well before this release.
+- **Split points set past Max Time no longer strand the end of your lane.** Such a point can never be reached, and it stopped the curve short of the bar's own end, leaving that tail as dead space no icon could occupy. Those points are now dropped from the curve. **If you have a lane configured this way, your icons will spread across the full bar after updating.**
+- **A split curve that folds back on itself is no longer honored.** Setting a later point's position below an earlier one's made the curve double back, leaving no single answer for what a spot on the bar was worth. Points that fail to move forward on both axes are now ignored.
+- **Labels can no longer claim more time than the lane shows.** A label anchored past Max Time parked itself at the end of the bar while still reading its original number.
+
+### A note for Classic players
+
+The cost behind that panel bug is still there. A lane's General and Appearance sections are heavy enough to reach the script watchdog on Classic clients, so they can come up with some controls missing. The panel no longer breaks when it happens, and the cost itself is the next thing I am fixing. Retail is not affected.
+
+### Improvements
+
+- Labels pin to the end of a lane only when the text would genuinely run off it, so two labels near the same end no longer land on the same pixel. At default sizes the first and last labels now line up with their icons rather than sitting a few pixels from the bar's edge, which is most visible on a vertical lane.
+- The Position sliders mirror each other and re-check themselves whenever you open the Text page, so neither can show a number that is no longer true.
+
 ## 1.12.0 (2026-08-21) — German makes six, and the potion that wore the wrong name
 
 ### New Features

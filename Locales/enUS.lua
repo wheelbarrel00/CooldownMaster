@@ -112,6 +112,13 @@ L["On icon"] = true
 L["Below icon"] = true
 L["Above frame"] = true
 L["Below frame"] = true
+L["Above lane"] = true
+L["On lane"] = true
+L["Below lane"] = true
+L["Percent of lane"] = true
+L["Percent of lane (auto label)"] = true
+L["Time (seconds)"] = true
+L["Time (auto label)"] = true
 L["Swing"] = true
 L["Border"] = true
 L["Glow"] = true
@@ -209,8 +216,18 @@ L["Label Size"] = true
 L["Label Outline"] = true
 L["Label Color"] = true
 L["Default Text"] = true
+L["Label Placement"] = true
+L["Where the labels sit relative to the lane bar. Move them off the bar when tall icons cover them. On a vertical lane, Above places them to the right of it and Below to the left."] = true
+L["Nudges every label sideways from its placement."] = true
+L["Nudges every label up or down from its placement."] = true
 L["Label %d enabled"] = true
+L["Anchor By"] = true
+L["Percent holds the label at a fixed spot on the bar. Time holds it at a number of seconds and moves the label to match. The auto label choices write the text for you from the lane's current Mode and Max Time, so the label stays true after you change either one - seconds on Timeline, Logarithmic and Split, and a percent on Linear, which has no shared clock to read."] = true
+L["What the label reads. The auto label choices ignore this and write the text themselves."] = true
 L["Position (percent)"] = true
+L["Where the label sits, as a percent along the lane. Moving this also updates Position (seconds) to match."] = true
+L["Position (seconds)"] = true
+L["Where the label sits, as seconds left on a cooldown. Moving this also updates Position (percent) to match. Linear has no seconds axis, so this does nothing there."] = true
 L["Marker Font"] = true
 L["Font for the position markers along this lane (Ready, 25, 50, 75, 100 percent)."] = true
 L["Name Tag Font"] = true
@@ -444,6 +461,10 @@ L["Don't show these again"] = true
 L["Stops What's New notices entirely. You can turn them back on under /cm > Global > After an update."] = true
 L["Open Options"] = true
 L["Got it"] = true
+
+-- UI/Lanes.lua
+L["%ds"] = true
+L["%dm"] = true
 
 -- UI/ReadyFrames.lua
 L["Ready %d"] = true
