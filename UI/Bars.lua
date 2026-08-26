@@ -196,7 +196,7 @@ local function StyleBar(item, cfg, classCol)
 	if flags == "NONE" then flags = "" end
 	local size = cfg.barFontSize
 	if not size or size <= 0 then size = 12 end
-	local fontPath = (LSM and LSM:Fetch("font", cfg.barFont, true)) or STANDARD_TEXT_FONT
+	local fontPath = ns.FontPath(cfg.barFont)
 	local sig = tostring(fontPath) .. "|" .. size .. "|" .. flags
 	if item._fontSig ~= sig then
 		item._fontSig = sig

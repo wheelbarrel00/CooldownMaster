@@ -2,11 +2,12 @@
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker for your spells, items, and buffs.
 ## Author: Wheelbarrel00
-## Version: 1.13.0
+## Version: 1.14.0
 ## SavedVariables: CooldownMasterDB
 ## IconTexture: Interface\AddOns\CooldownMaster\media\minimap
-## OptionalDeps: Masque, Titan, Bazooka, ChocolateBar
+## OptionalDeps: Masque, Titan, Bazooka
 ## X-Curse-Project-ID: 1596347
+## Category: Combat
 ## X-Category: Combat
 
 embeds.xml

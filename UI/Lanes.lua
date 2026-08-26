@@ -1,10 +1,8 @@
 local ADDON_NAME, ns = ...
 local L = ns.L
 
-local _dragFailWarnTime = 0  -- luacheck: ignore
 
 local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-local STANDARD_FONT = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
 
 -- Smallest lane fraction an isActive (retail, extrapolated) icon may sit at. Its remaining time is
@@ -85,7 +83,7 @@ end
 
 
 function ns.ResolveFont(fontName, size, flags)
-	local path = (LSM and LSM:Fetch("font", fontName, true)) or STANDARD_FONT
+	local path = ns.FontPath(fontName)
 	if flags == "NONE" then flags = "" end
 	if not size or size <= 0 then size = 12 end
 	return path, size, flags or ""
@@ -276,7 +274,7 @@ local function gcdFraction(id)
 	end
 end
 
-local function CalcTracking(which)
+local function CalcTrackingNow(which)
 	if which == "GCD" then
 		-- Prefer the spellbook probe (a spell the player actually knows, so it reflects the
 		-- GCD on every flavor); fall back to the fixed IDs that only work on newer clients.
@@ -295,6 +293,26 @@ local function CalcTracking(which)
 		local remaining = swingEnd - GetTime()
 		if remaining <= 0 then return 1 end
 		return remaining / swingSpeed
+	end
+	return 0
+end
+
+
+-- GCD and swing are player-wide, but UpdateTracking asks per lane and per bar - up to six reads
+-- a frame, each allocating a SpellCooldownInfo on the clients that have C_Spell.
+local trackAt, trackGCD, trackSwing
+
+local function CalcTracking(which)
+	local now = GetTime()
+	if trackAt ~= now then
+		trackAt, trackGCD, trackSwing = now, nil, nil
+	end
+	if which == "GCD" then
+		if trackGCD == nil then trackGCD = CalcTrackingNow("GCD") end
+		return trackGCD
+	elseif which == "SWING" then
+		if trackSwing == nil then trackSwing = CalcTrackingNow("SWING") end
+		return trackSwing
 	end
 	return 0
 end
@@ -809,6 +827,23 @@ local function MarkerLabel(cfg, def)
 end
 
 
+local PULSE_PERIOD = 0.8   -- seconds per pulse, fixed so every icon on a lane breathes in time
+
+-- Grows the icon art, not the button: the lane places icons with SetPoint offsets and SetScale
+-- reinterprets those in the scaled space, dragging the icon off its own spot on the timeline.
+local function ApplyIconPulse(btn, grow)
+	if btn._pulseGrow == grow then return end
+	btn._pulseGrow = grow
+	btn.tex:ClearAllPoints()
+	if grow <= 0 then
+		btn.tex:SetAllPoints(btn)
+	else
+		btn.tex:SetPoint("TOPLEFT",     btn, "TOPLEFT",     -grow,  grow)
+		btn.tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT",  grow, -grow)
+	end
+end
+
+
 local function AcquireIcon(laneFrame, i, iconSize)
 	local pool = laneFrame.iconPool
 	local btn  = pool[i]
@@ -825,7 +860,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 
 	btn.tex = btn:CreateTexture(nil, "ARTWORK")
 	btn.tex:SetAllPoints(btn)
-	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)   -- trim default icon border
+	btn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
 	-- Carrier for the cooldown widget: the icon glides sub-pixel (smooth texture), but the
 	-- countdown text is laid out C-side on the physical pixel grid, so gliding it shimmers
@@ -933,6 +968,22 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		if self._alpha ~= alpha then
 			self._alpha = alpha
 			self:SetAlpha(alpha)
+		end
+
+		-- Masque anchors the icon region itself, so the pulse stands down entirely rather than
+		-- re-pointing it - dropping the memo lets it resume if the skin is turned off later.
+		if ns.Masque_IsSkinned(self) then
+			self._pulseGrow = nil
+		else
+			local grow = 0
+			if cfg.iconPulse then
+				local within = cfg.iconPulseWithin or 5
+				if within <= 0 or remaining <= within then
+					grow = (cfg.iconPulseSize or 6) * 0.5
+						* (1 - math.cos(GetTime() * (2 * math.pi / PULSE_PERIOD)))
+				end
+			end
+			ApplyIconPulse(self, grow)
 		end
 
 		local off      = (cfg.iconOffset or 0) + (self._stackOff or 0)
@@ -1170,7 +1221,7 @@ end
 local function ConfigureLaneCountFont(laneFrame, cfg)
 	local name = "CDMLaneCountFont" .. (laneFrame.index or 1)
 	local fontObj = _G[name] or CreateFont(name)
-	local path = (LSM and LSM:Fetch("font", cfg.iconFont, true)) or STANDARD_FONT
+	local path = ns.FontPath(cfg.iconFont)
 	local flags = cfg.iconFontFlags or "OUTLINE"
 	if flags == "NONE" then flags = "" end
 	-- 0/unset = auto: scale with icon size so the count matches the native sizing.
@@ -1187,7 +1238,7 @@ end
 local function ConfigureLaneTagFont(laneFrame, cfg)
 	local name = "CDMLaneTagFont" .. (laneFrame.index or 1)
 	local fontObj = _G[name] or CreateFont(name)
-	local path = (LSM and LSM:Fetch("font", cfg.iconLabelFont, true)) or STANDARD_FONT
+	local path = ns.FontPath(cfg.iconLabelFont)
 	local flags = cfg.iconLabelFlags or "OUTLINE"
 	if flags == "NONE" then flags = "" end
 	local size = cfg.iconLabelSize

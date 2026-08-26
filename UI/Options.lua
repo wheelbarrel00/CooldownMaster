@@ -568,7 +568,7 @@ local function BuildStatusbarOptions()
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 	if LSM then
 		for _, key in ipairs(LSM:List("statusbar")) do
-			opts[#opts + 1] = { value = key, text = key }
+			opts[#opts + 1] = { value = key, text = key, texture = LSM:Fetch("statusbar", key, true) }
 		end
 	end
 	if #opts == 0 then opts[1] = { value = "CDM Smooth", text = "CDM Smooth" } end
@@ -580,7 +580,7 @@ local function BuildBorderOptions()
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 	if LSM then
 		for _, key in ipairs(LSM:List("border")) do
-			opts[#opts + 1] = { value = key, text = key }
+			opts[#opts + 1] = { value = key, text = key, edge = LSM:Fetch("border", key, true) }
 		end
 	end
 	if #opts == 0 then opts[1] = { value = "CDM Shadow", text = "CDM Shadow" } end
@@ -606,7 +606,6 @@ local lanesState = {
 }
 
 local YELLOW
-local lanesPanelArea
 
 
 local function GetLaneCfg(laneIndex)
@@ -737,6 +736,10 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		onChange = function(v)
 			cfg.enabled = v
 			RebuildLane(laneIndex)
+			-- The "(off)" suffix lives in shared option tables that only the Filters BUILDERS
+			-- refresh, so a cached surface would keep showing a disabled lane as available.
+			if ns.Options_RefreshLaneLabels then ns.Options_RefreshLaneLabels() end
+			if ns.Options_InvalidateFilterLists then ns.Options_InvalidateFilterLists() end
 		end,
 	}))
 
@@ -779,7 +782,18 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	place(W.CreateSlider(parent, {
 		label = L["Max Time (seconds)"], min = 10, max = 360, step = 1,
 		value = cfg.maxTime, width = 240,
-		onChange = function(v) cfg.maxTime = v; RefreshLane(laneIndex) end,
+		onChange = function(v)
+			cfg.maxTime = v
+			-- Drop the cached Text form so Position (seconds) rebuilds against the new ceiling. Left
+			-- alone it keeps the old max and pins the thumb while the edit box shows the real value.
+			local cached = lanesState.formFrames[laneIndex]
+			if cached and cached["text"] then
+				cached["text"]:Hide()
+				cached["text"]:SetParent(nil)
+				cached["text"] = nil
+			end
+			RefreshLane(laneIndex)
+		end,
 	}))
 
 	cfg.split = cfg.split or { count = 1, points = {} }
@@ -1114,6 +1128,26 @@ local function BuildLaneIconsForm(parent, laneIndex)
 		onChange = function(v) cfg.swipeAlpha = v; RefreshLane(laneIndex) end,
 	}))
 
+	place(W.CreateCheckbox(parent, {
+		label = L["Pulse"], checked = cfg.iconPulse,
+		tooltip = L["Makes an icon breathe in and out as it travels, so a lane you care about is easier to catch out of the corner of your eye. Masque skins draw their own icon, so the pulse stands down while one is active."],
+		onChange = function(v) cfg.iconPulse = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = L["Pulse Within (sec)"], min = 0, max = 60, step = 1,
+		value = cfg.iconPulseWithin, width = 240,
+		tooltip = L["Start pulsing only once a cooldown is this close to ready. Set it to 0 to pulse the whole way along the lane."],
+		onChange = function(v) cfg.iconPulseWithin = v; RefreshLane(laneIndex) end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = L["Pulse Strength"], min = 1, max = 20, step = 1,
+		value = cfg.iconPulseSize, width = 240,
+		tooltip = L["How many pixels the icon grows at the peak of each pulse."],
+		onChange = function(v) cfg.iconPulseSize = v; RefreshLane(laneIndex) end,
+	}))
+
 	local secBorder = W.CreateSectionHeader(parent, L["Icon Border"])
 	secBorder:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBorder, 18)
@@ -1171,8 +1205,7 @@ local function BuildLaneIconsForm(parent, laneIndex)
 	secTxt:SetWidth(parent:GetWidth() - pad * 2)
 	place(secTxt, 18)
 
-	-- Only the countdown timer (iconText[2]) renders; the old charges/spare text slots were
-	-- removed (charge count is unreadable in combat). Keep the iconText[2] key so the lane read matches.
+	-- Keep the iconText[2] key. The other slots were removed, but the lane still reads that index.
 	place(W.CreateCheckbox(parent, {
 		label = L["Show Timer"],
 		checked = cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled or false,
@@ -1351,7 +1384,9 @@ local function BuildLaneTextForm(parent, laneIndex)
 				end,
 			}))
 			secSlider = place(W.CreateSlider(parent, {
-				label = L["Position (seconds)"], min = 0, max = 360, step = 1,
+				-- The lane's own Max Time, not the 360 ceiling: onChange clamps here anyway, so a wider
+				-- slider just advertises a range it will silently refuse.
+				label = L["Position (seconds)"], min = 0, max = cfg.maxTime or 120, step = 1,
 				value = def.t or 0, width = 240,
 				tooltip = L["Where the label sits, as seconds left on a cooldown. Moving this also updates Position (percent) to match. Linear has no seconds axis, so this does nothing there."],
 				onChange = function(v)
@@ -1564,7 +1599,6 @@ local function BuildLanesTab(content)
 	local formArea = CreateFrame("Frame", nil, body)
 	formArea:SetPoint("TOPLEFT", rail, "TOPRIGHT", 8, 0)
 	formArea:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", 0, 0)
-	lanesPanelArea = formArea
 
 	for i, b in ipairs(lanesState.subTabBtns) do
 		b:SetScript("OnClick", function()
@@ -1794,6 +1828,8 @@ local function RefreshLaneOptionLabels()
 	end
 end
 
+ns.Options_RefreshLaneLabels = RefreshLaneOptionLabels
+
 local FILTER_READYBOX_FOR_DEFAULTS = {
 	{ value = 0, text = L["Off"]   },
 	{ value = 1, text = L["Box 1"] },
@@ -1855,17 +1891,65 @@ local function BuildFiltersDefaultsForm(parent)
 		return widget
 	end
 
+	local band = ns.CDM.db.profile.laneByDuration
+	local function BandChanged()
+		if ns.Engine then ns.Engine:ReapplyRouting() end
+	end
+
+	local secBand = W.CreateSectionHeader(parent, L["Route by Cooldown Length"])
+	secBand:SetWidth(parent:GetWidth() - pad * 2)
+	place(secBand, 18)
+
+	place(W.CreateCheckbox(parent, {
+		label = L["Sort cooldowns into lanes by length"], checked = band.enabled,
+		tooltip = L["Sends a cooldown to a lane based on how long it is rather than what kind it is, so short cooldowns can run a fast lane and long ones a slow lane. A lane you picked for an individual spell still wins over this, and anything whose length CooldownMaster has not learned yet falls back to the category defaults below."],
+		onChange = function(v) band.enabled = v; BandChanged() end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = L["Short Up To (sec)"], min = 5, max = 300, step = 1,
+		value = band.shortMax, width = 240,
+		tooltip = L["A cooldown this long or shorter counts as short."],
+		onChange = function(v) band.shortMax = v; BandChanged() end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = L["Short Lane"], value = band.shortLane or 1,
+		options = FILTER_LANE_FOR_DEFAULTS, width = 200,
+		onChange = function(v) band.shortLane = v; BandChanged() end,
+	}))
+
+	place(W.CreateSlider(parent, {
+		label = L["Medium Up To (sec)"], min = 5, max = 600, step = 1,
+		value = band.midMax, width = 240,
+		tooltip = L["A cooldown longer than Short Up To but no longer than this counts as medium. Anything above it is long."],
+		onChange = function(v) band.midMax = v; BandChanged() end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = L["Medium Lane"], value = band.midLane or 2,
+		options = FILTER_LANE_FOR_DEFAULTS, width = 200,
+		onChange = function(v) band.midLane = v; BandChanged() end,
+	}))
+
+	place(W.CreateDropdown(parent, {
+		label = L["Long Lane"], value = band.longLane or 3,
+		options = FILTER_LANE_FOR_DEFAULTS, width = 200,
+		onChange = function(v) band.longLane = v; BandChanged() end,
+	}))
+
+	local secCat = W.CreateSectionHeader(parent, L["Category Defaults"])
+	secCat:SetWidth(parent:GetWidth() - pad * 2)
+	place(secCat, 18)
+
 	local pickerLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	pickerLabel:SetText(L["Pick a category to edit its defaults:"])
 	pickerLabel:SetTextColor(1, 1, 1)
 	place(pickerLabel, 16)
-
-	local hintLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	hintLabel:SetText(L["These settings apply to every spell in the chosen category. To override an individual spell, use that category's sub-tab on the left."])
-	hintLabel:SetTextColor(0.7, 0.7, 0.7)
-	hintLabel:SetWidth(parent:GetWidth() - pad * 2 - 30)
-	hintLabel:SetJustifyH("LEFT")
-	place(hintLabel, 28)
+	W.AttachLabelTip(parent, pickerLabel, {
+		label   = L["Pick a category to edit its defaults:"],
+		tooltip = L["These settings apply to every spell in the chosen category. To override an individual spell, use that category's sub-tab on the left."],
+	})
 
 	local categoryDropdown = W.CreateDropdown(parent, {
 		label = "", value = filtersState.selectedDefaultsKey,

@@ -46,6 +46,9 @@ local function lane(frameName, y, enabled)
 		iconSize       = 35,
 		iconAlpha      = 1.0,
 		iconOffset     = 0,
+		iconPulse      = false,
+		iconPulseWithin = 5,   -- seconds before ready. 0 = pulse the whole time.
+		iconPulseSize  = 6,    -- pixels the icon art grows at the peak of a pulse
 		swipeAlpha     = 0,   -- cooldown-swipe darkness. 0 = no tint.
 		iconBorder      = true,
 		iconBorderSize  = 1,
@@ -286,6 +289,16 @@ ns.DEFAULTS = {
 		offensives = { enabled = false, showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		petspells  = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
 		custom     = { enabled = true,  showByDefault = true,  ignoreThreshold = 1800, defaultLane = 1, readyBox = 1, defaultBar = 1 },
+	},
+
+	-- Sits between the per-spell override and the category default, so an explicit choice still wins.
+	laneByDuration = {
+		enabled   = false,
+		shortMax  = 60,
+		midMax    = 180,
+		shortLane = 1,
+		midLane   = 2,
+		longLane  = 3,
 	},
 
 	-- spellOverrides[spellID] = { visible, lane, bar, readyBox, important, pinned }. A nil field falls back to the category default.

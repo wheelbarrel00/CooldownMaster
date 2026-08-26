@@ -771,7 +771,8 @@ function Engine:BuildTrackedSpells()
 							name       = name,
 							icon       = icon,
 							category   = info.category,
-							hasCharges = info.charges,
+							-- Cached raw, a secret here would sit in the central table for the whole session.
+							hasCharges = PlainOrNil(info.charges),
 							cooldownID = cooldownID,
 						}
 					end
@@ -2895,7 +2896,29 @@ function Engine:IsSpellVisible(spellID, category)
 end
 
 
-function Engine:ResolveLaneIndex(spellID, category)
+-- Item and custom ids are not spellIDs, so a bare knownDurations lookup reads nil for all but a
+-- plain spell. Not IsSpellVisible's threshold lookup - merging them would change what that hides.
+function Engine:RoutingDuration(spellID, category)
+	if category == ns.CONST.OFFENSIVE_CATEGORY then
+		return self:BestAuraDuration(spellID)
+	end
+	if category == ns.CONST.POTION_CATEGORY or category == ns.CONST.TRINKET_CATEGORY then
+		return self:BestDuration(ns.CONST.ITEM_ID_BASE + spellID)
+	end
+	if category == ns.CONST.CUSTOM_CATEGORY then
+		local addon = ns.CDM
+		local store = addon and addon.db and addon.db.profile.customCooldowns
+		local def   = store and store.defs and store.defs[spellID]
+		if def and def.durationMs and def.durationMs > 0 then
+			return def.durationMs / 1000
+		end
+		return nil
+	end
+	return self:BestDuration(spellID) or self.baselineDurations[spellID]
+end
+
+
+function Engine:ResolveLaneIndex(spellID, category, durationHint)
 	local addon = ns.CDM
 	if addon and addon.db then
 		local profile = addon.db.profile
@@ -2903,6 +2926,27 @@ function Engine:ResolveLaneIndex(spellID, category)
 		local override = profile.spellOverrides and profile.spellOverrides[spellID]
 		if override and override.lane then
 			return override.lane
+		end
+
+		local band = profile.laneByDuration
+		if band and band.enabled then
+			-- The LEARNED duration, never the live one: on retail the live remaining time is secret
+			-- in combat, and routing has to resolve the same way in and out of it.
+			-- Test entries have no learned duration, so they pass their fabricated one in or the band
+			-- would never route them and test mode could not preview it.
+			local dur = durationHint or self:RoutingDuration(spellID, category)
+			if dur then
+				local shortMax = band.shortMax or 60
+				local midMax   = band.midMax or 180
+				-- Crossed thresholds would strand the middle band, so the later one gives way.
+				if midMax < shortMax then midMax = shortMax end
+				if dur <= shortMax then
+					return band.shortLane or 1
+				elseif dur <= midMax then
+					return band.midLane or 2
+				end
+				return band.longLane or 3
+			end
 		end
 
 		local key = self:GetCategoryFilterKey(category)
@@ -3194,6 +3238,8 @@ local FOREIGN_SOURCE = { test = true, custom = true, offensive = true }
 function Engine:ScanSpells()
 	if not ns.Compat.HAS_BLIZZ_CDM then
 		self:ScanSpellsClassic()
+		-- Called straight in, not through ScheduleBuffScan. The debounce stopped buff entries
+		-- being created at all on Era.
 		self:ScanBuffs()
 		return
 	end
@@ -3583,36 +3629,45 @@ function Engine:PollAllItems()
 			-- itemIDs overlap the spellID range, so only clear an entry this item actually owns.
 			local e = self.entries[itemID]
 			if e and e.kind == "item" then self.entries[itemID] = nil end
-		elseif tracked and active and not cdSeen[startTime] then
-			cdSeen[startTime] = true
-			seen[itemID] = true
-			-- Only a cast-confirmed claim is persisted, never a lowest-itemID fallback.
-			if self.lastUsedSpell and self.itemUseSpell[itemID] == self.lastUsedSpell then
-				SaveItemOwner(itemID, startTime)
-			end
-			-- itemIDs overlap the spellID range (5512 is both), so a spell already on this key keeps it.
+		elseif tracked and active then
 			local existing = self.entries[itemID]
-			if existing and existing.kind ~= "item" then existing = nil end
-			if existing then
-				existing.startTime = startTime
-				existing.duration  = duration
-				existing.endTime   = endTime
-			elseif not self.entries[itemID] then
-				local cat = tracked.category or ns.CONST.POTION_CATEGORY
-				self.entries[itemID] = {
-					spellID    = itemID,
-					itemID     = itemID,
-					name       = tracked.name,
-					icon       = tracked.icon,
-					startTime  = startTime,
-					duration   = duration,
-					endTime    = endTime,
-					laneIndex  = self:ResolveLaneIndex(itemID, cat),
-					barIndex   = self:ResolveBarIndex(itemID, cat),
-					category   = cat,
-					kind       = "item",
-					_source    = "item-cooldown",
-				}
+			-- itemIDs overlap the spellID range (5512 is both), so a spell already on this key keeps it
+			-- and the shared start must not be consumed on its behalf.
+			local blocked = existing ~= nil and existing.kind ~= "item"
+			if not blocked then
+				if cdSeen[startTime] then
+					-- Lost the shared-cooldown dedupe. Drop the entry here rather than leaving it to the
+					-- sweep below, which reads an unseen entry as "went ready" and pops it mid-cooldown.
+					if existing then self.entries[itemID] = nil end
+				else
+					cdSeen[startTime] = true
+					seen[itemID] = true
+					-- Only a cast-confirmed claim is persisted, never a lowest-itemID fallback.
+					if self.lastUsedSpell and self.itemUseSpell[itemID] == self.lastUsedSpell then
+						SaveItemOwner(itemID, startTime)
+					end
+					if existing then
+						existing.startTime = startTime
+						existing.duration  = duration
+						existing.endTime   = endTime
+					else
+						local cat = tracked.category or ns.CONST.POTION_CATEGORY
+						self.entries[itemID] = {
+							spellID    = itemID,
+							itemID     = itemID,
+							name       = tracked.name,
+							icon       = tracked.icon,
+							startTime  = startTime,
+							duration   = duration,
+							endTime    = endTime,
+							laneIndex  = self:ResolveLaneIndex(itemID, cat),
+							barIndex   = self:ResolveBarIndex(itemID, cat),
+							category   = cat,
+							kind       = "item",
+							_source    = "item-cooldown",
+						}
+					end
+				end
 			end
 		end
 	end
@@ -3739,7 +3794,7 @@ function Engine:StartTestMode()
 			startTime = now,
 			duration  = dur,
 			endTime   = now + dur,
-			laneIndex = self:ResolveLaneIndex(id, cat),
+			laneIndex = self:ResolveLaneIndex(id, cat, dur),
 			barIndex  = self:ResolveBarIndex(id, cat),
 			category  = cat,
 			_source   = "test",

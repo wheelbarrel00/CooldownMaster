@@ -2,6 +2,32 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.14.0",
+		date = "2026-08-25",
+		sections = {
+			{ head = "New Features", items = {
+				"Route cooldowns to lanes by how long they are. A new Route by Cooldown Length section at the top of Filters > Defaults. Tick Sort cooldowns into lanes by length, set a Short Up To and a Medium Up To threshold, and pick the lane each band goes to. The reason to want this is a fast lane and a slow lane: send everything under a minute to Lane 1 with a short Max Time so it reads like a rotation helper, and everything longer to Lane 2 with a long Max Time so your big cooldowns get their own space. It routes on the cooldown's real length, so it covers spells, potions and trinkets, pet abilities, and your own custom cooldowns alike. A lane you picked for an individual spell still wins over it, and anything whose length has not been learned yet falls back to the category defaults. Test mode previews it too. Off by default.",
+				"Icons can pulse as they travel. Lanes > a lane > Icons > Pulse makes an icon breathe in and out, so a lane you care about is easier to catch out of the corner of your eye. Pulse Within (sec) holds the pulsing back until a cooldown is that close to ready, or set it to 0 to pulse the whole way along the lane, and Pulse Strength is how many pixels the icon grows at the peak. A Masque skin draws its own icon, so the pulse stands down while one is active.",
+				"Textures and borders now preview in their dropdowns. A media list used to give you a name and nothing else, which is no help when the names are things like Glass and Gradient. Statusbar textures now draw a filled swatch of the actual texture beside each name, and border textures draw a small box with that border around it. Fonts have previewed themselves for a while, and this brings the rest of the media pickers up to match.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Cooldown Master no longer resets Arcana's bar layout. Our TOC listed ChocolateBar as an optional dependency, dating from when ChocolateBar was the broker display addon. Arcana, which replaced it, now ships a load-on-demand stub folder under that same old name to migrate old profiles, and naming a load-on-demand addon as an optional dependency force-loads it. So every login, Cooldown Master was quietly triggering Arcana's migration path: Arcana re-ran its ChocolateBar import, replaced its own live database with the result, and re-initialized, which reset bar tile positions and display settings and threw an error about its options panel being registered twice. The entry is gone. It bought nothing, because broker displays pick up new data objects through a callback regardless of load order. Reported by RoadBlock.",
+				"A font left behind by an addon you removed no longer errors. Font dropdowns draw each entry in the font it names, and that list comes from LibSharedMedia, which hands back a registered path without checking the file is still on disk. Opening a font dropdown called on every registered path including dead ones, which threw an invalid font asset error and, on the Ready and Bars pages, could leave the form half-built. Font paths are now checked before use and fall back to the default face. Reported by RoadBlock.",
+				"The Classic options panel no longer runs out of time. This is the cost I said I was going after in 1.13.0. Every dropdown built one button and one backdrop for every option in its list the moment the panel was created, and with a media pack installed LibSharedMedia reports around 500 statusbar textures. A single lane's Appearance section was building thousands of frames before it drew anything, which is what pushed it past the game's script watchdog and left sections with controls missing. Dropdowns now build nothing until you first open one, and then only the rows you can see, repainting them as you scroll. The 1.13.0 fix stopped the panel breaking when this happened. This stops it happening.",
+				"The label position sliders no longer offer time a lane cannot reach. Position (seconds) ran to 360 regardless of the lane's own Max Time, so on a three-minute lane typing 360 snapped back to 180 and looked like the sliders were fighting each other. It now stops at the lane's Max Time, and rebuilds when you change it. Reported by RoadBlock.",
+				"Potions sharing a cooldown no longer go blank. Item IDs and spell IDs share one numeric range, so an item could land on a key a spell already held. The item then claimed the shared cooldown start on behalf of every potion grouped with it but could not draw anything itself, so all of them went empty for that cooldown.",
+				"A cooldown that lost a shared-cooldown grouping no longer pops a false ready. Only one icon shows for a group, and the ones that lose were being left behind rather than cleared, so the next sweep read them as having just come up and fired a ready box for a cooldown that had not finished.",
+				"A disabled lane reads (off) everywhere you can route to it. Turning a lane off updated the label in some routing dropdowns but not others, so a lane could look available on one screen and disabled on another.",
+			} },
+			{ head = "Improvements", items = {
+				"All seven languages are complete again. The 1.13.0 features arrived faster than the translations did and left English showing through in places. French, German, Russian, Korean, Simplified Chinese, and Traditional Chinese are all back to full coverage, this release included.",
+				"GCD and swing tracking is read once per frame rather than up to six times, once for each lane and bar asking separately.",
+				"Ready box icons restyle a few times a second instead of on every frame. Nothing about them changes fast enough to need 60 readings a second.",
+				"Cooldown Master now declares itself under the Combat category on the retail addon list.",
+			} },
+		},
+	},
+	{
 		version = "1.13.0",
 		date = "2026-08-23",
 		sections = {

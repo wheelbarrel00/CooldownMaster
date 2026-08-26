@@ -3,10 +3,11 @@ local L = ns.L
 
 local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
+local STYLE_INTERVAL = 0.2  -- restyle cadence - IsSpellUsable does not need re-reading at 60 Hz
 local ICON_FADE_IN = 0.25  -- icon alpha fade-in on pop, so it surfaces softly instead of snapping in
 local TAG_REFRESH = 0.1    -- live-tag re-resolve cadence - the render OnUpdate is far too fast to gsub on
 
--- Built-in ready sounds (SOUNDKIT + one bundled click), listed before LibSharedMedia sounds.
+-- Listed before the LibSharedMedia sounds so the built-ins keep stable indices.
 local READY_BUILTIN_SOUNDS = {
 	{ name = "CDM: Ready Check",  kit = "READY_CHECK"            },
 	{ name = "CDM: Quest Ding",   kit = "IG_QUEST_LIST_COMPLETE" },
@@ -317,8 +318,17 @@ local function RelayoutReadyFrame(f)
 end
 
 
--- Reset a pooled box's popped icons so reuse (profile switch) starts empty; the
--- box-fade pass in OnUpdate then hides the now-empty box if it's locked.
+-- Every writer on a ready icon's alpha goes through here or the memo goes stale.
+local function SetIconAlpha(btn, a)
+	if btn._alphaSet ~= a then
+		btn._alphaSet = a
+		btn:SetAlpha(a)
+	end
+end
+
+
+-- Reset a pooled box's popped icons so reuse (profile switch) starts empty. The box-fade pass in
+-- OnUpdate then hides the now-empty box if it is locked.
 local function ClearReadyIcons(f)
 	for i = 1, #f.iconPool do
 		local btn = f.iconPool[i]
@@ -326,7 +336,7 @@ local function ClearReadyIcons(f)
 			ClearIconHighlight(btn)
 			btn._pinned   = nil
 			btn._readyTime = nil
-			btn:SetAlpha(1)
+			SetIconAlpha(btn, 1)
 			btn:Hide()
 		end
 	end
@@ -455,6 +465,11 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		local cfgAlpha = (cfg and cfg.iconAlpha) or 1
 		local g = ns.CDM and ns.CDM.db and ns.CDM.db.profile.global
 
+		-- Usability can change while an icon sits in the box, so the restyle has to keep running.
+		self._styleTimer = (self._styleTimer or 0) + elapsed
+		local restyle = self._styleTimer >= STYLE_INTERVAL
+		if restyle then self._styleTimer = 0 end
+
 		-- Hold countdown per icon. A pinned icon freezes (cleared only by the user),
 		-- otherwise it fades over its last second and is hidden when the hold expires.
 		local visible = 0
@@ -468,23 +483,23 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 				if not btn._pinned and btn._readyTime <= 0 then
 					ClearIconHighlight(btn)
 					btn:Hide()
-					btn:SetAlpha(1)
+					SetIconAlpha(btn, 1)
 					needRelayout = true
 				else
 					visible = visible + 1
-					if g then ns.StyleIcon(btn, btn._spellID, btn._itemID, g) end
+					if restyle and g then ns.StyleIcon(btn, btn._spellID, btn._itemID, g) end
 					if btn._fadeIn then
 						btn._fadeIn = btn._fadeIn - elapsed
 						if btn._fadeIn <= 0 then
 							btn._fadeIn = nil
-							btn:SetAlpha(cfgAlpha)
+							SetIconAlpha(btn, cfgAlpha)
 						else
-							btn:SetAlpha(cfgAlpha * (1 - btn._fadeIn / ICON_FADE_IN))
+							SetIconAlpha(btn, cfgAlpha * (1 - btn._fadeIn / ICON_FADE_IN))
 						end
 					elseif not btn._pinned and btn._readyTime <= 1.0 then
-						btn:SetAlpha(cfgAlpha * btn._readyTime)
+						SetIconAlpha(btn, cfgAlpha * btn._readyTime)
 					else
-						btn:SetAlpha(cfgAlpha)
+						SetIconAlpha(btn, cfgAlpha)
 					end
 				end
 			end
@@ -512,7 +527,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 							else
 								ClearIconHighlight(btn)
 								btn:Hide()
-								btn:SetAlpha(1)
+								SetIconAlpha(btn, 1)
 							end
 						end
 					end
@@ -665,7 +680,7 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 				-- Not ICON_FADE_IN: restarting the fade drops alpha to 0 and reads as a flicker.
 				b._fadeIn    = nil
 				b.tex:SetTexture(entry.icon or "")
-				b:SetAlpha(cfg.iconAlpha or 1)
+				SetIconAlpha(b, cfg.iconAlpha or 1)
 				ns.StyleIcon(b, spellID, entry.itemID, g)
 
 				local rsnap = b._tagSnap
@@ -706,7 +721,7 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 			if not evict then return end
 			ClearIconHighlight(evict)
 			evict:Hide()
-			evict:SetAlpha(1)
+			SetIconAlpha(evict, 1)
 		end
 	end
 
@@ -729,7 +744,7 @@ function ns.ReadyFrames_OnReadyTransition(spellID, entry)
 	btn._pinned    = pinned
 	btn._readyTime = important and (cfg.highlightDuration or 10) or (cfg.normalDuration or 5)
 	btn._fadeIn = ICON_FADE_IN
-	btn:SetAlpha(0)
+	SetIconAlpha(btn, 0)
 	ns.StyleIcon(btn, spellID, entry.itemID, addon.db.profile.global)
 
 	-- The Engine prunes the entry once it goes ready, so snapshot the tag fields, never hold the entry.

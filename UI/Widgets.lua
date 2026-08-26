@@ -49,6 +49,11 @@ local function attachLabelTooltip(root, label, cfg)
 end
 
 
+function Widgets.AttachLabelTip(root, label, cfg)
+	attachLabelTooltip(root, label, cfg)
+end
+
+
 function Widgets.CreateSectionHeader(parent, labelText)
 	local f = CreateFrame("Frame", nil, parent)
 	f:SetHeight(18)
@@ -247,7 +252,9 @@ end
 local function applyPreviewFont(fs, path)
 	local file, size, flags = GameFontNormal:GetFont()
 	size = size or 12
-	if path and path ~= "" then
+	-- Probed first: a font registered by a since-uninstalled addon throws here, and this runs
+	-- over every font the client has registered, so it is where a dead path surfaces.
+	if path and path ~= "" and ns.FontPathLoads(path) then
 		fs:SetFont(path, size, flags)
 		if fs:GetFont() then return end
 	end
@@ -297,8 +304,6 @@ function Widgets.CreateDropdown(parent, cfg)
 	applyBackdrop(list, RED, PANEL_BORDER)
 	list:Hide()
 
-	-- Rows live in a content child so a long option list (e.g. many fonts) can scroll
-	-- in a capped, clipped viewport instead of running off the screen.
 	local content = CreateFrame("Frame", nil, list)
 	content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
 	content:SetWidth(width)
@@ -331,6 +336,17 @@ function Widgets.CreateDropdown(parent, cfg)
 		end
 	end
 
+	local swatchKind
+	for _, opt in ipairs(options) do
+		if opt.texture then swatchKind = "texture" break end
+		if opt.edge then swatchKind = "edge" break end
+	end
+	local SWATCH_W, SWATCH_H = 58, 12
+	-- A border swatch is its own size: four EDGE_INSET corners have to leave a visible straight run
+	-- between them or every edgeFile draws as the same corner blob.
+	local EDGE_W, EDGE_H, EDGE_INSET = 28, SWATCH_H + 6, 6
+	local swatchRoom = swatchKind and (((swatchKind == "edge") and EDGE_W or SWATCH_W) + 10) or 0
+
 	local function setButtonText(value)
 		btnText:SetText(findOptionLabel(value))
 		if hasFontPreview then applyPreviewFont(btnText, findOptionFont(value)) end
@@ -346,85 +362,151 @@ function Widgets.CreateDropdown(parent, cfg)
 	end
 
 	local rowH = 20
-	-- A label can be wider than the caller's box ("Lane 3 (off)" in an 84px column), so the open list is measured and widened on its own and no caller's layout moves.
-	local rowTexts, listW = {}, width
 	local MAX_LIST_W = 320
-	for i, opt in ipairs(options) do
-		local row = CreateFrame("Button", nil, content,
-			BackdropTemplateMixin and "BackdropTemplate" or nil)
-		row:SetSize(width, rowH)
-		row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((i - 1) * rowH))
-		applyBackdrop(row, RED_DIM, PANEL_BORDER)
+	local MAX_LIST_H = 280
 
-		local rt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-		rt:SetPoint("LEFT", row, "LEFT", 6, 0)
-		rt:SetText(opt.text)
-		rt:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
-		-- Safe per row because these are built once per dropdown and never pooled across lists.
-		if hasFontPreview then applyPreviewFont(rt, opt.font) end
-		-- Measured after the preview face is on, or a wide font would still overrun.
-		rowTexts[i] = rt
-		local textW = rt:GetStringWidth() + 14
-		if textW > listW then listW = math.min(MAX_LIST_W, textW) end
+	-- One Button plus a NineSlice backdrop per option pushed the lane option forms past Classic's
+	-- script watchdog - LibSharedMedia reports about 500 statusbar textures once a pack is installed.
+	local visibleN = math.min(#options, math.floor(MAX_LIST_H / rowH))
+	if visibleN < 1 then visibleN = 1 end
+	local maxTop = math.max(1, #options - visibleN + 1)
+	local topIndex = 1
 
-		row:SetScript("OnEnter", function(self)
-			self:SetBackdropColor(YELLOW.r, YELLOW.g, YELLOW.b, 1)
-			rt:SetTextColor(RED.r, RED.g, RED.b)
-		end)
-		row:SetScript("OnLeave", function(self)
-			self:SetBackdropColor(RED_DIM.r, RED_DIM.g, RED_DIM.b, RED_DIM.a)
-			rt:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
-		end)
-		row:SetScript("OnClick", function() selectValue(opt.value) end)
+	list:SetHeight(rowH * visibleN)
+	content:SetHeight(rowH * visibleN)
 
-		root._optionRows[i] = row
-	end
-
-	if listW > width then
-		list:SetWidth(listW)
-		content:SetWidth(listW)
+	local function Repaint()
 		for i = 1, #root._optionRows do
-			root._optionRows[i]:SetWidth(listW)
+			local row = root._optionRows[i]
+			local opt = options[topIndex + i - 1]
+			if opt then
+				row._value = opt.value
+				-- OnLeave can be skipped when the list hides under the cursor, and a pooled row is a
+				-- position rather than an option, so a stuck highlight would land on the wrong entry.
+				row:SetBackdropColor(RED_DIM.r, RED_DIM.g, RED_DIM.b, RED_DIM.a)
+				row.text:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+				row.text:SetText(opt.text)
+				if hasFontPreview then applyPreviewFont(row.text, opt.font) end
+				if swatchKind == "texture" then
+					row.swatch:SetTexture(opt.texture or "")
+					row.swatch:SetShown(opt.texture ~= nil)
+				elseif swatchKind == "edge" then
+					-- Memoized: SetBackdrop rebuilds a NineSlice, and this repaints on every scroll tick.
+					if row._edgePath ~= opt.edge then
+						row._edgePath = opt.edge
+						if opt.edge then
+							row.swatch:SetBackdrop({ edgeFile = opt.edge, edgeSize = EDGE_INSET })
+							row.swatch:SetBackdropBorderColor(1, 1, 1, 1)
+						else
+							row.swatch:SetBackdrop(nil)
+						end
+					end
+					row.swatch:SetShown(opt.edge ~= nil)
+				end
+				row:Show()
+			else
+				row:Hide()
+			end
 		end
 	end
-	-- Giving the string a width is what makes justification apply, and GameFontNormal is centered, so
-	-- the explicit LEFT is load-bearing here.
-	for i = 1, #rowTexts do
-		rowTexts[i]:SetPoint("RIGHT", root._optionRows[i], "RIGHT", -6, 0)
-		rowTexts[i]:SetJustifyH("LEFT")
-		rowTexts[i]:SetWordWrap(false)
+
+	local built = false
+	local function EnsureRows()
+		if built then return end
+		built = true
+		for i = 1, visibleN do
+			local row = CreateFrame("Button", nil, content,
+				BackdropTemplateMixin and "BackdropTemplate" or nil)
+			row:SetSize(width, rowH)
+			row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -((i - 1) * rowH))
+			applyBackdrop(row, RED_DIM, PANEL_BORDER)
+
+			local rt = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			rt:SetPoint("LEFT", row, "LEFT", 6, 0)
+			-- Giving the string a width is what makes justification apply, and GameFontNormal is
+			-- centered, so the explicit LEFT is load-bearing here.
+			rt:SetPoint("RIGHT", row, "RIGHT", -6 - swatchRoom, 0)
+			rt:SetJustifyH("LEFT")
+			rt:SetWordWrap(false)
+			rt:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+			row.text = rt
+
+			if swatchKind == "texture" then
+				local sw = row:CreateTexture(nil, "ARTWORK")
+				sw:SetSize(SWATCH_W, SWATCH_H)
+				sw:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+				row.swatch = sw
+			elseif swatchKind == "edge" then
+				local sw = CreateFrame("Frame", nil, row,
+					BackdropTemplateMixin and "BackdropTemplate" or nil)
+				sw:SetSize(EDGE_W, EDGE_H)
+				sw:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+				row.swatch = sw
+			end
+
+			row:SetScript("OnEnter", function(self)
+				self:SetBackdropColor(YELLOW.r, YELLOW.g, YELLOW.b, 1)
+				rt:SetTextColor(RED.r, RED.g, RED.b)
+			end)
+			row:SetScript("OnLeave", function(self)
+				self:SetBackdropColor(RED_DIM.r, RED_DIM.g, RED_DIM.b, RED_DIM.a)
+				rt:SetTextColor(YELLOW.r, YELLOW.g, YELLOW.b)
+			end)
+			row:SetScript("OnClick", function(self) selectValue(self._value) end)
+
+			root._optionRows[i] = row
+		end
 	end
 
-	local fullH = rowH * math.max(1, #options)
-	content:SetHeight(fullH)
-	-- Cap the viewport and scroll the content frame only when the list is taller than
-	-- the cap; short lists (every other dropdown) keep the exact prior layout.
-	local MAX_LIST_H = 280
-	local scroll = 0
-	if fullH > MAX_LIST_H then
-		list:SetHeight(MAX_LIST_H)
-		list:SetClipsChildren(true)
-		local maxScroll = fullH - MAX_LIST_H
+	-- A label can be wider than the caller's box ("Lane 3 (off)" in an 84px column), so the open list
+	-- is measured on a scratch string, not on the pool, whose faces belong to whatever rows are painted.
+	local sized = false
+	local function EnsureWidth()
+		if sized then return end
+		sized = true
+		local scratch = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		scratch:Hide()
+		local listW = width
+		for _, opt in ipairs(options) do
+			if hasFontPreview then applyPreviewFont(scratch, opt.font) end
+			scratch:SetText(opt.text)
+			local textW = scratch:GetStringWidth() + 14 + swatchRoom
+			if textW > listW then
+				listW = math.min(MAX_LIST_W, textW)
+				if listW >= MAX_LIST_W then break end
+			end
+		end
+		if listW > width then
+			list:SetWidth(listW)
+			content:SetWidth(listW)
+			for i = 1, #root._optionRows do
+				root._optionRows[i]:SetWidth(listW)
+			end
+		end
+	end
+
+	if #options > visibleN then
 		list:EnableMouseWheel(true)
 		list:SetScript("OnMouseWheel", function(_, delta)
-			scroll = math.min(maxScroll, math.max(0, scroll - delta * rowH * 3))
-			content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, scroll)
+			local nt = topIndex - delta * 3
+			if nt < 1 then nt = 1 elseif nt > maxTop then nt = maxTop end
+			if nt ~= topIndex then
+				topIndex = nt
+				Repaint()
+			end
 		end)
-	else
-		list:SetHeight(fullH)
 	end
 
 	btn:SetScript("OnClick", function()
 		if list:IsShown() then
 			list:Hide()
-		else
-			-- Reopen at the top, not wherever it was last scrolled to.
-			if scroll ~= 0 then
-				scroll = 0
-				content:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
-			end
-			list:Show()
+			return
 		end
+		EnsureRows()
+		EnsureWidth()
+		topIndex = 1
+		Repaint()
+		list:Show()
 	end)
 
 	function root:SetEnabled(enabled)
