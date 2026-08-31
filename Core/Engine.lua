@@ -1102,8 +1102,11 @@ end
 local debuffs = {}
 local playerGUID
 
--- A refresh rolls the unspent remainder into the new application, capped at 30% of base. No aura API reads this in combat, so it is modelled.
+-- A refresh rolls the unspent remainder into the new application, capped at 30% of base. No aura API reads this in combat, so it is modeled.
 local PANDEMIC_FRACTION = 0.3
+
+-- Pandemic arrived in Mists. On Era and TBC a refresh drops the unspent remainder, so rolling it in there invents time the debuff does not have.
+local REFRESH_ROLLS_OVER = ns.Compat.IS_MOP or ns.Compat.IS_RETAIL
 
 
 -- Silent by design: a dot gone because the target changed or died was not used up, so popping it "ready" would be a lie.
@@ -1857,6 +1860,8 @@ function Engine:HandleAuraLog()
 
 	if auraType ~= "DEBUFF" then return end
 	if srcGUID ~= playerGUID then return end
+	-- Falling and your own Forbearance are debuffs you are both the source and the target of, and an offensive is something you put on somebody else.
+	if dstGUID == playerGUID then return end
 	if not (spellID and dstGUID) then return end
 	if not self._trackedBuilt then return end
 	if self.trackedSpells[spellID] then return end
@@ -1905,7 +1910,7 @@ function Engine:HandleAuraLog()
 		if base then
 			local remaining = (rec.start and rec.duration) and (rec.start + rec.duration - now) or 0
 			if remaining < 0 then remaining = 0 end
-			local roll = base * PANDEMIC_FRACTION
+			local roll = REFRESH_ROLLS_OVER and (base * PANDEMIC_FRACTION) or 0
 			if remaining < roll then roll = remaining end
 			rec.duration = base + roll
 		end
@@ -2006,10 +2011,10 @@ function Engine:ScanOffensives()
 			rec.start    = startTime
 			rec.duration = expiration - startTime
 
-			self:SyncOffensiveEntry(spellID, rec)
+			-- On the record, not the entry: a rebuild replaces every entry table, and the backstop below re-arms from here, so the flag has to outlive the entry.
+			rec.liveSeen = true
 
-			local live = self.entries[spellID]
-			if live and live._source == "offensive" then live._liveSeen = true end
+			self:SyncOffensiveEntry(spellID, rec)
 		end
 	end
 
@@ -2017,10 +2022,16 @@ function Engine:ScanOffensives()
 	if not unreadable then
 		local byGUID = debuffs[guid]
 		for spellID, e in pairs(self.entries) do
-			-- _liveSeen gate: a ground effect (Consecration) applies a debuff the combat log reports but that never enumerates as a target aura, so its absence here is a blind spot, not the dot ending.
-			if e._source == "offensive" and e._liveSeen and not seen[spellID] then
-				self.entries[spellID] = nil
-				if byGUID then byGUID[spellID] = nil end
+			if e._source == "offensive" and not seen[spellID] then
+				local rec = byGUID and byGUID[spellID]
+				if e._liveSeen then
+					self.entries[spellID] = nil
+					if byGUID then byGUID[spellID] = nil end
+				elseif rec and rec.liveSeen then
+					-- Armed on the first absent pass, pruned on the second: a target swap rebuilds and scans back to back, so an entry born this frame has had no enumeration to appear in.
+					e._liveSeen = true
+				end
+				-- A record with no liveSeen is a ground effect (Consecration) the log reports but that never enumerates as a target aura, so its absence is a blind spot, not the dot ending.
 			end
 		end
 	end
@@ -3059,6 +3070,8 @@ function Engine:ObserveAuraDuration(spellID, observed)
 	if self.auraDurations[spellID] then return end
 	local cur = self.auraObserved[spellID]
 	if cur and observed <= cur + 0.5 then return end
+	-- A refresh edge out of combat-log range pins the start at the first application, so the removal teaches an inflated length. Clamped, not refused, so a short first observation can still converge up.
+	if cur and observed > cur * 2 then observed = cur * 2 end
 	self.auraObserved[spellID] = observed
 	local addon = ns.CDM
 	if addon and addon.db then

@@ -240,6 +240,18 @@ function Widgets.CreateSlider(parent, cfg)
 		edit:SetText(fmt(v))
 		syncing = false
 	end
+	function root:SetEnabled(enabled)
+		if enabled then
+			slider:Enable()
+			edit:Enable()
+			self:SetAlpha(1)
+		else
+			edit:ClearFocus()
+			slider:Disable()
+			edit:Disable()
+			self:SetAlpha(0.4)
+		end
+	end
 
 	return root
 end

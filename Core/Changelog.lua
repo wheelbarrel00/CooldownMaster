@@ -2,6 +2,22 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.14.1",
+		date = "2026-08-30",
+		sections = {
+			{ head = "Improvements", items = {
+				"Lanes can now be up to 1300 wide. The Width slider stopped at 600, which was simply the number I picked when I first built the lane and never went back to. It reaches 1300 now. Height moves with it, because a vertical lane travels along its height rather than its width. Requested by cloudcaller on CurseForge.",
+				"A Linear lane no longer offers a label anchor it cannot honor. Linear gives every icon its own clock, so there is no single number of seconds a label could name, and the two Time choices under Lanes > a lane > Text > Anchor By quietly drew a percent instead. The dropdown said one thing and the lane did another. Those choices are now withheld on a Linear lane and Position (seconds) is dimmed, so the panel shows what the lane actually does. A Time anchor you already saved is kept, and comes back the moment you move that lane to Timeline, Logarithmic or Split.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"Refreshed debuffs no longer read 30 percent long on Era and TBC. When a debuff you applied was refreshed, Cooldown Master rolled the unspent remainder into the new timer, capped at 30 percent of the base length. That is how the modern game works, but it arrived in Mists of Pandaria. On Era and TBC a refresh throws the remainder away and starts clean. So a 10 second Judgement of the Crusader showed 13 and jumped back up every time a melee swing refreshed it.",
+				"Debuffs you put on yourself no longer show up under Offensives. Offensives tracks the harmful effects you apply to somebody else, and the check that you were the source had no matching check on who received it. Anything you were both the source and the target of was picked up too, so Forbearance from your own Divine Shield or Lay on Hands sat in the list alongside the Fall down and Dropped Weapon effects from falling. The list rebuilds itself every session, so those clear on their own after the next login.",
+				"An offensive dot no longer strands an icon on the lane after a target swap. Cooldown Master keeps a backstop for a dot that vanished without the combat log saying so, dispelled while you were out of range or dropped when a mob reset. That backstop only arms for a dot it has watched on the target, and swapping targets rebuilt the tracking from scratch and lost that state, so it never armed again. The icon then rode out its full length and popped a ready box for a dot that had been gone for a while.",
+				"A learned debuff length can no longer run away. For a dot Cooldown Master cannot read a timer off directly, it learns the length by timing one from application to removal. If the refresh in the middle never reaches you, that measurement covers the whole time you kept the dot up, so a 12 second dot maintained for three minutes could teach itself three minutes and hold onto it. A single measurement can now at most double what it already knows.",
+			} },
+		},
+	},
+	{
 		version = "1.14.0",
 		date = "2026-08-25",
 		sections = {

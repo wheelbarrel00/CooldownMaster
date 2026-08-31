@@ -542,6 +542,17 @@ local MARKER_ANCHOR_MODE_OPTIONS = {
 	{ value = "TIME_AUTO",    text = L["Time (auto label)"]            },
 }
 
+-- Linear gives every icon its own cooldown to span, so there is no shared clock a time anchor could read.
+local MARKER_ANCHOR_MODE_OPTIONS_PERCENT = {
+	MARKER_ANCHOR_MODE_OPTIONS[1],
+	MARKER_ANCHOR_MODE_OPTIONS[2],
+}
+
+local MARKER_ANCHOR_AS_PERCENT = {
+	TIME      = "PERCENT",
+	TIME_AUTO = "PERCENT_AUTO",
+}
+
 local function BuildFontOptions()
 	local opts = {}
 	local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -776,7 +787,17 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 	place(W.CreateDropdown(parent, {
 		label = L["Mode"], value = cfg.mode, options = MODE_OPTIONS, width = 200,
 		tooltip = L["How a cooldown's time-left maps to its spot on the lane. Linear spaces time evenly; Timeline and Logarithmic compress long timers so near-ready cooldowns spread out; Split places icons using your own time-to-position points below."],
-		onChange = function(v) cfg.mode = v; RefreshLane(laneIndex) end,
+		onChange = function(v)
+			cfg.mode = v
+			-- Drop the cached Text form: the seconds axis decides which Anchor By choices exist, and that is not a value _refreshAnchors can restate.
+			local cached = lanesState.formFrames[laneIndex]
+			if cached and cached["text"] then
+				cached["text"]:Hide()
+				cached["text"]:SetParent(nil)
+				cached["text"] = nil
+			end
+			RefreshLane(laneIndex)
+		end,
 	}))
 
 	place(W.CreateSlider(parent, {
@@ -918,12 +939,12 @@ local function BuildLaneAppearanceForm(parent, laneIndex)
 
 	-- Use RefreshLane, not RebuildLane: WoW frames are never GC'd, so a slider calling RebuildLane leaked one lane frame (plus label/markers/icon pool) per step. Rebuild is only for `enabled`.
 	place(W.CreateSlider(parent, {
-		label = L["Width"], min = 1, max = 600, step = 1,
+		label = L["Width"], min = 1, max = 1300, step = 1,
 		value = cfg.width, width = 240,
 		onChange = function(v) cfg.width = v; RefreshLane(laneIndex) end,
 	}))
 	place(W.CreateSlider(parent, {
-		label = L["Height"], min = 1, max = 600, step = 1,
+		label = L["Height"], min = 1, max = 1300, step = 1,
 		value = cfg.height, width = 240,
 		onChange = function(v) cfg.height = v; RefreshLane(laneIndex) end,
 	}))
@@ -1336,6 +1357,8 @@ local function BuildLaneTextForm(parent, laneIndex)
 		onChange = function(v) cfg.laneTextOffY = v; RefreshLane(laneIndex) end,
 	}))
 
+	local timeAxis = (ns.Lanes_TimeToPos and ns.Lanes_TimeToPos(cfg, 0)) ~= nil
+
 	local anchorRows = {}
 	for i = 1, 5 do
 		local def = cfg.laneText and cfg.laneText[i]
@@ -1347,12 +1370,19 @@ local function BuildLaneTextForm(parent, laneIndex)
 					RefreshLane(laneIndex)
 				end,
 			}))
+			-- Display only: findOptionLabel falls back to tostring, so a saved TIME_AUTO left off the list would draw as the raw enum.
+			local anchorMode = def.anchorMode or "PERCENT"
+			if not timeAxis then anchorMode = MARKER_ANCHOR_AS_PERCENT[anchorMode] or anchorMode end
 			place(W.CreateDropdown(parent, {
-				label = L["Anchor By"], value = def.anchorMode or "PERCENT",
-				options = MARKER_ANCHOR_MODE_OPTIONS, width = 240,
+				label = L["Anchor By"], value = anchorMode,
+				options = timeAxis and MARKER_ANCHOR_MODE_OPTIONS or MARKER_ANCHOR_MODE_OPTIONS_PERCENT,
+				width = 240,
 				tooltip = L["Percent holds the label at a fixed spot on the bar. Time holds it at a number of seconds and moves the label to match. The auto label choices write the text for you from the lane's current Mode and Max Time, so the label stays true after you change either one - seconds on Timeline, Logarithmic and Split, and a percent on Linear, which has no shared clock to read."],
 				onChange = function(v)
-					cfg.laneText[i].anchorMode = v
+					local d = cfg.laneText[i]
+					-- Re-picking the entry already on show is a no-op, not a demotion of the time mode it stands in for.
+					if not timeAxis and v == MARKER_ANCHOR_AS_PERCENT[d.anchorMode] then return end
+					d.anchorMode = v
 					RefreshLane(laneIndex)
 				end,
 			}))
@@ -1406,6 +1436,7 @@ local function BuildLaneTextForm(parent, laneIndex)
 					RefreshLane(laneIndex)
 				end,
 			}))
+			secSlider:SetEnabled(timeAxis)
 			anchorRows[i] = { pct = pctSlider, sec = secSlider }
 		end
 	end
