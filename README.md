@@ -155,7 +155,7 @@ These are Classic only. On Retail, Blizzard's own Cooldown Manager already cover
 
 ### Appearance
 
-**Width**, **Height**, **X Offset**, **Y Offset**, and **Anchor** position and size the lane. Anchor is the screen point the lane is measured from, and the offsets move it from there.
+**Width**, **Height**, **X Offset**, **Y Offset**, and **Anchor** position and size the lane. Width and Height each run from 1 up to 1300, and on a vertical lane it is Height that sets how far an icon travels. Anchor is the screen point the lane is measured from, and the offsets move it from there.
 
 **Lane Texture** and **Lane Color** style the bar itself, and each texture in the list shows a preview swatch so you can see what you are picking. **Use Class Color (Lane)** overrides the color with your class color.
 
@@ -217,7 +217,7 @@ Each marker has an **Anchor By** setting, and this is the part worth understandi
 
 An auto label solves itself every time the lane changes. Set it to **Percent of lane (auto label)** and it stays at 70% and rewrites its own text to whatever time actually falls there. Set it to **Time (auto label)** and it stays pinned to 30 seconds and moves itself to wherever that lands.
 
-**On Linear, auto labels show a percentage instead of a time.** Linear has no shared clock, because every icon spans its own cooldown, so no single number of seconds is true at a given spot. A percentage is true for every icon, so that is what it shows.
+**On a Linear lane the Time anchors are not offered.** Linear has no shared clock, because every icon spans its own cooldown, so no single number of seconds is true at a given spot. Anchor By shows only the two percent choices there, and Position (seconds) is dimmed. A Time anchor you saved while that lane was on another Mode is kept, and comes back the moment you switch it to Timeline, Logarithmic or Split.
 
 #### Label placement
 
@@ -248,6 +248,22 @@ On a vertical lane the cross axis rotates with everything else, so **Above** pla
 **Grow Direction** builds the list upward or downward. **Sort Order** picks whether the soonest or the furthest out sits first.
 
 **Icon Position** puts the icon on the left or right of each bar. **Font**, **Time Font**, and their sizes, outlines, and colors style the spell name and the countdown independently.
+
+### Long cooldowns, and handing them to a lane
+
+These two settings, both under **Bars > a bar frame > General**, let a bar frame cover the long end of your cooldowns while the lanes stay quick.
+
+**Show Extremely Long Cooldowns** lets this one frame reach past the **Ignore Threshold** that keeps half-hour abilities off your lanes, up to 60 minutes. It covers everything shorter than that too — a 45 minute cooldown shows, not only the very longest ones. It applies to the frame you tick it on, so your lanes and ready boxes carry on as they were, and a cooldown you hid by hand on its Filters row stays hidden. It is off by default.
+
+**Hand Off Below (sec)** is the other end of the same idea. The frame lets go of a cooldown once it has that many seconds left, so a lane can carry it the rest of the way. The bar takes the long haul, the lane the final approach. 0, the default, keeps every cooldown on the bar right through to ready.
+
+**It takes two settings, not one.** Hand Off Below decides when the *bar* lets go. What decides when the *lane* picks up is that lane's own **Max Time** and **Hide Long Timers**, over on the Lanes tab. So set Hand Off Below to the lane's Max Time, and make sure that lane has Hide Long Timers ticked. With both in place a ten minute cooldown sits on the bar until it reaches two minutes, leaves the bar, and starts traveling the lane. With Hide Long Timers off, the lane draws that cooldown the entire time instead — clamped to the far end of the lane, because it cannot travel a distance it does not fit in — and the hand-off looks like it did nothing.
+
+**Tick it on the frame your cooldowns actually go to.** Both settings belong to one bar frame, and what decides which frame a cooldown lands on is **Default Bar** under **Filters > Defaults**, or the **Bar** column on an individual spell's row. Everything ships routed to Bars 1, so ticking the box on Bars 2 does nothing until you send something there as well. If you want a dedicated frame for your long cooldowns, enable it on the Bars tab and then point a category or a few spells at it.
+
+**How they work together.** The lane has to be able to show the cooldown it is handed, and what decides that is the category's **Ignore Threshold**, not the bar's setting — so for anything longer than that threshold, raise it first or the cooldown will simply leave the bar and go nowhere. Mind the gap in the other direction too: a hand-off higher than the receiving lane's **Max Time** leaves a stretch where neither surface draws the cooldown, so keep the two numbers equal unless you mean otherwise. Hand Off Below moves in steps of 5 where Max Time moves in steps of 1, so when the two cannot meet exactly, round the hand-off down rather than up — overshooting the lane is what opens the gap.
+
+**A few things worth knowing.** Hand Off Below applies to *everything* on that frame, not only to long cooldowns, so a frame that also carries your buffs will drop those at the same mark. A bar showing hour-long cooldowns holds those places in its list for the whole hour, so raise **Max Bars** or give them a frame of their own. And a long cooldown that only a bar can see stays out of your ready boxes, so it finishes quietly rather than popping an icon an hour after you cast it.
 
 ---
 
@@ -327,7 +343,7 @@ Pick a category from **Filters > Defaults** and set how everything in it behaves
 
 - **Enabled** turns the whole category on or off.
 - **Show by default** decides whether new cooldowns in it appear without you enabling them one by one.
-- **Ignore Threshold (sec)** hides anything whose full cooldown is longer than this. Use it to keep half hour abilities off your lanes. This filters on the ability's total cooldown, which is different from a lane's Max Time, which only controls how much of the timeline is drawn.
+- **Ignore Threshold (sec)** hides anything whose full cooldown is longer than this. Use it to keep half hour abilities off your lanes. This filters on the ability's total cooldown, which is different from a lane's Max Time, which only controls how much of the timeline is drawn. A bar frame with **Show Extremely Long Cooldowns** ticked reaches past this, up to 60 minutes, for that one frame.
 - **Default Lane**, **Default Bar**, and **Ready Box** decide where the category's cooldowns are sent. Any of them can be set to off.
 
 ### Per-spell overrides
@@ -501,7 +517,7 @@ The minimap button can be hidden under Options > Global if you would rather not 
 
 There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `masque`, and the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`).
 
-**`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder, showing why each dot was learned or refused.
+**`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so.
 
 ---
 

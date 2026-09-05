@@ -184,6 +184,8 @@ local function barFrame(frameName, x, y, enabled)
 		padding        = 2,
 		spacing        = 2,
 		maxBars        = 10,
+		showLongCooldowns = false,
+		handOffBelow      = 0,   -- seconds left at which this frame drops a cooldown. 0 = keep it to ready.
 
 		barWidth       = 200,
 		barHeight      = 20,

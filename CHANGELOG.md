@@ -1,5 +1,37 @@
 # Cooldown Master Changelog
 
+## 1.15.0 (2026-09-05) — Bars for the long haul, lanes for the last stretch
+
+### New Features
+
+- **A bar frame can hand a cooldown over to a lane.** A new **Hand Off Below (sec)** setting under
+  **Bars > a bar frame > General** makes that frame let go once a cooldown has this many seconds left,
+  so a lane carries it the rest of the way. The bar takes the long haul, the lane the final
+  approach. Set it to a lane's **Max Time**, with that lane's **Hide Long Timers** ticked, and a ten
+  minute cooldown sits on the bar until it reaches two minutes, leaves the bar, and starts traveling
+  the lane. It applies to everything routed to that frame, not only to long cooldowns. 0, the default,
+  keeps every cooldown on the bar right through to ready. Requested by **dannyboy1262** on CurseForge.
+
+- **Bars can now show your very longest cooldowns.** Ticking **Show Extremely Long Cooldowns**, on the
+  same page, lets that one frame reach past the **Ignore Threshold** that keeps half-hour abilities off
+  your lanes, up to 60 minutes. Everything shorter is covered too, so a 45 minute cooldown shows, not
+  only the very longest ones. It applies to the frame you tick it on, so your lanes and ready boxes
+  carry on as they were, and a cooldown you hid by hand on its Filters row stays hidden. A cooldown
+  only a bar can see also finishes quietly rather than popping a ready box an hour after you cast it.
+  Off by default. Also suggested by **dannyboy1262**.
+
+  The two go together. Tick them on the frame your cooldowns actually go to, which is **Default Bar**
+  under Filters, and remember an hour-long bar keeps its place in the list for the whole hour, so
+  raise **Max Bars** or give it a frame of its own.
+
+### Improvements
+
+- **`/cm cdv` and `/cm itemcd` no longer contradict the screen.** Both report whether a cooldown is
+  visible, and with a bar frame showing extremely long cooldowns that answer differs per surface. They
+  now name the bar frame that is allowed to draw it instead of flatly reporting it hidden.
+
+- All seven languages are complete for this release, this feature included.
+
 ## 1.14.1 (2026-08-30) — Longer lanes, and honest timers on the Classic dot path
 
 ### Improvements

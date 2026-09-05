@@ -2370,6 +2370,18 @@ function Engine:RunBagScan()
 end
 
 
+-- PollAllItems destroys a hidden item entry every poll, while ScanSpells and ScanSpellsClassic
+-- entries survive and are filtered at draw time. So an item has to be admitted up front, and by the
+-- ONE frame it routes to - no other frame could draw it.
+local function BarShowsLongCooldowns(barIndex)
+	if not (barIndex and barIndex > 0) then return false end
+	local addon = ns.CDM
+	local frames = addon and addon.db and addon.db.profile.barFrames
+	local cfg = frames and frames[barIndex]
+	return (cfg and cfg.enabled and cfg.showLongCooldowns) == true
+end
+
+
 -- Takes an explicit id, so it still answers for an item that has already left the bags.
 function Engine:RunItemCooldownProbe(arg)
 	local cdm = ns.CDM
@@ -2437,7 +2449,14 @@ function Engine:RunItemCooldownProbe(arg)
 	elseif start + duration <= GetTime() then
 		verdict = "|cffff5555already expired|r"
 	elseif not self:IsSpellVisible(itemID, category) then
-		verdict = "|cffff5555hidden by Filters|r"
+		-- Must mirror the poll's own test, or the probe reports a verdict the screen contradicts.
+		local barIndex = self:ResolveBarIndex(itemID, category)
+		if BarShowsLongCooldowns(barIndex) and self:IsSpellVisible(itemID, category, true) then
+			verdict = string.format(
+				"|cffEBB706hidden by Filters, but bar frame %d shows extremely long cooldowns|r", barIndex)
+		else
+			verdict = "|cffff5555hidden by Filters|r"
+		end
 	else
 		verdict = "|cff00ff00would show|r"
 	end
@@ -2868,7 +2887,9 @@ function Engine:IsCategoryEnabled(category)
 end
 
 
-function Engine:IsSpellVisible(spellID, category)
+-- allowLong raises the category's Ignore Threshold to LONG_COOLDOWN_MAX for this one question, so a
+-- bar frame set to show extremely long cooldowns can ask without the lanes and ready boxes seeing it.
+function Engine:IsSpellVisible(spellID, category, allowLong)
 	local addon = ns.CDM
 	if not (addon and addon.db) then return true end
 
@@ -2889,6 +2910,11 @@ function Engine:IsSpellVisible(spellID, category)
 	-- threshold -- a static "don't track hour-long cooldowns" filter, distinct from a lane's
 	-- maxTime display window. Only when the length is known; an explicit override above wins.
 	local thr = fcfg.ignoreThreshold
+	-- max, not a plain swap: a hand-edited profile could carry a threshold above the ceiling, and
+	-- lowering it here would hide a cooldown the bar shows today.
+	if allowLong and thr and thr < ns.CONST.LONG_COOLDOWN_MAX then
+		thr = ns.CONST.LONG_COOLDOWN_MAX
+	end
 	if thr and spellID then
 		local dur
 		if category == ns.CONST.OFFENSIVE_CATEGORY then
@@ -3621,8 +3647,10 @@ function Engine:PollAllItems()
 	local now = GetTime()
 	for itemID, entry in pairs(self.entries) do
 		if entry.kind == "item" and not self.trackedItems[itemID] then
+			-- entry.barIndex here, ResolveBarIndex below - the loops split on trackedItems, so no item meets both.
 			if entry.category ~= ns.CONST.POTION_CATEGORY
-				or not self:IsSpellVisible(itemID, entry.category) then
+				or not self:IsSpellVisible(itemID, entry.category,
+					BarShowsLongCooldowns(entry.barIndex)) then
 				self.entries[itemID] = nil
 			elseif entry.startTime and (entry.endTime or 0) > now then
 				cdSeen[entry.startTime] = true
@@ -3636,8 +3664,10 @@ function Engine:PollAllItems()
 		local active, startTime, duration, endTime = self:PollOneItem(itemID, tracked)
 		-- Hidden items stay out of the shared-cooldown dedupe: without this, unticking Show on one
 		-- potion blanks the visible potion sharing its cooldown instead of just hiding this one.
+		local trackedCat = tracked and (tracked.category or ns.CONST.POTION_CATEGORY)
 		local hidden = tracked
-			and not self:IsSpellVisible(itemID, tracked.category or ns.CONST.POTION_CATEGORY)
+			and not self:IsSpellVisible(itemID, trackedCat,
+				BarShowsLongCooldowns(self:ResolveBarIndex(itemID, trackedCat)))
 		if hidden then
 			-- itemIDs overlap the spellID range, so only clear an entry this item actually owns.
 			local e = self.entries[itemID]
@@ -4475,7 +4505,13 @@ function Engine:RunCooldownViewerDump()
 	local now = GetTime()
 	for id, t in pairs(self.trackedSpells) do
 		local e = self.entries[id]
-		local vis = self:IsSpellVisible(id, t.category)
+		local plain = self:IsSpellVisible(id, t.category)
+		local vis = tostring(plain)
+		if not plain
+			and BarShowsLongCooldowns(self:ResolveBarIndex(id, t.category))
+			and self:IsSpellVisible(id, t.category, true) then
+			vis = "false (allowed on the long-cooldown bar)"
+		end
 		if e then
 			cdm:Print(string.format("  %s cat=%s lane=%s vis=%s | ENTRY src=%s start=%.1fs-ago dur=%.1f ends-in=%.1f",
 				nameOf(id), tostring(t.category), tostring(e.laneIndex), tostring(vis),

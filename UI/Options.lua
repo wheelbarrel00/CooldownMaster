@@ -4262,6 +4262,18 @@ local function BuildBarGeneralForm(parent, i)
 		tooltip = L["Cap on how many bars this frame shows at once."],
 		onChange = function(v) cfg.maxBars = v; BarApply(i) end,
 	}))
+	place(W.CreateCheckbox(parent, {
+		label = L["Show Extremely Long Cooldowns"], checked = cfg.showLongCooldowns,
+		tooltip = L["Lets this frame show cooldowns up to 60 minutes long, ignoring the Ignore Threshold that keeps them off your lanes. Anything shorter than 60 minutes is covered too, not only the very longest. It applies to this bar frame alone, so your lanes and ready boxes are unaffected, and a cooldown you hid by hand on its Filters row stays hidden. Tick it on the frame your cooldowns actually go to, which is set by Default Bar under Filters, and make sure that frame is enabled on the Bars tab. Bear in mind an hour-long bar keeps its place in the list for the whole hour, so raise Max Bars or give it a frame of its own."],
+		onChange = function(v) cfg.showLongCooldowns = v; BarApply(i) end,
+	}))
+	place(W.CreateSlider(parent, {
+		-- Ceiling matches the lane Max Time slider: a hand-off above that has no lane that could catch it.
+		label = L["Hand Off Below (sec)"], min = 0, max = 360, step = 5,
+		value = cfg.handOffBelow or 0, width = 240,
+		tooltip = L["This frame lets go of a cooldown once it has this many seconds left, so a lane can take it the rest of the way. 0 keeps every cooldown on the bar until it is ready.\n\nThis only decides when the BAR lets go. What decides when the lane picks up is that lane's own Max Time and Hide Long Timers, so set this to the lane's Max Time and make sure Hide Long Timers is on for it. Without that the lane draws the cooldown the whole time, parked at the far end, instead of waiting its turn.\n\nA value above the lane's Max Time leaves a stretch where neither one draws it. It applies to everything routed to this frame, not only to long cooldowns."],
+		onChange = function(v) cfg.handOffBelow = v; BarApply(i) end,
+	}))
 	place(W.CreateSlider(parent, {
 		label = L["Spacing"], min = 0, max = 40, step = 1, value = cfg.spacing or 0, width = 240,
 		tooltip = L["Gap, in pixels, between stacked bars."],

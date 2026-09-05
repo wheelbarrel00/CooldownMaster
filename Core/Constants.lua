@@ -5,7 +5,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "1.14.1",
+	VERSION          = "1.15.0",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -75,6 +75,9 @@ ns.CONST = {
 
 	-- Item entries are keyed by itemID, which overlaps the real spellID range (5512 is both a spellID and an itemID), so a learned item duration rides this offset to stay clear of the spell keyspace.
 	ITEM_ID_BASE     = 300000000,
+
+	-- Ceiling a bar frame's Show Extremely Long Cooldowns raises the category Ignore Threshold to.
+	LONG_COOLDOWN_MAX = 3600,
 
 	-- Offensives and Custom are omitted - no donor pool to demo from, and a fake Custom would look like a live timer.
 	TEST_TYPES = {

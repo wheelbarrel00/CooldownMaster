@@ -507,17 +507,23 @@ local function RefreshBarBody(index)
 	local classCol = classToken and addon.db.profile.classColors[classToken]
 	local overrides = addon.db.profile.spellOverrides
 
+	local allowLong = cfg.showLongCooldowns == true
+	local handOff   = cfg.handOffBelow or 0
+
 	local visible = refreshScratch
 	wipe(visible)
 	if entries then
 		for _, e in pairs(entries) do
 			if e.endTime
 				and (e.barIndex or 0) == index
-				and engine:IsSpellVisible(e.spellID, e.category) then
+				and engine:IsSpellVisible(e.spellID, e.category, allowLong) then
+				local remaining = e.endTime - now
 				-- An entry past its extrapolated end would draw an empty bar, so drop it and let the engine confirm ready.
 				-- isactive and offensive entries are removed on the real edge, so keep them past the
 				-- extrapolated end rather than vanishing mid-cooldown. Mirrors the lane.
-				if e.endTime - now > 0 or e._source == "isactive" or e._source == "offensive" then
+				local live = remaining > 0 or e._source == "isactive" or e._source == "offensive"
+				-- A negative remaining (an isactive entry past its extrapolated end) is below any hand-off, so it leaves too.
+				if live and (handOff <= 0 or remaining > handOff) then
 					visible[#visible + 1] = e
 				end
 			end
