@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.15.1",
+		date = "2026-09-09",
+		sections = {
+			{ head = "Improvements", items = {
+				"Marked compatible with retail patch 12.1.5. The retail load file now lists the 12.1.5 interface version, so Cooldown Master no longer shows as out of date on that patch.",
+			} },
+		},
+	},
+	{
 		version = "1.15.0",
 		date = "2026-09-05",
 		sections = {

@@ -42,7 +42,8 @@ Runs on **Midnight (retail 12.1)**, **Classic Era**, **Burning Crusade Classic**
 
 23. [What is next](#what-is-next)
 24. [Credits](#credits)
-25. [License](#license)
+25. [Found a bug or have an idea?](#found-a-bug-or-have-an-idea)
+26. [License](#license)
 
 ---
 
@@ -176,7 +177,7 @@ Masque skins draw their own icon, so the pulse steps aside while a skin is activ
 
 **Cooldown Tint (0 = off)** darkens the cooldown swipe over the icon.
 
-**Icon Border** draws a solid ring around each icon, with its own size and color.
+**Show Icon Border** draws a solid ring around each icon, with its own size and color.
 
 **Countdown Timer** draws the time left on the icon. **Icon Label** adds a line of tag-built text with its own font, size, outline, and color. See [Text tags](#text-tags).
 
@@ -223,7 +224,7 @@ An auto label solves itself every time the lane changes. Set it to **Percent of 
 
 **Label Placement** puts the whole set of markers above the lane bar, on it, or below it. Move them off the bar when tall icons cover them.
 
-On a vertical lane the cross axis rotates with everything else, so **Above** places them to the right of the lane and **Below** places them to the left.
+On a vertical lane the cross axis rotates with everything else, so **Above lane** places them to the right of the lane and **Below lane** places them to the left.
 
 **X Offset** and **Y Offset** nudge every label from wherever the placement put it.
 
@@ -239,11 +240,11 @@ On a vertical lane the cross axis rotates with everything else, so **Above** pla
 
 **Options > Bars.** Three bar frames, off by default except the first. Each one is a list of depleting status bars, sorted by whichever cooldown is coming up next.
 
-**Enabled**, **Frame Name**, **Anchor**, **X Offset**, **Y Offset**, and **Transparency** work the same as on a lane.
+**Enabled**, **Frame Name**, **Anchor**, **X Offset**, **Y Offset**, and **Frame Alpha** work the same as on a lane.
 
 **Texture** and **Color** style the fill, with preview swatches in the texture list, and there is a **Use Class Color** option. The **Bar Background** section has its own **Texture** and color, sitting behind the fill.
 
-**Bar Width**, **Bar Height**, and **Padding** size the bars and the gap between them. **Max Bars** caps how many show at once.
+**Bar Width** and **Bar Height** size the bars, **Spacing** sets the gap between them, and **Frame Padding** insets them from the frame edge. **Max Bars** caps how many show at once.
 
 **Grow Direction** builds the list upward or downward. **Sort Order** picks whether the soonest or the furthest out sits first.
 
@@ -273,15 +274,15 @@ These two settings, both under **Bars > a bar frame > General**, let a bar frame
 
 **Display Duration (sec)** is how long an ordinary icon stays up. **Highlight Duration (sec)**, over on the Highlight sub-tab, is the same thing for an Important icon.
 
-**Max Ready Icons** caps how many can sit in the box at once. When it is full, the oldest is pushed out.
+**Max Ready Icons** caps how many can sit in the box at once. When it is full, the icon closest to fading is pushed out, and pinned icons are never the ones chosen. A box with every slot pinned has no room left, so a new pop is dropped.
 
 **Post-Combat Hide (sec, 0 = off)** keeps icons up for a few extra seconds after combat ends, so you can see what came up right at the end.
 
 **Ready Sound** plays when an icon pops. A few sounds are bundled, and any LibSharedMedia sound you have shows up in the list too.
 
-**Icon Size**, **Transparency**, **Icon Offset**, and the border and label options match the lane Icons tab.
+**Size**, **Transparency**, **Icon Offset**, and the border and label options match the lane Icons tab.
 
-Icons flagged **Pinned** stay in the box until you clear them, so a cooldown you must not miss will wait for you.
+Icons flagged **Pinned** never fade. They stay in the box until you reload or switch profile, so a cooldown you must not miss will wait for you.
 
 ---
 
@@ -342,7 +343,7 @@ A dot is only ever learned once its source can be positively confirmed as you, s
 Pick a category from **Filters > Defaults** and set how everything in it behaves:
 
 - **Enabled** turns the whole category on or off.
-- **Show by default** decides whether new cooldowns in it appear without you enabling them one by one.
+- **Show by Default** decides whether new cooldowns in it appear without you enabling them one by one.
 - **Ignore Threshold (sec)** hides anything whose full cooldown is longer than this. Use it to keep half hour abilities off your lanes. This filters on the ability's total cooldown, which is different from a lane's Max Time, which only controls how much of the timeline is drawn. A bar frame with **Show Extremely Long Cooldowns** ticked reaches past this, up to 60 minutes, for that one frame.
 - **Default Lane**, **Default Bar**, and **Ready Box** decide where the category's cooldowns are sent. Any of them can be set to off.
 
@@ -352,7 +353,7 @@ Every category's sub-tab lists the individual spells it has found. Each row give
 
 - **Show** to hide that one spell without touching the rest.
 - **Lane**, **Bar**, and **Ready Box** to send that one spell somewhere different. "Default" means it follows the category.
-- **Flags** to mark it Normal, Important, or Pinned.
+- **Flags** to mark it Normal, Important, Pinned, or Imp + Pin.
 
 **Set All** buttons next to the category defaults push that setting onto every spell in the category at once, clearing any per-spell choices for that one setting and leaving the others alone.
 
@@ -376,7 +377,7 @@ The classic use is a fast lane and a slow lane. Send everything under a minute t
 
 Mark a spell **Important** in its Flags column and it stands out everywhere it appears: on the lane, on the bars, and in the ready box.
 
-The highlight style and color are set per frame, under **Lanes > a lane > Icons**, **Ready > a box > Highlight**, and **Bars > a bar > Style**:
+The highlight style and color are set per frame, under **Lanes > a lane > Icons**, **Ready > a box > Highlight**, and **Bars > a bar > Bar**:
 
 | Style | What it looks like |
 | --- | --- |
@@ -386,7 +387,7 @@ The highlight style and color are set per frame, under **Lanes > a lane > Icons*
 | **Flash** | Pulses in and out |
 | **Border + Flash** | Both together |
 
-**Pinned** is stronger. A pinned icon stays in its ready box until you clear it, instead of fading on a timer.
+**Pinned** is stronger. A pinned icon never fades on a timer — it stays in its ready box until you reload or switch profile. A box full of pinned icons has no room for new pops.
 
 ---
 
@@ -394,7 +395,7 @@ The highlight style and color are set per frame, under **Lanes > a lane > Icons*
 
 **Options > Filters > Custom.** Some things the cooldown API simply will not report. Custom cooldowns let you build your own timer for them.
 
-1. Click **Add**.
+1. Click **Add Custom Cooldown**.
 2. Give it a **Name** and a **Duration (sec)**.
 3. Choose a **Trigger**: either a **Spell** you cast, or an **Aura** you gain.
 4. Enter the **Trigger ID**.
@@ -448,11 +449,11 @@ One in-game options window controls the whole look.
 
 **Two scale sliders** under Options > Global: one resizes every cooldown frame together while keeping each anchored where you put it, and the other resizes the options window itself from half size up to double.
 
-**Auto-hide Frames** hides your frames out of combat. Visibility rules let you show frames **Always**, **In a group**, or **In an instance**. Any single lane can opt out with **Override Autohide**.
+**Auto-hide Frames** hides your frames out of combat. Visibility rules are tickboxes for **Always**, **In Group**, and **In Instance**, and any one of them ticked will show your frames. Any single lane can opt out with **Override Autohide**.
 
 **Class colors** are a per-class table, flavor-aware (13 classes on retail, 11 on MoP, 9 on Era and TBC), feeding the lane fill and bar fill "use class color" toggles.
 
-**Icon zoom**, an **unusable icon tint or desaturate**, and a **cooldown swipe tint** are all under Global as well.
+**Icon zoom** and an **unusable icon tint or desaturate** are under Global as well. The cooldown swipe tint is per lane, under Lanes > a lane > Icons.
 
 A **What's New popup** gives you a short digest after an update, with a quiet chat-link mode or off entirely.
 
@@ -574,7 +575,7 @@ Instance-id collections go the same way. `removedAuraInstanceIDs` measures as a 
 
 ## The localization pipeline
 
-**`Locales/*.lua` are generated. Never hand-edit one.** They are built from the [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared store, which Cooldown Master joined alongside Everything Quests and EQ Objective Tracker. That store keys a translation on its **English phrase** rather than on any addon, so a phrase CDM shares with the other two arrives already translated. 45 did on the day CDM joined, before anyone typed anything. Editing a generated file here is overwritten on the next build, and that repo's drift check exists to catch exactly that.
+**`Locales/*.lua` are generated. Never hand-edit one.** They are built from the [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared store, which Cooldown Master joined alongside Everything Quests and EQ Objective Tracker, and which now carries four addons with Everything Delves as well. That store keys a translation on its **English phrase** rather than on any addon, so a phrase CDM shares with the others arrives already translated. 45 did on the day CDM joined, before anyone typed anything. Editing a generated file here is overwritten on the next build, and that repo's drift check exists to catch exactly that.
 
 `Locales/enUS.lua` is the manifest and creates `ns.L`. It must load after `embeds.xml` and before `Core\Constants.lua` in all four `.toc` files. `ns.L` carries an `__index` that returns the key, so a missing phrase degrades to English rather than erroring.
 

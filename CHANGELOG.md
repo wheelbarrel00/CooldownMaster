@@ -1,5 +1,12 @@
 # Cooldown Master Changelog
 
+## 1.15.1 (2026-09-09) — Ready for 12.1.5
+
+### Improvements
+
+- **Marked compatible with retail patch 12.1.5.** The retail `.toc` now lists the 12.1.5
+  interface version, so Cooldown Master no longer shows as out of date on that patch.
+
 ## 1.15.0 (2026-09-05) — Bars for the long haul, lanes for the last stretch
 
 ### New Features
