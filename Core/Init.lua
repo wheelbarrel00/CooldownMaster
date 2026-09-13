@@ -171,6 +171,10 @@ function CDM:ApplyProfile()
 	if ns.Engine and ns.Engine.ApplyBuffTracking then
 		ns.Engine:ApplyBuffTracking()
 	end
+	-- After the rebuilds above, so entries they just recreated are routed too.
+	if ns.Engine and ns.Engine.ReapplyRouting then
+		ns.Engine:ReapplyRouting()
+	end
 	for i = 1, 3 do
 		ns.ForEachSurface("RebuildOne", i)
 	end

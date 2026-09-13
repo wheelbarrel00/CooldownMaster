@@ -3019,7 +3019,7 @@ end
 -- Routing is resolved once at entry creation, so a settings change would otherwise not reach live entries.
 function Engine:ReapplyRouting()
 	for id, e in pairs(self.entries) do
-		e.laneIndex = self:ResolveLaneIndex(id, e.category)
+		e.laneIndex = self:ResolveLaneIndex(id, e.category, e._testDur)
 		e.barIndex  = self:ResolveBarIndex(id, e.category)
 	end
 end

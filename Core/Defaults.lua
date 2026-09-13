@@ -19,6 +19,7 @@ local function lane(frameName, y, enabled)
 		},
 		hideLongTimers = true,
 		overrideAutohide = false,
+		keepShownWhileRunning = false,
 		primaryTracking   = "NONE",
 		primaryReverse    = false,
 		secondaryTracking = "NONE",

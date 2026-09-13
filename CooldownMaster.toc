@@ -2,10 +2,10 @@
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker. Designed to complement Blizzard's built-in Cooldown Manager.
 ## Author: Wheelbarrel00
-## Version: 1.15.1
+## Version: 1.16.0
 ## SavedVariables: CooldownMasterDB
 ## IconTexture: Interface\AddOns\CooldownMaster\media\minimap
-## OptionalDeps: Masque, Titan, Bazooka
+## OptionalDeps: Masque
 ## X-Curse-Project-ID: 1596347
 ## X-Wago-ID:
 ## Category: Combat

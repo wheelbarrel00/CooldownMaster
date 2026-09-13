@@ -108,12 +108,16 @@ end
 -- Autohide hides only the chrome (bg/border/name/markers), never the icon children, so
 -- cooldowns stay visible out of combat. Unlock no longer forces chrome on -- a drag handle
 -- (ns.CreateDragHandle) keeps an autohidden frame findable, so autohide works while unlocked.
-local function ChromeShown(addon, cfg)
+local function ChromeShown(addon, cfg, laneFrame)
 	local g = addon.db.profile.global
 	if ns.Engine and ns.Engine.testActive then return true end
 	if not g.autohide then return true end
 	if addon.combat then return true end
-	return cfg.overrideAutohide and true or false
+	if cfg.overrideAutohide then return true end
+	-- Not while unlocked: the chrome flip swaps drag strip for drag handle and would strand a drag.
+	if cfg.keepShownWhileRunning and not g.unlockFrames
+		and laneFrame and (laneFrame.activeIcons or 0) > 0 then return true end
+	return false
 end
 
 
@@ -193,7 +197,7 @@ local function ApplyVisibility(addon)
 	for i = 1, 3 do
 		local f = addon.lanes[i]
 		if f and f.cfg then
-			local chrome = gate and ChromeShown(addon, f.cfg)
+			local chrome = gate and ChromeShown(addon, f.cfg, f)
 			if gate then
 				f:Show()
 				SetLaneChrome(addon, f, f.cfg, chrome)
@@ -1272,9 +1276,11 @@ local function ApplyConfigBody(laneIndex)
 	-- same reference, so mutating cached fields silently fails until /reload. Cache it for the
 	-- steady state (no alloc), but on a structural change swap in a fresh reference to re-apply.
 	local borderOn = cfg.borderEnabled ~= false
+	-- LSM registers "None" as an empty path, which Fetch reports the same way as missing media.
+	local noEdge   = cfg.borderTexture == "None"
 	local bgFile   = (LSM and LSM:Fetch("statusbar", cfg.bgTexture, true)) or WHITE8X8
 	local edgeTex  = (LSM and LSM:Fetch("border", cfg.borderTexture, true)) or WHITE8X8
-	local edgeFile = borderOn and edgeTex or ""
+	local edgeFile = (borderOn and not noEdge) and edgeTex or ""
 	local edgeSize = borderOn and (cfg.borderSize or 1) or 0
 	local pad      = borderOn and (cfg.borderPadding or 0) or 0
 	local bd = laneFrame._backdropCache
@@ -1415,7 +1421,7 @@ local function ApplyConfigBody(laneIndex)
 	RecomputeTrackingNeeds()
 
 	-- This path restored chrome to full; re-apply the current show/hide state.
-	local chrome = ChromeShown(addon, cfg)
+	local chrome = ChromeShown(addon, cfg, laneFrame)
 	SetLaneChrome(addon, laneFrame, cfg, chrome)
 	if laneFrame.dragHandle then
 		local g = addon.db.profile.global
@@ -1904,6 +1910,14 @@ local function RefreshBody(laneIndex)
 		ClearLaneIcon(laneFrame.iconPool[j])
 	end
 	laneFrame.activeIcons = count
+
+	-- No event fires when a lane crosses to or from empty, so the chrome state is re-checked here.
+	if cfg.keepShownWhileRunning and not addon.combat and addon.db.profile.global.autohide then
+		local shown = not laneFrame._chromeHidden
+		if ChromeShown(addon, cfg, laneFrame) ~= shown then
+			ApplyVisibility(addon)
+		end
+	end
 end
 
 

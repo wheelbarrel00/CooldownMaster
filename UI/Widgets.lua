@@ -566,6 +566,7 @@ function Widgets.CreateColorPicker(parent, cfg)
 	label:SetPoint("LEFT", swatch, "RIGHT", 6, 0)
 	label:SetText(cfg.label or "")
 	label:SetTextColor(1, 1, 1)
+	attachLabelTooltip(root, label, cfg)
 
 	root._color    = { r = color.r, g = color.g, b = color.b, a = color.a or 1 }
 	root._onChange = cfg.onChange

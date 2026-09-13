@@ -1,5 +1,51 @@
 # Cooldown Master Changelog
 
+## 1.16.0 (2026-09-13) — Lanes that wait, and ready boxes with a look of their own
+
+### New Features
+
+- **A lane can now stay up while a cooldown is still running on it.** With **Auto-hide Frames**
+  on, a lane's background, border, name and markers vanish the moment you leave combat, but your
+  cooldown icons keep traveling — so an icon still counting down is left floating with no bar
+  underneath it. Tick **Keep Shown While Running** under **Lanes > a lane > General > Auto-hide**
+  and that lane holds its chrome until the last cooldown on it finishes, then hides as usual.
+  Off by default, and set per lane, so you can give it to one lane and leave the others alone.
+  **Override Autohide** still wins where you have ticked it, and the option stands aside while
+  **Unlock Frames** is on so a lane never changes shape under your cursor mid-drag.
+
+- **Ready boxes can use your own background and border textures.** Lanes and bars have had
+  texture dropdowns since they shipped, while ready boxes quietly carried two texture settings of
+  their own that nothing ever read, so a box was always drawn flat. Both work now, under
+  **Ready > a box > Appearance**, and every LibSharedMedia texture you have installed is offered.
+  The defaults are unchanged, so a box you have not touched looks exactly as it did.
+
+### Bug Fixes
+
+- **Switching profiles now moves cooldowns that are already running.** Which lane and which bar a
+  cooldown belongs to is worked out once, when it starts. A profile switch rebuilt everything
+  around that without revisiting it, so anything already counting down stayed where the old
+  profile had put it until it finished — a three minute cooldown sat in the wrong lane for three
+  minutes, or disappeared entirely if the new profile sent it to a lane that is switched off.
+  Show and hide updated instantly at the same moment, which is what made it read as a profile
+  that had only half loaded. Importing a profile and switching spec with automatic profiles were
+  both affected too.
+
+- **Border Texture set to None now draws no border.** None is offered in every border texture
+  list, but it resolves to nothing at all, which reads exactly like a texture that failed to
+  load, so Cooldown Master fell back to its plain solid border and the setting looked dead.
+  Unticking **Show Border** was the only way to actually remove one. None now means none, on
+  lanes and on ready boxes alike.
+
+### Improvements
+
+- **Cooldown Master no longer asks the game to load Titan Panel or Bazooka.** Both were listed as
+  optional dependencies from an early version, which asks the game to load them at startup
+  whether or not you use them. Neither needs it — they find Cooldown Master's minimap and broker
+  data on their own — and a line of exactly this kind caused a real problem with another display
+  addon back in 1.14.0. Masque is still listed, because it genuinely does have to load first.
+
+- All seven languages are complete for this release, this feature included.
+
 ## 1.15.1 (2026-09-09) — Ready for 12.1.5
 
 ### Improvements
@@ -267,6 +313,8 @@ I am not able to test these in a non-English client — I do not have the other 
 ### Improvements
 
 - Authored Lua is pinned to LF line endings, so regenerating a translation no longer reports every line in the file as changed and buries the real edit.
+
+## 1.9.3 (2026-08-14) — A retail error on every expiry, and a Classic length that stopped learning
 
 ### Bug Fixes
 

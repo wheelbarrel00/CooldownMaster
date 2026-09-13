@@ -1,6 +1,9 @@
 local ADDON_NAME, ns = ...
 local L = ns.L
 
+local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
+
 local ICON_SIZE = 40
 local BOX_FADE_DUR = 0.3   -- seconds for the backdrop to fade out once the box goes empty
 local STYLE_INTERVAL = 0.2  -- restyle cadence - IsSpellUsable does not need re-reading at 60 Hz
@@ -15,11 +18,9 @@ local READY_BUILTIN_SOUNDS = {
 }
 ns.READY_BUILTIN_SOUNDS = READY_BUILTIN_SOUNDS
 
-do
-	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
-	if ok and LSM then
-		LSM:Register("sound", "CDM: Ready Click", [[Interface\AddOns\CooldownMaster\media\ready-click.ogg]])
-	end
+if LSM then
+	pcall(LSM.Register, LSM, "sound", "CDM: Ready Click",
+		[[Interface\AddOns\CooldownMaster\media\ready-click.ogg]])
 end
 
 local function PlayReadySound(name)
@@ -31,8 +32,7 @@ local function PlayReadySound(name)
 			return
 		end
 	end
-	local ok, LSM = pcall(LibStub, "LibSharedMedia-3.0")
-	if ok and LSM then
+	if LSM then
 		local path = LSM:Fetch("sound", name)
 		if path then pcall(PlaySoundFile, path, "SFX") end
 	end
@@ -826,11 +826,15 @@ function ns.ReadyFrames_ApplyConfig(index)
 		if type(cfg.borderColor) ~= "table" then
 			cfg.borderColor = { r = 0, g = 0, b = 0, a = 1 }
 		end
-		local edgeFile = borderOn and "Interface\\Buttons\\WHITE8x8" or ""
+		-- LSM registers "None" as an empty path, which Fetch reports the same way as missing media.
+		local noEdge   = cfg.borderTexture == "None"
+		local bgFile   = (LSM and LSM:Fetch("statusbar", cfg.bgTexture, true)) or WHITE8X8
+		local edgeTex  = (LSM and LSM:Fetch("border", cfg.borderTexture, true)) or WHITE8X8
+		local edgeFile = (borderOn and not noEdge) and edgeTex or ""
 		local edgeSize = borderOn and (cfg.borderSize or 1) or 0
 		local bpad     = borderOn and (cfg.borderPadding or 0) or 0
 		pcall(f.SetBackdrop, f, {
-			bgFile   = "Interface\\Buttons\\WHITE8x8",
+			bgFile   = bgFile,
 			edgeFile = edgeFile,
 			edgeSize = edgeSize,
 			insets   = { left = bpad, right = bpad, top = bpad, bottom = bpad },

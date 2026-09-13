@@ -854,11 +854,25 @@ local function BuildLaneGeneralForm(parent, laneIndex)
 		onChange = function(v) cfg.hideLongTimers = v; RefreshLane(laneIndex) end,
 	}))
 
+	local secHide = W.CreateSectionHeader(parent, L["Auto-hide"])
+	secHide:SetWidth(parent:GetWidth() - pad * 2)
+	place(secHide, 18)
+
 	place(W.CreateCheckbox(parent, {
 		label = L["Override Autohide"], checked = cfg.overrideAutohide,
 		tooltip = L["Keeps this lane's background, border, and markers visible even when Auto-hide Frames is on."],
 		onChange = function(v)
 			cfg.overrideAutohide = v
+			RefreshLane(laneIndex)
+			if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
+		end,
+	}))
+
+	place(W.CreateCheckbox(parent, {
+		label = L["Keep Shown While Running"], checked = cfg.keepShownWhileRunning,
+		tooltip = L["With Auto-hide Frames on, keeps this lane's background, border, and markers visible out of combat for as long as a cooldown is still traveling on it, then hides them again once the lane empties. Override Autohide wins over this, and this option is ignored while Unlock Frames is on."],
+		onChange = function(v)
+			cfg.keepShownWhileRunning = v
 			RefreshLane(laneIndex)
 			if ns.Lanes_RefreshVisibility then ns.Lanes_RefreshVisibility() end
 		end,
@@ -3803,6 +3817,10 @@ local function BuildReadyAppearanceForm(parent, i)
 	secBG:SetWidth(parent:GetWidth() - pad * 2)
 	place(secBG, 18)
 
+	place(W.CreateDropdown(parent, {
+		label = L["Texture"], value = cfg.bgTexture, options = BuildStatusbarOptions(), width = 200,
+		onChange = function(v) cfg.bgTexture = v; ReadyApply(i) end,
+	}))
 	place(W.CreateColorPicker(parent, {
 		label = L["Background Color"], color = cfg.bgColor, hasAlpha = true,
 		onChange = function(r, g, b, a)
@@ -3822,6 +3840,10 @@ local function BuildReadyAppearanceForm(parent, i)
 	place(W.CreateCheckbox(parent, {
 		label = L["Show Border"], checked = cfg.borderEnabled ~= false,
 		onChange = function(v) cfg.borderEnabled = v; ReadyApply(i) end,
+	}))
+	place(W.CreateDropdown(parent, {
+		label = L["Border Texture"], value = cfg.borderTexture, options = BuildBorderOptions(), width = 200,
+		onChange = function(v) cfg.borderTexture = v; ReadyApply(i) end,
 	}))
 	place(W.CreateColorPicker(parent, {
 		label = L["Border Color"], color = cfg.borderColor, hasAlpha = true,
