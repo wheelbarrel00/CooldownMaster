@@ -1,6 +1,6 @@
 # Cooldown Master
 
-[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![Languages](https://img.shields.io/badge/Languages-EN_FR_DE_RU_KO_ZHCN_ZHTW-6D0501?style=flat-square) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.1-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120100--120105-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
+[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![Languages](https://img.shields.io/badge/Languages-EN_FR_DE_RU_KO_ZHCN_ZHTW-6D0501?style=flat-square) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.1-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120007%20%7C%20120100%20%7C%20120105-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
 
 **A timeline-style cooldown tracker for World of Warcraft. Your spells, items, potions, and trinkets glide along lanes toward a ready edge, with depleting bars and pop-up alerts the moment they come up. The visual companion to Blizzard's built-in Cooldown Manager. Install it and it just works. Your cooldowns show up automatically, in your own language, with deep customization there if you want it.**
 
@@ -53,13 +53,13 @@ Cooldown Master shows you when your abilities come back, in three different styl
 
 **Lanes** are the signature view. Every ability gets an icon that travels along a lane toward a "ready" edge, at a speed set by its own cooldown. Long cooldowns sit at the far end, imminent ones crowd the ready edge, and the whole rotation fans out by urgency so you read it at a glance.
 
-**Bars** are the classic view. A tidy list of depleting status bars, each with an icon, the spell name, and a live countdown, sorted by whichever is coming up next.
+**Bars** are the classic view. A tidy list of depleting status bars, each with an icon, the spell name, and a live countdown, sorted by time remaining.
 
 **Ready boxes** are alerts. An icon pops the instant a cooldown finishes, holds for a few seconds, then fades.
 
-Out of the box you get one of each, all showing the same cooldowns, so you can see the three styles side by side and keep whichever suits you. Every cooldown can be sent to any combination of the three, either by category or one spell at a time.
+Out of the box you get three lanes, one bar frame, and one ready box, so you can see the three styles side by side and keep whichever suits you. Everything routes to Lane 1 except your potions, which start on Lane 2, and Lane 3 is left empty as a spare. Every cooldown can be sent to any combination of the three, either by category or one spell at a time.
 
-Cooldown Master complements Blizzard's built-in Cooldown Manager rather than replacing it. It reads the same category sets, so your tracked abilities appear automatically with nothing to set up, and adds the timeline, the bars, and the ready alerts that the built-in one does not have.
+Cooldown Master complements Blizzard's built-in Cooldown Manager rather than replacing it. On Retail it reads the same category sets, and on the Classic flavors, which have no Cooldown Manager, it scans your spellbook instead. Either way your abilities appear automatically with nothing to set up, and it adds the timeline, the bars, and the ready alerts that the built-in one does not have.
 
 It only ever displays information. It never casts, queues, or automates anything.
 
@@ -71,11 +71,11 @@ To place an icon on a timeline, Cooldown Master has to know how long that cooldo
 
 **On Classic** that number is readable at any time, so there is nothing to learn and nothing to wait for.
 
-**On Retail (Midnight)** Blizzard hides cooldown numbers from addons during combat, so Cooldown Master learns them instead. Out of combat it reads your true cooldown lengths directly and saves them to your character, so a spell is only ever learned once. During combat, where the number is hidden, it times each cooldown from start to finish to fill in anything it has not seen yet.
+**On Retail (Midnight)** Blizzard hides cooldown numbers from addons during combat, so Cooldown Master learns them instead. Out of combat it reads your true cooldown lengths directly and saves them to your settings profile, which your characters share unless you keep per-character profiles, so a spell is only ever learned once. During combat, where the number is hidden, it times each cooldown from start to finish to fill in anything it has not seen yet.
 
 **What that means for you.** On a fresh install, a new character, or right after a spec change, give it a minute. For the first few casts some icons may sit slightly off on the lane while it works out their real timing. It sharpens with every cooldown you use, and once a spell is learned it stays learned across sessions.
 
-**The countdown number and the swipe on every icon are always exact.** Those come straight from Blizzard's own cooldown widgets. It is only the icon's *position along the lane* that settles in as it learns.
+**For your spells and items the countdown number and the swipe are exact.** Those come straight from Blizzard's own cooldown widgets. It is only the icon's *position along the lane* that settles in as it learns. Offensive dot timers are the exception, because Blizzard hides those in combat by every route, so their countdown is Cooldown Master's own learned estimate.
 
 If a spell or buff is missing, or has landed in the wrong category, please say so on the [Discord](https://discord.gg/vm8K2WfQUE) or open a [GitHub issue](https://github.com/wheelbarrel00/CooldownMaster/issues) and it will get sorted.
 
@@ -87,7 +87,7 @@ The technical detail behind all this is in [Midnight and the secret-value API](#
 
 1. Install and log in. Your cooldowns should already be moving along Lane 1.
 2. Type **`/cm`**, or click the minimap button, to open the options.
-3. Type **`/cm unlock`** to unlock the frames, drag them where you want them, then **`/cm lock`**.
+3. Frames start unlocked, so drag them where you want them and then type **`/cm lock`**. Type **`/cm unlock`**, or right-click the minimap button, whenever you want to move them again.
 4. Type **`/cm test`** to fill the frames with sample cooldowns while you set things up, and again to turn it off.
 
 That is enough to use it. Everything below is optional.
@@ -119,7 +119,9 @@ That is enough to use it. Everything below is optional.
 | **Logarithmic (seconds)** | Same shared axis, but the last few seconds spread out wide and long cooldowns compress toward the far end. | Rotations where the final seconds matter most |
 | **Split (seconds)** | You shape the curve yourself with up to three control points. | Full control, see below |
 
-**Max Time (seconds)** is the longest cooldown the lane will display, from 10 up to 360. Anything longer than this sits parked at the far end until it comes within range. This has no effect in Linear mode, which has no shared clock.
+**Max Time (seconds)** is the longest cooldown the lane will display, from 10 up to 360. Anything longer than this is hidden, because **Hide Long Timers** (below) is on by default. Untick it and a longer cooldown sits parked at the far end instead, until it comes within range.
+
+In Linear mode Max Time no longer decides position, since each icon spans its own cooldown, but it is still the threshold Hide Long Timers measures against, so it is not inert there.
 
 #### Split mode, explained
 
@@ -140,19 +142,23 @@ The result is a lane that gives you a huge amount of room to read your imminent 
 
 **Two rules the curve enforces.** A point set at or beyond Max Time is ignored, because it would strand the end of the lane as unreachable. A point that does not advance both time and position past the point before it is also ignored, because it would fold the curve back on itself. In both cases the lane just falls back to a straight line through whatever points remain valid.
 
+#### Hide Long Timers and Auto-hide
+
+**Hide Long Timers** hides any cooldown longer than the lane's Max Time instead of parking it at the far end. It is on by default.
+
+The next two sit under the **Auto-hide** section header on the same tab.
+
+**Override Autohide** keeps this lane's background, border, name, and markers visible even when Auto-hide Frames is switched on globally.
+
+**Keep Shown While Running** is the softer version of the same idea. With Auto-hide Frames on, the lane keeps its chrome out of combat for as long as a cooldown is still traveling on it, then hides it again once the lane empties. It is off by default and set per lane. Override Autohide wins on a lane where you have ticked it, and this option stands aside while Unlock Frames is on, so a lane never changes shape under your cursor mid-drag.
+
 #### Secondary tracking (Classic only)
 
 **Primary Tracking** fills the whole lane like a progress bar for a recurring timer. **Secondary Tracking** adds a second, thinner bar that slides along it. Both can be set to **GCD** (your global cooldown), **Swing** (your main hand swing timer), or **None**.
 
-Primary uses the lane's own fill. Secondary uses the **ST Width**, **ST Height**, **ST Texture**, and **ST Color** settings below it. **Reverse Primary** and **Reverse Secondary** flip each one's direction independently.
+Both bars draw with the **ST Texture** and **ST Color** below, not with the lane's own Lane Texture and Lane Color. Primary fills the whole lane, so **ST Width** and **ST Height** size the sliding Secondary bar only. **Reverse Primary** and **Reverse Secondary** flip each one's direction independently, relative to the lane's own Reversed setting.
 
 These are Classic only. On Retail, Blizzard's own Cooldown Manager already covers this ground.
-
-#### Other General options
-
-**Hide Long Timers** hides any cooldown longer than the lane's Max Time instead of parking it at the far end.
-
-**Override Autohide** keeps this lane's background, border, and markers visible even when Auto-hide Frames is switched on globally.
 
 ### Appearance
 
@@ -160,9 +166,9 @@ These are Classic only. On Retail, Blizzard's own Cooldown Manager already cover
 
 **Lane Texture** and **Lane Color** style the bar itself, and each texture in the list shows a preview swatch so you can see what you are picking. **Use Class Color (Lane)** overrides the color with your class color.
 
-**Show Border**, **Border Texture**, **Border Color**, **Border Padding**, and **Border Size** control the frame around the lane. Border textures also preview in the list. A soft border like CDM Soft Edge needs room to fade, so raise Border Size to around 6 or it squashes into a smear.
+**Show Border**, **Border Texture**, **Border Color**, **Border Padding**, and **Border Size** control the frame around the lane. Border textures also preview in the list. A soft border like CDM Soft Edge needs room to fade, so raise Border Size to around 6 or it squashes into a smear. Setting Border Texture to **None** draws no border art at all, which is the tidiest way to drop the frame while leaving Show Border alone.
 
-**Lane Alpha** sets the opacity of the lane background.
+**Lane Alpha** fades the whole of the lane's chrome together: background, border, markers, status line, and name tag. Icons are untouched and keep their own **Transparency** on the Icons tab. It sits in the Border section, between Show Border and Border Texture.
 
 ### Icons
 
@@ -179,15 +185,19 @@ Masque skins draw their own icon, so the pulse steps aside while a skin is activ
 
 **Show Icon Border** draws a solid ring around each icon, with its own size and color.
 
-**Countdown Timer** draws the time left on the icon. **Icon Label** adds a line of tag-built text with its own font, size, outline, and color. See [Text tags](#text-tags).
+**Show Timer**, in the Countdown Timer section, draws the time left on the icon, styled by the **Timer Font** section below it: Font, Font Size (0 means scale with the icon), Font Outline, and Font Color.
 
-**Label Position** anchors the icon's name label above, on, or below the icon, with its own font, size, outline, and color.
+**Show Label**, in the Icon Label section, adds a line of tag-built text from **Label Text**, with its own font, size, outline, and color. See [Text tags](#text-tags).
+
+**Label Position**, in the same section, anchors that label above, on, or below the icon.
 
 ### Stacking
 
 When cooldowns bunch up near the ready edge they can cover each other. Stacking keeps them readable.
 
-| Style | What it does |
+**Enabled** turns stacking on for this lane. It is off by default, so nothing below takes effect until you tick it.
+
+| Stack Style | What it does |
 | --- | --- |
 | **Grouped** | Overlapping icons stack into rows |
 | **Spread** | Icons are nudged apart along the lane |
@@ -197,7 +207,7 @@ When cooldowns bunch up near the ready edge they can cover each other. Stacking 
 
 ### Text
 
-This tab controls the labels printed along the lane itself, plus the lane's status line.
+This tab controls the labels printed along the lane itself, plus the lane's name tag and its status line.
 
 #### Lane markers and auto labels
 
@@ -228,7 +238,9 @@ On a vertical lane the cross axis rotates with everything else, so **Above lane*
 
 **X Offset** and **Y Offset** nudge every label from wherever the placement put it.
 
-**Marker Font**, size, outline, and color style all five together.
+The **Marker Font** section, with its Font, Font Size, Font Outline, and Font Color, styles all five markers together.
+
+The **Name Tag Font** section below it styles the lane's own name tag, the one that appears above the bar while frames are unlocked.
 
 #### Status line
 
@@ -238,15 +250,15 @@ On a vertical lane the cross axis rotates with everything else, so **Above lane*
 
 ## Bars
 
-**Options > Bars.** Three bar frames, off by default except the first. Each one is a list of depleting status bars, sorted by whichever cooldown is coming up next.
+**Options > Bars.** Three bar frames, off by default except the first. Each one is a list of depleting status bars, sorted by time remaining, longest first by default, which you can flip with Sort Order.
 
 **Enabled**, **Frame Name**, **Anchor**, **X Offset**, **Y Offset**, and **Frame Alpha** work the same as on a lane.
 
 **Texture** and **Color** style the fill, with preview swatches in the texture list, and there is a **Use Class Color** option. The **Bar Background** section has its own **Texture** and color, sitting behind the fill.
 
-**Bar Width** and **Bar Height** size the bars, **Spacing** sets the gap between them, and **Frame Padding** insets them from the frame edge. **Max Bars** caps how many show at once.
+**Bar Width** and **Bar Height** size the bars, **Spacing** sets the gap between them, and **Frame Padding** insets them from the frame edge. **Max Bars** caps how many show at once, from 1 to 20, 10 by default. The cap keeps the first ones in Sort Order, so with the default Longest first it is the bars closest to ready that drop off when a frame overflows. Set Sort Order to Shortest first if you would rather lose the far-out ones.
 
-**Grow Direction** builds the list upward or downward. **Sort Order** picks whether the soonest or the furthest out sits first.
+**Grow Direction** builds the list up, down, left, right, or out from the center vertically or horizontally, so a bar frame can run as a column or a row. **Sort Order** picks **Longest first**, the default, or **Shortest first**.
 
 **Icon Position** puts the icon on the left or right of each bar. **Font**, **Time Font**, and their sizes, outlines, and colors style the spell name and the countdown independently.
 
@@ -274,6 +286,8 @@ These two settings, both under **Bars > a bar frame > General**, let a bar frame
 
 **Display Duration (sec)** is how long an ordinary icon stays up. **Highlight Duration (sec)**, over on the Highlight sub-tab, is the same thing for an Important icon.
 
+**Grow Direction**, on the box's General sub-tab, stacks new icons down, up, left, right, or out from the center, so a box can run as a column or a row. It grows from the box's Anchor point.
+
 **Max Ready Icons** caps how many can sit in the box at once. When it is full, the icon closest to fading is pushed out, and pinned icons are never the ones chosen. A box with every slot pinned has no room left, so a new pop is dropped.
 
 **Post-Combat Hide (sec, 0 = off)** keeps icons up for a few extra seconds after combat ends, so you can see what came up right at the end.
@@ -281,6 +295,8 @@ These two settings, both under **Bars > a bar frame > General**, let a bar frame
 **Ready Sound** plays when an icon pops. A few sounds are bundled, and any LibSharedMedia sound you have shows up in the list too.
 
 **Size**, **Transparency**, **Icon Offset**, and the border and label options match the lane Icons tab.
+
+**Texture**, under the Background header on **Ready > a box > Appearance**, sets the texture drawn behind the icons, and **Border Texture**, under the Border header on the same sub-tab, sets the box's edge. Every LibSharedMedia texture you have installed is offered in both, and a Border Texture of **None** draws no border at all. The defaults are unchanged, so a box you have not touched looks as it always did.
 
 Icons flagged **Pinned** never fade. They stay in the box until you reload or switch profile, so a cooldown you must not miss will wait for you.
 
@@ -306,13 +322,13 @@ Cooldown Master sorts everything it tracks into nine categories. Each one is a s
 
 **Pet Spells** reads your pet's spellbook, so Spell Lock, Axe Toss, Gnaw, Freeze and the rest travel the lanes like anything else. Your pet's basic attack and its command and stance buttons are left out, so only real cooldowns show. It is on by default for anyone with a pet bar.
 
-**Shared-cooldown dedupe** collapses abilities tracked under multiple spell IDs to a single lane icon and a single ready pop.
+**Detect Shared Spell Cooldowns**, on the Global tab, collapses abilities tracked under multiple spell IDs, a base spell and its talent override or the same spell in two categories, to a single lane icon and a single ready pop. It is off by default.
 
 ### A cooldown's buff, on Classic
 
 Some abilities have a cooldown *and* give you a buff, and you want to watch both. Icy Veins and Arcane Power are the obvious cases.
 
-Tick **Buff** on that spell's row under **Filters > Spells** and the buff appears as its own second icon, counting down the buff itself rather than the cooldown. It is off by default, so nothing new appears until you ask for it.
+Tick **Buff** on that spell's row under **Filters > Spells** or **Filters > Utility**, where it is the last column on the list, and the buff appears as its own second icon, counting down the buff itself rather than the cooldown. It is off by default, so nothing new appears until you ask for it.
 
 On Retail, Blizzard's own category sets already surface tracked buffs, so this is not needed there.
 
@@ -345,7 +361,7 @@ Pick a category from **Filters > Defaults** and set how everything in it behaves
 - **Enabled** turns the whole category on or off.
 - **Show by Default** decides whether new cooldowns in it appear without you enabling them one by one.
 - **Ignore Threshold (sec)** hides anything whose full cooldown is longer than this. Use it to keep half hour abilities off your lanes. This filters on the ability's total cooldown, which is different from a lane's Max Time, which only controls how much of the timeline is drawn. A bar frame with **Show Extremely Long Cooldowns** ticked reaches past this, up to 60 minutes, for that one frame.
-- **Default Lane**, **Default Bar**, and **Ready Box** decide where the category's cooldowns are sent. Any of them can be set to off.
+- **Default Lane**, **Default Bar**, and **Ready Box** decide where the category's cooldowns are sent. Default Bar and Ready Box can each be set to Off. Default Lane always names a lane, so to stop a lane drawing you turn that lane off on the Lanes tab, and the dropdown entry then reads "Lane 1 (off)".
 
 ### Per-spell overrides
 
@@ -400,7 +416,7 @@ The highlight style and color are set per frame, under **Lanes > a lane > Icons*
 3. Choose a **Trigger**: either a **Spell** you cast, or an **Aura** you gain.
 4. Enter the **Trigger ID**.
 
-Typing an aura ID by hand is miserable, so there is a **Detect** button. Click it, then gain the buff you want to track, and it fills in the ID, the name, the icon, and the duration for you.
+Typing an aura ID by hand is miserable, so with the Trigger set to Aura there is a **Detect** button. Click it, then gain the buff you want to track within 15 seconds, and it fills in the ID, the name, the icon, and the duration for you.
 
 Custom cooldowns run on a purely local timer, so they work for anything the cooldown API does not expose. They flow through the same lanes, bars, and ready boxes as everything else, with the same routing and highlight options.
 
@@ -408,13 +424,13 @@ Custom cooldowns run on a purely local timer, so they work for anything the cool
 
 ## Text tags
 
-Two places take text: the **label on each icon**, and the **status line** on a lane or bar frame. Both are off by default and both get full font, size, outline, and color control.
+Two places take text: the **label on each icon**, on lanes and ready boxes, and the **status line** on a lane, a ready box, or a bar frame. Both are off by default and both get full font, size, outline, and color control.
 
 Text is built from tags in square brackets, mixed with any plain text you like.
 
 **Icon tags** describe the cooldown the icon belongs to, things like its name and type: `[cd.name]`, `[cd.type]`, and `[cd.time]` on Classic.
 
-**Status tags** describe your overall state: `[cd.next]`, `[cd.count]`, `[player.class]`, `[player.name]`, `[target.name]`, `[target.class]`, plus `[player.hp.pct]` and `[player.power.pct]` on Classic.
+**Status tags** describe your overall state: `[cd.next]`, `[cd.count]`, `[player.class]`, `[player.name]`, `[target.name]`, `[target.class]`, plus `[player.hp.pct]` and `[player.power.pct]` on Classic, with `[player.hp]` and `[player.power]` for the raw numbers. Those last two are not in the picker, so type them by hand.
 
 Nobody wants to memorize tag syntax, so there is a **click-to-insert picker** next to every text field. It only ever offers the tags that are valid in that spot, and only the ones your game version can actually draw. Templates built from static tags alone resolve once instead of every frame.
 
@@ -443,13 +459,15 @@ One in-game options window controls the whole look.
 
 **Fonts** are picked from a list that **previews each font in the font itself**, so you can see what you are choosing before you commit.
 
-**Textures and borders** preview too. Statusbar textures show a filled swatch of the actual texture, and borders show a small square with that border drawn around it.
+**Textures and borders** preview too. Statusbar textures show a filled swatch of the actual texture, and borders show a small square with that border drawn around it. Picking **None** as a Border Texture draws no border at all, on lanes and on ready boxes. Ready boxes have their own **Texture** (under Background) and **Border Texture** (under Border) pickers at **Ready > a box > Appearance**.
 
-**LibSharedMedia** is fully supported, so any font, texture, border, or sound pack you already have appears in the pickers automatically. A few original Cooldown Master textures are bundled as well (Gradient, Glass, Soft Edge).
+**LibSharedMedia** is fully supported, so any font, texture, border, or sound pack you already have appears in the pickers automatically. A few original Cooldown Master media files are bundled as well: the statusbar textures **CDM Gradient** and **CDM Glass**, the border **CDM Soft Edge**, and the sound **CDM: Ready Click**.
 
 **Two scale sliders** under Options > Global: one resizes every cooldown frame together while keeping each anchored where you put it, and the other resizes the options window itself from half size up to double.
 
-**Auto-hide Frames** hides your frames out of combat. Visibility rules are tickboxes for **Always**, **In Group**, and **In Instance**, and any one of them ticked will show your frames. Any single lane can opt out with **Override Autohide**.
+**Auto-hide Frames** hides each lane's background, border, name, and markers out of combat, while your tracked cooldown icons stay visible. The chrome returns in combat. Visibility rules are tickboxes for **Always**, **In Group**, and **In Instance**, and any one of them ticked will show your **lanes** — they gate lanes only, so ready boxes and bars are not affected.
+
+Both auto-hide opt-outs live under **Lanes > a lane > General > Auto-hide**. **Override Autohide** keeps that lane's chrome always shown. **Keep Shown While Running**, off by default, is the softer version: with Auto-hide Frames on, the lane keeps its chrome out of combat for as long as a cooldown is still traveling on it, then hides it again once the lane empties. Override Autohide wins over it, and it is ignored while Unlock Frames is on.
 
 **Class colors** are a per-class table, flavor-aware (13 classes on retail, 11 on MoP, 9 on Era and TBC), feeding the lane fill and bar fill "use class color" toggles.
 
@@ -481,7 +499,7 @@ Run **`/cm masque`** if you want to check what it has detected.
 
 **Options > Profiles.** Standard AceDB profile management, plus two extras.
 
-**Auto-switch by Specialization** maps a profile to each spec and switches for you when you change spec.
+**Auto-switch by Specialization** maps a profile to each spec and switches for you when you change spec. Retail and Mists of Pandaria Classic only, since Classic Era and Burning Crusade Classic have no specs, so the section is not drawn there.
 
 **Import and Export** turn any profile into a copy-paste string, so you can share a setup or carry it to another character.
 
@@ -510,15 +528,16 @@ The minimap button can be hidden under Options > Global if you would rather not 
 | **`/cm unlock`** | Unlock all frames for repositioning |
 | **`/cm test`** | Toggle test mode |
 | **`/cm offlearn`** | Guided setup for Offensives on Retail |
+| **`/cm offlearn stop`** | End that guided setup early |
 | **`/cm whatsnew`** | Show the What's New popup |
 | **`/cm reset`** | Reset the current profile to defaults |
 | **`/cm version`** | Print the version and game flavor |
 
 **`/cdmaster`** and **`/cooldownmaster`** work as long forms, with every subcommand above.
 
-There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `masque`, and the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`).
+There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
 
-**`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so.
+**`/cm anchor`** is a one-shot probe of the anchoring state. **`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so.
 
 ---
 
@@ -533,6 +552,7 @@ Cooldown Master runs on Midnight (12.1), Classic Era, Burning Crusade Classic, a
 | Health and resource tags | Not available | Available |
 | A cooldown's buff as a second icon | Handled by Blizzard's category sets | Tick **Buff** on the spell's row |
 | Offensives | Learned out of combat, `/cm offlearn` | Detected automatically |
+| Auto-switch profile by spec | Available | Mists of Pandaria Classic only, Era and TBC have no specs |
 
 ---
 
@@ -550,7 +570,7 @@ Translator credits are in [Credits](#credits).
 
 ## Midnight and the secret-value API
 
-The interesting part for other addon authors. Under Midnight, every cooldown *number* is a **secret value** in combat: `C_Spell.GetSpellCooldown`'s start/duration, the `DurationObject`'s `GetRemainingDuration`/`GetTotalDuration`, and even curve evaluation all return taint-protected secrets that error the moment you read or compare them in Lua (`issecretvalue()` is the detector). The only combat-readable signals are `C_Spell.GetSpellCooldown(id).isActive` / `.isOnGCD` (plain booleans) and `maxCharges`.
+The interesting part for other addon authors. Under Midnight, every cooldown *number* is a **secret value** in combat: `C_Spell.GetSpellCooldown`'s start/duration, the `DurationObject`'s `GetRemainingDuration`/`GetTotalDuration`, and even curve evaluation all return taint-protected secrets that error the moment you do arithmetic on, compare, or format them in Lua. The read itself hands the secret back without complaint, which is exactly why `issecretvalue()` exists as a detector. The only combat-readable signals are `C_Spell.GetSpellCooldown(id).isActive` / `.isOnGCD` (plain booleans) and `maxCharges`.
 
 Cooldown Master works around this with a hybrid approach:
 
@@ -569,13 +589,13 @@ As of **12.1** the `UNIT_AURA` payload itself arrives secret. `isFullUpdate` is 
 - **A boolean test on a secret *boolean* throws** (`if updateInfo.isFullUpdate then` is enough to error), because the single bit is the whole payload. A boolean test on a secret *table* or *number* does not throw, since truthiness of a non-boolean leaks nothing. Check the value type before assuming which you have.
 - **`tostring` does not throw on a secret.** It hands back a secret *string*, and `string.format` is what dies. Wrapping a read in `tostring` or a `pcall` around the producer protects nothing. Test the returned value with `issecretvalue()`.
 
-Instance-id collections go the same way. `removedAuraInstanceIDs` measures as a secret table, and `C_UnitAuras.GetUnitAuraInstanceIDs(unit, "HARMFUL|PLAYER")` is dropped for the same reason. With no plain reconcile source left, the cast-driven path stands alone and a wall-clock expiry sweep does the job the reconcile loop used to.
+Instance-id collections go the same way. `removedAuraInstanceIDs` measures as a secret table, and `C_UnitAuras.GetUnitAuraInstanceIDs(unit, "HARMFUL|PLAYER")` returns a secret vector in combat, so its result is dropped for the same reason. The reconcile loop itself still runs and still earns its keep out of combat, where the list and a direct `GetAuraDataByAuraInstanceID` read plain and a dot can be rehydrated onto the lane after a target swap. In combat there is no plain reconcile source left, so the cast-driven path stands alone and a wall-clock expiry sweep covers the liveness the reconcile used to.
 
 ---
 
 ## The localization pipeline
 
-**`Locales/*.lua` are generated. Never hand-edit one.** They are built from the [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared store, which Cooldown Master joined alongside Everything Quests and EQ Objective Tracker, and which now carries four addons with Everything Delves as well. That store keys a translation on its **English phrase** rather than on any addon, so a phrase CDM shares with the others arrives already translated. 45 did on the day CDM joined, before anyone typed anything. Editing a generated file here is overwritten on the next build, and that repo's drift check exists to catch exactly that.
+**`Locales/*.lua` are generated. Never hand-edit one.** They are built from the [EverythingLocales](https://github.com/wheelbarrel00/EverythingLocales) shared store, which Cooldown Master joined alongside Everything Quests and EQ Objective Tracker, and which now carries four addons with Everything Delves as well. That store keys a translation on its **English phrase** rather than on any addon, so a phrase CDM shares with the others arrives already translated. Dozens did on the day CDM joined, before anyone typed anything. Editing a generated file here is overwritten on the next build, and that repo's drift check exists to catch exactly that.
 
 `Locales/enUS.lua` is the manifest and creates `ns.L`. It must load after `embeds.xml` and before `Core\Constants.lua` in all four `.toc` files. `ns.L` carries an `__index` that returns the key, so a missing phrase degrades to English rather than erroring.
 
@@ -606,7 +626,7 @@ The options panel is hand-built rather than driven by an AceConfig options table
 - **More tags** for the label and status line system.
 - **More languages.** All seven here are complete, and any new language is welcome. Corrections to the ones already in are just as valuable.
 - **More tracking indicator types** on Classic. The per-lane secondary tracking covers the GCD and your main hand swing timer today.
-- **Conditional autohide**, to hide frames on resource level or stealth state, alongside the existing out of combat and group rules.
+- **More conditional autohide**, to hide frames on resource level or stealth state, alongside today's rules: Auto-hide Frames out of combat, the Always / In Group / In Instance visibility gate, and the per-lane Keep Shown While Running added in 1.16.0.
 
 ---
 
@@ -635,7 +655,7 @@ Thank you all. This addon reaches a lot more people because of you.
 
 Report it on the [GitHub Issues page](https://github.com/wheelbarrel00/CooldownMaster/issues). Include the error text if you can grab it, since BugSack and BugGrabber make that easy, and what you were doing when it happened.
 
-If you like this one, check out my other addons: [Everything Quests](https://www.curseforge.com/wow/addons/everythingquests), [Everything Delves](https://www.curseforge.com/wow/addons/everything-delves), and [Loot Pro](https://www.curseforge.com/wow/addons/loot-pro). **[Join the Discord](https://discord.gg/vm8K2WfQUE)** for questions or update news.
+If you like this one, check out my other addons: [Everything Quests](https://www.curseforge.com/wow/addons/everything-quests), [Everything Delves](https://www.curseforge.com/wow/addons/everything-delves), and [Loot Pro](https://www.curseforge.com/wow/addons/loot-pro). **[Join the Discord](https://discord.gg/vm8K2WfQUE)** for questions or update news.
 
 ---
 
