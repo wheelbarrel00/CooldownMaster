@@ -500,6 +500,9 @@ function Engine:LoadPersistedDurations()
 		end
 	end
 
+	-- The fallbacks are retail-tuned, so Forever seeds from its own GetSpellBaseCooldown instead.
+	if ns.Compat.IS_FOREVER then return end
+
 	-- Fallbacks go in baselineDurations, not knownDurations: layering them into
 	-- knownDurations makes LearnDuration's "already known" guard skip learning the
 	-- real talent-adjusted duration.
@@ -735,6 +738,12 @@ end
 
 
 function Engine:BuildTrackedSpells()
+	-- Forever's base cooldowns are secret in combat, and a throw after the wipe would leave nothing tracked.
+	if ns.Compat.IS_FOREVER and InCombatLockdown() then
+		self._rebuildAfterCombat = true
+		return
+	end
+
 	wipe(self.trackedSpells)
 	wipe(self.cdIDToSpellID)
 
@@ -742,6 +751,8 @@ function Engine:BuildTrackedSpells()
 		self:BuildTrackedSpellsClassic()
 		self:DropOffensiveCollisions()
 		self._trackedBuilt = true
+		-- Forever runs the retail reader, which extrapolates a cooldown first seen in combat from this seed.
+		if ns.Compat.IS_FOREVER then self:SeedBaselineDurations() end
 		self:ResyncEntryDisplay()
 		return
 	end
@@ -762,9 +773,7 @@ function Engine:BuildTrackedSpells()
 				if infoOk and info and info.isKnown and not IsHiddenRow(info) then
 					local effectiveID = ResolveEffectiveID(info)
 
-					-- A spell can appear in multiple Cooldown Viewer categories;
-					-- the ascending scan keeps the first (lowest) as its primary
-					-- category, while later duplicates still record their cooldownID.
+					-- A spell can sit in several Cooldown Viewer categories. The ascending scan keeps the lowest as primary, and later duplicates still record their cooldownID.
 					if effectiveID and not self.trackedSpells[effectiveID] then
 						local name, icon = GetSpellNameIcon(effectiveID)
 						self.trackedSpells[effectiveID] = {
@@ -999,6 +1008,8 @@ end
 
 -- Classic buffs (Seals, Blessings) have no cooldown, so track them as auras timed by remaining duration. Category 2 is the Buffs filter/lane.
 function Engine:ScanBuffs()
+	-- Forever raises a Lua error on any aura read while auras are secret, so buff entries hold until they read again.
+	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	self._seenBuffs = self._seenBuffs or {}
 	local seen = self._seenBuffs
 	wipe(seen)
@@ -2878,6 +2889,7 @@ end
 
 
 function Engine:IsCategoryEnabled(category)
+	if category == ns.CONST.OFFENSIVE_CATEGORY and not ns.Compat.HAS_OFFENSIVES then return false end
 	local addon = ns.CDM
 	if not (addon and addon.db) then return true end
 	local key = self:GetCategoryFilterKey(category)
@@ -2890,6 +2902,7 @@ end
 -- allowLong raises the category's Ignore Threshold to LONG_COOLDOWN_MAX for this one question, so a
 -- bar frame set to show extremely long cooldowns can ask without the lanes and ready boxes seeing it.
 function Engine:IsSpellVisible(spellID, category, allowLong)
+	if category == ns.CONST.OFFENSIVE_CATEGORY and not ns.Compat.HAS_OFFENSIVES then return false end
 	local addon = ns.CDM
 	if not (addon and addon.db) then return true end
 
@@ -2906,12 +2919,9 @@ function Engine:IsSpellVisible(spellID, category, allowLong)
 		return override.visible == true
 	end
 
-	-- Ignore Threshold: hide an ability whose full cooldown is longer than the category's
-	-- threshold -- a static "don't track hour-long cooldowns" filter, distinct from a lane's
-	-- maxTime display window. Only when the length is known; an explicit override above wins.
+	-- Ignore Threshold hides a cooldown longer than the category's limit, separate from a lane's maxTime window. An explicit override above wins.
 	local thr = fcfg.ignoreThreshold
-	-- max, not a plain swap: a hand-edited profile could carry a threshold above the ceiling, and
-	-- lowering it here would hide a cooldown the bar shows today.
+	-- max, not a plain swap, since a hand-edited profile could carry a threshold above the ceiling and lowering it would hide a cooldown the bar shows today.
 	if allowLong and thr and thr < ns.CONST.LONG_COOLDOWN_MAX then
 		thr = ns.CONST.LONG_COOLDOWN_MAX
 	end
@@ -3268,17 +3278,15 @@ end
 
 
 -- These sources have their own removal sweep, so the cooldown scan must not prune them: they are absent from its seen set every pass, which reads as "went ready".
-local FOREIGN_SOURCE = { test = true, custom = true, offensive = true }
+local FOREIGN_SOURCE = { test = true, custom = true, offensive = true, buff = true }
 
 
--- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so the entry set is
--- driven off the readable GetSpellCooldown().isActive/.isOnGCD booleans; the opaque
--- DurationObject feeds a native Cooldown widget for the exact swipe, only position is extrapolated.
+-- Remaining time is secret in combat (docs/EXPERIMENTS.md EXP-001/002), so entries key off isActive/isOnGCD and a DurationObject draws the exact swipe.
 function Engine:ScanSpells()
-	if not ns.Compat.HAS_BLIZZ_CDM then
+	-- Forever's cooldowns are secret in combat like retail's, so it falls through to the retail reader.
+	if not ns.Compat.HAS_BLIZZ_CDM and not ns.Compat.IS_FOREVER then
 		self:ScanSpellsClassic()
-		-- Called straight in, not through ScheduleBuffScan. The debounce stopped buff entries
-		-- being created at all on Era.
+		-- Called straight in, not through ScheduleBuffScan. Its debounce stopped buff entries being created at all on Era.
 		self:ScanBuffs()
 		return
 	end
@@ -3293,15 +3301,10 @@ function Engine:ScanSpells()
 
 	for spellID, tracked in pairs(self.trackedSpells) do
 		local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+		-- A Forever category-2 key is a buff ScanBuffs owns. A higher rank's own cooldown must not write onto its entry.
+		if ns.Compat.IS_FOREVER and tracked.category == 2 then ok = false end
 
-		-- A true multi-charge spell (Shimmer, Fire Blast) reports isActive = false while any
-		-- charge remains, so it's on cooldown only once fully depleted. currentCharges is
-		-- SECRET in combat (reading or comparing it taints and throws) but maxCharges is, so
-		-- maxCharges > 1 plus the isActive gate below means fully depleted; then feed the
-		-- charge-duration object (blank for charge spells). 1-charge spells use the normal path.
-		-- Probed once per tracked-set build and cached (per-scan probing allocated a table per
-		-- spell per scan; gating on the CooldownViewer charges flag missed stale flags), so the
-		-- cache refreshes on the TRAIT_CONFIG_UPDATED / spec-change rebuilds.
+		-- A multi-charge spell reads isActive only once fully depleted. currentCharges is secret in combat but maxCharges is plain, so it is probed once per tracked-set build and cached.
 		local multiCharge = tracked.multiCharge
 		if multiCharge == nil then
 			multiCharge = false
@@ -3319,24 +3322,16 @@ function Engine:ScanSpells()
 		---@diagnostic disable-next-line: undefined-field
 		local active = rawActive and not info.isOnGCD
 
-		-- Anchor bookkeeping must use the GCD-FILTERED state: the GCD blips EVERY ready spell
-		-- isActive+isOnGCD for its duration (verified via /cm anchor trace), and under chained-GCD
-		-- rotation spam the 0.1s-debounced scans land inside successive blips, so a stamp taken
-		-- from bare isActive survives for many seconds; a charge entry born later inherited that
-		-- ancient stamp and spawned already parked at the ready edge.
+		-- Anchor off the GCD-filtered state. The GCD blips every ready spell isActive+isOnGCD, so a stamp from bare isActive survives rotation spam and parks later charge entries at the ready edge.
 		if active then
 			if not self._activeSince[spellID] then self._activeSince[spellID] = now end
 		elseif ok and info then
 			self._activeSince[spellID] = nil
-			-- Genuinely off its own cooldown (not just GCD-blipped; charges may remain): a
-			-- later depletion's observed span can be trusted as a full cooldown.
+			-- Off its own cooldown, not just GCD-blipped, so a later depletion's span can be trusted as a full cooldown.
 			if not rawActive then self._seenReady[spellID] = true end
 		end
 
-		-- Multi-charge blip filter: a partial use blips isActive for ~1 GCD (isOnGCD is nil here
-		-- so it can't gate it, and IsSpellUsable ignores charge count), while full depletion holds
-		-- it for the whole recharge. Require the active state to persist past CHARGE_TRACK_DELAY so
-		-- only a real recharge shows. 1-charge/non-charge spells exempt.
+		-- A partial charge use blips isActive for about a GCD with isOnGCD nil, so a multi-charge spell must stay active past CHARGE_TRACK_DELAY before it tracks.
 		if multiCharge then
 			if active then
 				self._chargeOnCdSince[spellID] = self._chargeOnCdSince[spellID] or now
@@ -3348,9 +3343,7 @@ function Engine:ScanSpells()
 			end
 		end
 
-		-- Hold through the GCD-masked tail (see GCD_MASK_HOLD). Only a duration learned out of
-		-- combat off the exact game value earns it - a baseline or the 30s default would park the
-		-- entry well past the real cooldown, and outside the window the flip cannot be masking.
+		-- Hold through the GCD-masked tail (GCD_MASK_HOLD), but only on a duration learned out of combat. A baseline or the 30s default would park the entry past the real cooldown.
 		local gcdHeld = false
 		---@diagnostic disable-next-line: undefined-field
 		if not active and rawActive and ok and info and info.isOnGCD then
@@ -3365,8 +3358,7 @@ function Engine:ScanSpells()
 			end
 		end
 
-		-- /cm anchor arm: state tracer. Prints only on transitions, so chat stays readable. One
-		-- nil-check per spell per scan when disarmed.
+		-- /cm anchor arm state tracer. It prints only on transitions and costs one nil-check per spell when disarmed.
 		if self._traceUntil then
 			if now > self._traceUntil then
 				self._traceUntil = nil
@@ -3411,8 +3403,7 @@ function Engine:ScanSpells()
 				if cok then dObj = cd end
 			end
 
-			-- Numbers are readable only out of combat: learn the talent/haste-
-			-- adjusted duration here to feed in-combat extrapolation.
+			-- Numbers are readable only out of combat, so learn the talent and haste adjusted duration here for in-combat extrapolation.
 			if not inCombat and dObj then
 				self:LearnDuration(spellID, dObj)
 			end
@@ -3425,9 +3416,7 @@ function Engine:ScanSpells()
 					or self.baselineDurations[spellID]
 					or 30
 				local startTime = self._activeSince[spellID] or now
-				-- An anchor so old the extrapolated cooldown would already be over renders the
-				-- icon parked at the ready edge from birth; it carries no information, so
-				-- anchor at discovery instead and let the icon make one full travel.
+				-- An anchor so old the cooldown would already be over carries no information, so anchor at discovery and let the icon make one full travel.
 				if startTime + duration <= now then startTime = now end
 				self.entries[spellID] = {
 					spellID   = spellID,
@@ -3450,16 +3439,12 @@ function Engine:ScanSpells()
 						tostring(tracked.name), now - startTime, duration))
 				end
 			else
-				-- Still running: keep the extrapolated position (don't reset
-				-- startTime), just refresh the handle.
-				-- A re-anchor drops the handle, so re-attaching one has to force the render frames to
-				-- re-feed. They key on startTime, which the re-anchor already consumed.
+				-- A re-anchor drops the handle, so re-attaching one must force a re-feed. The render frames key on startTime, which the re-anchor already consumed.
 				if dObj and not existing.dObj then
 					existing._feedGen = (existing._feedGen or 0) + 1
 				end
 				existing.dObj = dObj or existing.dObj
-				-- A duration learned after the entry was created (born in combat at the 30s default,
-				-- then learned) replaces the stale guess: keep startTime, correct only the span (dObj exact).
+				-- A duration learned after the entry was born replaces the stale guess. Keep startTime and correct only the span.
 				local learned = self:BestDuration(spellID)
 				if learned and existing.duration ~= learned then
 					existing.duration = learned
@@ -3469,9 +3454,7 @@ function Engine:ScanSpells()
 		end
 	end
 
-	-- A loading screen briefly reports every cooldown as not-active, so a scan landing there
-	-- would pop the whole set ready at once. Suppress popups in the blackout window (keep
-	-- entries), and as a backstop stay silent if an implausibly large batch goes ready at once.
+	-- A loading screen briefly reports every cooldown as not active, so pops are suppressed in the blackout window and an implausibly large batch stays silent.
 	local blackout = self._loadingScreen or now < (self._readyBlackoutUntil or 0)
 
 	self._readyEdges = self._readyEdges or {}
@@ -3479,8 +3462,7 @@ function Engine:ScanSpells()
 	wipe(edges)
 	for spellID, entry in pairs(self.entries) do
 		if not FOREIGN_SOURCE[entry._source] and entry.kind ~= "item" and not seen[spellID] then
-			-- Hidden spells stay out of the ready sweep + shared-cd dedupe (else a hidden sibling can
-			-- suppress a visible one); clear the finished entry instead of popping it.
+			-- A hidden spell stays out of the sweep and dedupe, or a hidden sibling could suppress a visible one. Its entry is cleared, not popped.
 			if not blackout and not self:IsSpellVisible(spellID, entry.category) then
 				self.entries[spellID] = nil
 			else
@@ -3488,13 +3470,10 @@ function Engine:ScanSpells()
 			end
 		end
 	end
-	local massVanish = #edges > READY_MAX_POPS_PER_SCAN
+	-- Forever has Cold Snap and Preparation, which end several cooldowns in one scan by design, so it skips the backstop like the Classic scan does.
+	local massVanish = not ns.Compat.IS_FOREVER and #edges > READY_MAX_POPS_PER_SCAN
 
-	-- Shared-cooldown dedupe for ready pops: one ability tracked under two spellIDs (base +
-	-- override, or two Cooldown Viewer categories) ends both edges in this scan, popping one icon
-	-- each. Collapse siblings (same start, end within SHARED_CD_TOL) to the lowest spellID, gated
-	-- on the opt-in flag. Runs before the box routing below (a per-box check can't see the
-	-- cross-box pair); skipped under blackout/massVanish. Dropped siblings' entries are nil'd here.
+	-- One ability tracked under two spellIDs ends both edges in one scan. Collapse siblings to the lowest spellID before box routing, since a per-box check cannot see a cross-box pair.
 	if not blackout and not massVanish and #edges > 1 then
 		local addon = ns.CDM
 		local g = addon and addon.db and addon.db.profile.global
@@ -3531,21 +3510,16 @@ function Engine:ScanSpells()
 	local petGone = PetIsGone()
 	for _, spellID in ipairs(edges) do
 		if not blackout then
-			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell
-			-- discards it silently rather than popping a false ready (or learning a
-			-- partial span from a cooldown that ended only because we stopped tracking it).
+			-- Gate on trackedSpells so a spec swap that de-tracks a mid-cooldown spell drops it silently instead of popping a false ready or learning a partial span.
 			local tracked = self.trackedSpells and self.trackedSpells[spellID]
-			-- Dropping the pet is not its abilities coming off cooldown, and learning a span from
-			-- one would bank the time until it died as the cooldown's real length.
+			-- Losing the pet is not its abilities coming off cooldown, and learning a span from one would bank its lifetime as the cooldown length.
 			if tracked and petGone and tracked.category == ns.CONST.PET_CATEGORY then tracked = nil end
 			if not massVanish and tracked then
 				local e = self.entries[spellID]
-				-- Falling edge of the CHARGE_TRACK_DELAY guard: a partial charge use blips isActive for
-				-- about a GCD, and an entry that short never tracked a real cooldown.
+				-- Falling edge of the CHARGE_TRACK_DELAY guard. An entry that short was a partial-charge blip, never a real cooldown.
 				local blip = e and e._bornAt and (now - e._bornAt) < CHARGE_TRACK_DELAY
 				if not blip then
-					-- _fresh: only learn from a cooldown whose start we actually saw, so the
-					-- wall-clock span is the real length (see ObserveDuration / _seenReady).
+					-- Learn only from a cooldown whose start was seen (_fresh), so the wall-clock span is the real length.
 					if e and e._fresh and e._source == "isactive" and e.startTime then
 						self:ObserveDuration(spellID, now - e.startTime)
 					end
@@ -3565,6 +3539,9 @@ function Engine:ScanSpells()
 			self.entries[spellID] = nil
 		end
 	end
+
+	-- Last, so an aura read that throws can never cost the cooldown scan.
+	if ns.Compat.IS_FOREVER then self:ScanBuffs() end
 end
 
 
@@ -3948,6 +3925,7 @@ end
 -- A nil prev set means the first scan only seeds, so a buff already up at login is not a false gained-edge.
 function Engine:ScanCustomAuras()
 	if not next(customAuraTriggers) then return end
+	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	-- Loading screens briefly report no auras. Skip WITHOUT touching prev, so a buff that survived
 	-- the zone is not seen as a fresh gained-edge when it reappears.
 	if self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0) then return end
@@ -4127,30 +4105,25 @@ function Engine:Start(addon)
 		C_Timer.After(1.5, function()
 			self:BuildTrackedSpells()
 			self:BuildTrackedItems()
-			-- Discovery may land after the Filters tab opened; drop cached lists.
+			-- Discovery may land after the Filters tab opened, so drop cached lists.
 			if ns.Options_InvalidateFilterLists then
 				ns.Options_InvalidateFilterLists()
 			end
 		end)
 	end
 
-	-- Specs (and this event) exist on retail + MoP only; skip on spec-less Era/TBC.
+	-- Specs and this event exist only on retail and MoP, so spec-less Era and TBC skip it.
 	if ns.Compat.GetNumSpecs() and not self.specEventFrame then
 		local f = CreateFrame("Frame")
-		-- Unit-filter to "player": the unfiltered event also fires for party
-		-- members' spec changes, which would needlessly wipe learned durations.
+		-- Unit-filtered to the player, since party members' spec changes would needlessly wipe learned durations.
 		f:RegisterUnitEvent("PLAYER_SPECIALIZATION_CHANGED", "player")
 		f:SetScript("OnEvent", function(_, event)
 			if event == "PLAYER_SPECIALIZATION_CHANGED" then
 				wipe(self.knownDurations)
-				-- In-memory only (not persisted): a new spec must re-observe a spell going
-				-- ready before its span is trusted, so a shared spell mid-cooldown across the
-				-- swap isn't learned short.
+				-- In-memory only, so a new spec re-observes a spell going ready before trusting its span, and a shared spell mid-cooldown is not learned short.
 				wipe(self._seenReady)
 				wipe(self._activeSince)
-				-- Re-layer persisted + fallback durations after the wipe, else the
-				-- runtime table stays empty until /reload and everything
-				-- extrapolates from the 30s default.
+				-- Re-layer persisted and fallback durations after the wipe, or everything extrapolates from the 30s default until /reload.
 				self:LoadPersistedDurations()
 				self:BuildTrackedSpells()
 				self:BuildTrackedItems()
@@ -4162,8 +4135,7 @@ function Engine:Start(addon)
 		self.specEventFrame = f
 	end
 
-	-- Retail talent changes within a spec alter the tracked set and charge counts but fire no
-	-- PLAYER_SPECIALIZATION_CHANGED; rebuild on trait commits (debounced -- login fires a burst).
+	-- Talent changes within a spec alter the tracked set but fire no PLAYER_SPECIALIZATION_CHANGED, so rebuild on trait commits. Login fires a burst, hence the debounce.
 	if ns.Compat.HAS_BLIZZ_CDM and not self.traitFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("TRAIT_CONFIG_UPDATED")
@@ -4181,12 +4153,14 @@ function Engine:Start(addon)
 		self.traitFrame = f
 	end
 
-	-- Classic's tracked set comes from a spellbook scan, so rebuild it when the spellbook
-	-- changes (learning spells, MoP talent swaps). SPELLS_CHANGED fires in bursts, so debounce.
+	-- Classic's tracked set comes from a spellbook scan, so rebuild on SPELLS_CHANGED, debounced because it fires in bursts.
 	if not ns.Compat.HAS_BLIZZ_CDM and not self.spellsChangedFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("SPELLS_CHANGED")
-		f:SetScript("OnEvent", function()
+		if ns.Compat.IS_FOREVER then f:RegisterEvent("PLAYER_REGEN_ENABLED") end
+		f:SetScript("OnEvent", function(_, event)
+			if event == "PLAYER_REGEN_ENABLED" and not self._rebuildAfterCombat then return end
+			self._rebuildAfterCombat = nil
 			if self._spellsRebuildPending then return end
 			self._spellsRebuildPending = true
 			C_Timer.After(1, function()
@@ -4245,7 +4219,7 @@ function Engine:Start(addon)
 		self.petFrame = f
 	end
 
-	-- Classic buffs change on UNIT_AURA (not SPELL_UPDATE_COOLDOWN); rescan the player's auras on change.
+	-- Classic buffs change on UNIT_AURA, not SPELL_UPDATE_COOLDOWN.
 	if not ns.Compat.HAS_BLIZZ_CDM and not self.auraEventFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterUnitEvent("UNIT_AURA", "player")
@@ -4345,9 +4319,7 @@ function Engine:Start(addon)
 		self.spellUpdateFrame = f
 	end
 
-	-- The scan is driven off isActive (authoritative), so it needn't match the cast spellID;
-	-- OnTrackedCast uses it to re-anchor the cooldown start (best effort -- an override ID won't
-	-- match). Debounced because the cast also fires SPELL_UPDATE_COOLDOWN a few frames later.
+	-- The scan runs off isActive, so OnTrackedCast only re-anchors the start and an override ID may not match. Debounced because the cast raises SPELL_UPDATE_COOLDOWN a few frames later.
 	if not self.castSucceededFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
@@ -4379,8 +4351,7 @@ function Engine:Start(addon)
 		self.castSucceededFrame = f
 	end
 
-	-- Item cooldowns have their own event, keeping potion icons prompt under the
-	-- 1 Hz sweep. PollAllItems reads plain multi-values (~5 items), so no debounce.
+	-- Item cooldowns have their own event, which keeps potion icons prompt under the 1 Hz sweep. PollAllItems reads about 5 plain items, so no debounce.
 	if not self.bagCooldownFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("BAG_UPDATE_COOLDOWN")
@@ -4391,8 +4362,7 @@ function Engine:Start(addon)
 		self.bagCooldownFrame = f
 	end
 
-	-- Rediscover tracked items when the bags change (new/used potions) or a trinket is
-	-- swapped (slots 13/14). BAG_UPDATE_DELAYED already collapses a batch of BAG_UPDATEs.
+	-- Rediscover items when the bags change or a trinket slot (13/14) is swapped. BAG_UPDATE_DELAYED already collapses a batch of BAG_UPDATEs.
 	if not self.itemRebuildFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -4404,8 +4374,7 @@ function Engine:Start(addon)
 		self.itemRebuildFrame = f
 	end
 
-	-- PLAYER_ENTERING_WORLD also clears the flag in case LOADING_SCREEN_DISABLED is
-	-- missed, which would otherwise leave it stuck on and suppress every popup.
+	-- PLAYER_ENTERING_WORLD also clears the flag in case LOADING_SCREEN_DISABLED is missed, or it would stick on and suppress every popup.
 	if not self.loadingScreenFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("LOADING_SCREEN_ENABLED")

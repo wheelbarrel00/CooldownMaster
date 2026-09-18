@@ -459,9 +459,8 @@ function CDM:OnSlash(input)
 		end
 
 	elseif input == "anchor arm" or input:match("^anchor arm%s") then
-		if not ns.Compat.HAS_BLIZZ_CDM then
-			-- The tracer lives in the retail ScanSpells loop; Classic dispatch never reaches it,
-			-- so arming here would print the banner and then nothing, forever.
+		if not ns.Compat.HAS_BLIZZ_CDM and not ns.Compat.IS_FOREVER then
+			-- The tracer lives in the retail ScanSpells loop, so on Era, TBC and MoP arming would print the banner and nothing else.
 			self:Print("anchor trace is retail-only (Classic scans real cooldown numbers directly).")
 		elseif ns.Engine then
 			local rest = input:match("^anchor arm%s+(.-)%s*$") or ""

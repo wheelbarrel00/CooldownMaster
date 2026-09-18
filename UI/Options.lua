@@ -1916,7 +1916,9 @@ local FILTER_READYFLAG_OPTIONS = {
 local function BuildDefaultsCategoryDropdownOptions()
 	local opts = {}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
-		opts[#opts + 1] = { value = def.key, text = def.label }
+		if def.key ~= "offensives" or ns.Compat.HAS_OFFENSIVES then
+			opts[#opts + 1] = { value = def.key, text = def.label }
+		end
 	end
 	return opts
 end
@@ -2950,7 +2952,7 @@ local function BuildFiltersTab(content)
 	formArea:SetPoint("TOPLEFT",     rail, "TOPRIGHT",    12, 0)
 	formArea:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -pad, pad)
 
-	-- Rebuild recreates formArea; drop cached surfaces parented to the old one (mirrors BuildReadyTab).
+	-- Rebuild recreates formArea, so drop cached surfaces parented to the old one (mirrors BuildReadyTab).
 	wipe(filtersState.formFrames)
 	wipe(filtersState.railRows)
 
@@ -2958,7 +2960,9 @@ local function BuildFiltersTab(content)
 		{ key = "defaults", label = L["Defaults"] },
 	}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
-		railEntries[#railEntries + 1] = def
+		if def.key ~= "offensives" or ns.Compat.HAS_OFFENSIVES then
+			railEntries[#railEntries + 1] = def
+		end
 	end
 
 	local y = 0
@@ -2993,8 +2997,7 @@ local function BuildFiltersTab(content)
 		ShowFiltersSubTab(formArea, filtersState.selectedSubTab)
 	end
 
-	-- Reopening reuses the cached tab frame without re-running this builder, so a discovery that
-	-- landed while the panel was shut would leave the stale list up until a rail row was clicked.
+	-- Reopening reuses the cached tab frame without rerunning this builder, so a discovery made while the panel was shut would leave a stale list up.
 	content._reseed = function()
 		if filtersState._listsStale then filtersState._refresh() end
 	end
@@ -3055,7 +3058,7 @@ local function BuildColorsTab(content)
 	header:SetPoint("TOPLEFT", content, "TOPLEFT", pad, -pad)
 
 	local tokens = ns.Compat.IS_MOP and CLASS_TOKENS_MOP
-		or (ns.Compat.IS_RETAIL and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC)
+		or ((ns.Compat.IS_RETAIL and not ns.Compat.IS_FOREVER) and CLASS_TOKENS_RETAIL or CLASS_TOKENS_CLASSIC)
 
 	local cols = 3
 	local cellW = math.floor((Theme.PANEL.WIDTH - pad * 2 - 40) / cols)
@@ -3069,7 +3072,7 @@ local function BuildColorsTab(content)
 
 		local profile = ns.CDM.db.profile
 		if not profile.classColors[token] then
-			-- Copy, don't alias CONST.CLASS_COLORS (edits would leak into the shared default); seed alpha.
+			-- Copy, don't alias CONST.CLASS_COLORS, or edits would leak into the shared default.
 			local base = ns.CONST.CLASS_COLORS[token]
 			profile.classColors[token] = base
 				and { r = base.r, g = base.g, b = base.b, a = base.a or 1 }

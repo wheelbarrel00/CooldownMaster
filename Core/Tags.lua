@@ -54,6 +54,7 @@ local function fmtTime(sec)
 end
 
 local CLASSIC = not (ns.Compat and ns.Compat.HAS_BLIZZ_CDM)
+local PLAYER_VALUES = CLASSIC and not (ns.Compat and ns.Compat.IS_FOREVER)
 
 local TAGS = {
 	["cd.name"]         = function(e) return e and e.name or "" end,
@@ -66,13 +67,16 @@ local TAGS = {
 	["cd.count"]        = function() return tostring(activeCount()) end,
 }
 
--- Classic-only. Retail returns UnitHealth/UnitPower SECRET even out of combat (only the Max stays
--- plain), so no addon can read the value to draw it as text. [cd.time] is secret there the same way.
-if CLASSIC then
+-- UnitHealth/UnitPower read secret even out of combat on retail and Forever. Only the Max values stay plain.
+if PLAYER_VALUES then
 	TAGS["player.hp"]        = function() return tostring(UnitHealth("player") or 0) end
 	TAGS["player.hp.pct"]    = function() return tostring(pct(UnitHealth("player"), UnitHealthMax("player"))) end
 	TAGS["player.power"]     = function() return tostring(UnitPower("player") or 0) end
 	TAGS["player.power.pct"] = function() return tostring(pct(UnitPower("player"), UnitPowerMax("player"))) end
+end
+
+-- [cd.time] reads secret on retail.
+if CLASSIC then
 	TAGS["cd.time"] = function(e)
 		if not (e and e.endTime) then return "" end
 		local rem = e.endTime - GetTime()
@@ -128,7 +132,7 @@ do
 	lines[#lines + 1] = L["[cd.next] - name of the next cooldown up"]
 	lines[#lines + 1] = L["[cd.count] - how many are on cooldown"]
 	-- Bare tag tokens, no prose to translate.
-	if CLASSIC then lines[#lines + 1] = "[player.hp.pct] / [player.power.pct]" end
+	if PLAYER_VALUES then lines[#lines + 1] = "[player.hp.pct] / [player.power.pct]" end
 	lines[#lines + 1] = "[player.class] / [player.name]"
 	lines[#lines + 1] = L["[target.name] / [target.class] - blank if hidden"]
 	ns.TAG_HELP = table.concat(lines, "\n")
@@ -163,7 +167,7 @@ ns.TAG_PICKER_GLOBAL = {
 	{ L["Target Class"], "[target.class]" },
 }
 
-if CLASSIC then
+if PLAYER_VALUES then
 	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { L["My HP Percent"],    "[player.hp.pct]" }
 	ns.TAG_PICKER_GLOBAL[#ns.TAG_PICKER_GLOBAL + 1] = { L["My Power Percent"], "[player.power.pct]" }
 end

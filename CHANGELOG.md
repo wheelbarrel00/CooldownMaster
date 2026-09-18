@@ -1,5 +1,32 @@
 # Cooldown Master Changelog
 
+## 1.17.0 (2026-09-17) — A first look at WoW Forever
+
+### New Features
+
+- **Cooldown Master now runs on WoW Forever — a work in progress, so expect bugs.** Forever plays
+  by the original game's rules, but it runs on the modern client, and that client hides cooldown
+  numbers from addons in combat and blocks reading your buffs mid-fight. So on Forever, Cooldown
+  Master finds your spells the Classic way and reads their cooldowns the way it does on retail.
+  Spell cooldowns travel your lanes and fill your bars and ready boxes, in and out of combat.
+  Some things are limited there for now:
+  - **Buffs pause in combat.** A buff already on a lane keeps counting down, but one you cast
+    mid-fight appears when combat ends, and one that runs out mid-fight pops its ready box when
+    combat ends.
+  - **Offensives and the lanes' GCD and swing tracking are switched off.** They rely on the combat
+    log, or on cooldown numbers Forever hides from addons in combat.
+  - **The health and power text tags are hidden,** because Forever hides those values from addons
+    too.
+  - **Potions and trinkets have not been tested there yet.**
+
+  If something looks wrong on Forever, please report it on CurseForge or Discord.
+
+### Bug Fixes
+
+- **No more Lua errors or "blocked" warning on Forever.** Anyone who tried 1.16.0 there got a Lua
+  error in every fight, and a warning at login that Cooldown Master had been blocked from an
+  action. Both are gone.
+
 ## 1.16.0 (2026-09-13) — Lanes that wait, and ready boxes with a look of their own
 
 ### New Features

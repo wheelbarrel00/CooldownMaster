@@ -10,11 +10,17 @@ ns.Compat.IS_MOP     = (WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC)
 local _, _, _, tocversion = GetBuildInfo()
 ns.Compat.TOC_VERSION = tocversion or 0
 
+-- Forever (1.60.x) is a Vanilla ruleset on the retail engine. It reports WOW_PROJECT_MAINLINE, so IS_RETAIL is true there too.
+ns.Compat.IS_FOREVER = ns.Compat.TOC_VERSION >= 16000 and ns.Compat.TOC_VERSION < 20000
+
 -- Midnight 12.0+ (tocversion >= 120000) is where Blizzard's native Cooldown Manager exists.
 ns.Compat.HAS_BLIZZ_CDM = ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000
 
--- Retail 12.0 forbids COMBAT_LOG_EVENT_UNFILTERED. Registering it fires ADDON_ACTION_FORBIDDEN, so it cannot be probed for.
-ns.Compat.HAS_COMBAT_LOG = not (ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000)
+-- Retail 12.0 and Forever forbid COMBAT_LOG_EVENT_UNFILTERED. Registering it fires ADDON_ACTION_FORBIDDEN, so it cannot be probed for.
+ns.Compat.HAS_COMBAT_LOG = not (ns.Compat.IS_FOREVER or (ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000))
+
+-- Classic Offensives needs the combat log, and the retail path has never run on a Vanilla ruleset.
+ns.Compat.HAS_OFFENSIVES = not ns.Compat.IS_FOREVER
 
 function ns.Compat.GetSpellCooldown(spellID)
 	if C_Spell and C_Spell.GetSpellCooldown then
@@ -55,6 +61,7 @@ function ns.Compat.UseBlizzardCDM()
 end
 
 function ns.Compat.FlavorLabel()
+	if ns.Compat.IS_FOREVER then return "Forever"            end
 	if ns.Compat.IS_RETAIL  then return "Retail (Midnight)" end
 	if ns.Compat.IS_CLASSIC then return "Classic Era"        end
 	if ns.Compat.IS_TBC     then return "TBC Classic"        end

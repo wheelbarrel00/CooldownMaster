@@ -1,4 +1,4 @@
-﻿## Interface: 20506
+﻿## Interface: 16001
 ## Title: |cffEBB706Cooldown|r |cff6D0501Master|r
 ## Notes: A timeline-style lane cooldown tracker for your spells, items, and buffs.
 ## Author: Wheelbarrel00
