@@ -32,6 +32,9 @@ Engine._activeSince    = {}   -- when each spell's cooldown began (first isActiv
 Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed; used only when nothing learned
 Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began; debounces the partial-use isActive blip
 Engine.entries         = {}
+Engine._buffByName     = {}   -- Forever only: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
+Engine._buffSeenWith   = {}   -- Forever only: [buff key] = { [other key] = true }, buffs read in the same pass
+Engine._castNames      = {}   -- Forever only: [cast spellID] = name, so a per-cast GetSpellInfo table is not allocated
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
 Engine.testSpellIDs    = { 184575, 853, 633, 642 }
@@ -1006,6 +1009,19 @@ function Engine:ScanSpellsClassic()
 end
 
 
+-- Keyed by name, since a cast and the buff it applies can carry different spell ids.
+local function RememberBuff(name, key, buffSpellID, icon, duration)
+	local rec = Engine._buffByName[name]
+	if not rec then
+		rec = {}
+		Engine._buffByName[name] = rec
+	elseif rec.key == key and math.abs(rec.duration - duration) > 0.5 then
+		rec.variable = true
+	end
+	rec.key, rec.buffSpellID, rec.icon, rec.duration = key, buffSpellID, icon, duration
+end
+
+
 -- Classic buffs (Seals, Blessings) have no cooldown, so track them as auras timed by remaining duration. Category 2 is the Buffs filter/lane.
 function Engine:ScanBuffs()
 	-- Forever raises a Lua error on any aura read while auras are secret, so buff entries hold until they read again.
@@ -1027,6 +1043,7 @@ function Engine:ScanBuffs()
 					self.trackedSpells[spellID] = { name = name, icon = icon, category = 2 }
 					discovered = true
 				end
+				if ns.Compat.IS_FOREVER and name then RememberBuff(name, spellID, nil, icon, duration) end
 				if self:IsSpellVisible(spellID, 2) then
 					seen[spellID] = true
 					local e = self.entries[spellID]
@@ -1047,11 +1064,15 @@ function Engine:ScanBuffs()
 						e.startTime = expiration - duration
 						e.duration  = duration
 						e.endTime   = expiration
+						e._inferred = nil
 					end
 				end
 			else
 				-- An opted-in buff rides a synthetic key so it and the cooldown coexist as two icons.
 				local buffKey = ns.CONST.BUFF_ID_BASE + spellID
+				if ns.Compat.IS_FOREVER and name and self.trackedSpells[buffKey] then
+					RememberBuff(name, buffKey, spellID, icon, duration)
+				end
 				if self.trackedSpells[buffKey] and self:IsSpellVisible(buffKey, 2) then
 					seen[buffKey] = true
 					local e = self.entries[buffKey]
@@ -1073,8 +1094,23 @@ function Engine:ScanBuffs()
 						e.startTime = expiration - duration
 						e.duration  = duration
 						e.endTime   = expiration
+						e._inferred = nil
 					end
 				end
+			end
+		end
+	end
+
+	-- Buffs read in one pass run together, so a pair never seen together is an exclusive set like the seals.
+	if ns.Compat.IS_FOREVER then
+		for id in pairs(seen) do
+			local with = self._buffSeenWith[id]
+			if not with then
+				with = {}
+				self._buffSeenWith[id] = with
+			end
+			for other in pairs(seen) do
+				if other ~= id then with[other] = true end
 			end
 		end
 	end
@@ -1095,7 +1131,7 @@ function Engine:ScanBuffs()
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
 			-- A buff riding a cooldown spell just wore off, which is not the spell coming ready, so it leaves quietly with no ready pop.
-			if not silent and not e.buffSpellID and self:IsSpellVisible(spellID, 2)
+			if not silent and not e._inferred and not e.buffSpellID and self:IsSpellVisible(spellID, 2)
 				and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
@@ -1105,6 +1141,60 @@ function Engine:ScanBuffs()
 
 	if discovered and ns.Options_InvalidateFilterLists then
 		ns.Options_InvalidateFilterLists()
+	end
+end
+
+
+-- Forever blocks aura reads in combat, so the timing here is an estimate ScanBuffs corrects once auras read again.
+function Engine:RestartBuffFromCast(spellID)
+	if not InCombatLockdown() then return end
+	local name = self._castNames[spellID]
+	if not name then
+		-- A secret name, or the "?" returned before spell data loads, is not cached so a later cast can read the real one.
+		name = PlainOrNil((GetSpellNameIcon(spellID)))
+		if not name or name == "?" then return end
+		self._castNames[spellID] = name
+	end
+	local rec = self._buffByName[name]
+	if not rec or rec.variable then return end
+	local key = rec.key
+	-- ScanBuffs mints a synthetic key only while its opt-in stands, so a cast must not revive one the user has since unticked.
+	if rec.buffSpellID and not self.trackedSpells[key] then return end
+	if not self:IsSpellVisible(key, 2) then return end
+	local now = GetTime()
+	local e = self.entries[key]
+	if not e then
+		self.entries[key] = {
+			spellID     = key,
+			buffSpellID = rec.buffSpellID,
+			name        = name,
+			icon        = rec.icon,
+			startTime   = now,
+			duration    = rec.duration,
+			endTime     = now + rec.duration,
+			laneIndex   = self:ResolveLaneIndex(key, 2),
+			barIndex    = self:ResolveBarIndex(key, 2),
+			category    = 2,
+			_source     = "buff",
+			-- A cast proves the buff started, not that it landed on you, so an inferred entry never pops a ready box.
+			_inferred   = true,
+		}
+	elseif e._source == "buff" then
+		-- A recast of a buff already read on you keeps its confirmed standing, so it still pops when it runs out.
+		e.startTime = now
+		e.duration  = rec.duration
+		e.endTime   = now + rec.duration
+	end
+
+	-- Absence proves nothing until this buff has been read beside another one.
+	local with = self._buffSeenWith[key]
+	if not (with and next(with)) then return end
+	for id, other in pairs(self.entries) do
+		-- Exclusive buffs share a length (seals 30s, blessings 5m), which keeps a raid buff gained since the last read out of the drop.
+		if id ~= key and other._source == "buff" and self._buffSeenWith[id] and not with[id]
+			and math.abs((other.duration or 0) - rec.duration) <= 0.5 then
+			self.entries[id] = nil
+		end
 	end
 end
 
@@ -2497,6 +2587,13 @@ function Engine:RunBuffProbe()
 	local cdm = ns.CDM
 	if not (cdm and cdm.Print) then return end
 	cdm:Print(string.format("===== Player buffs ===== inCombat=%s", tostring(InCombatLockdown())))
+	if ns.Compat.IS_FOREVER then
+		local ok, err = pcall(GetPlayerBuff, 1)
+		if not ok then
+			cdm:Print("  aura read BLOCKED: " .. tostring(err))
+			return
+		end
+	end
 
 	local i, shown = 1, 0
 	while i <= 40 do
@@ -3967,6 +4064,7 @@ end
 -- On retail a buff is secret in combat, so one first gained mid-fight is invisible to ScanCustomAuras and never enters prev. Leaving combat makes it readable again, and without this the next scan reads it as a fresh gain and fires the custom late. Fold whatever is up into prev WITHOUT firing.
 function Engine:ReseedCustomAuras()
 	if not next(customAuraTriggers) then return end
+	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	local prev = self._customAuraPrev or {}
 	self._customAuraPrev = prev
 	local i = 1
@@ -4028,6 +4126,21 @@ function Engine:Tick()
 		for id, entry in pairs(self.entries) do
 			if entry._source == "custom" and entry.endTime and cnow >= entry.endTime then
 				if ns.ReadyFrames_OnReadyTransition then
+					ns.ReadyFrames_OnReadyTransition(id, entry)
+				end
+				self.entries[id] = nil
+			end
+		end
+	end
+
+	-- Forever pauses the buff scan for a whole fight, so nothing else retires a buff whose timer ran out.
+	if not cblackout and ns.Compat.IS_FOREVER and InCombatLockdown() then
+		for id, entry in pairs(self.entries) do
+			if entry._source == "buff" and entry.endTime and cnow >= entry.endTime then
+				-- Dead-ness may read secret on this engine, and a boolean test on a secret boolean throws.
+				local dead = PlainOrNil(UnitIsDeadOrGhost("player"))
+				if not entry._inferred and not entry.buffSpellID and not dead
+					and self:IsSpellVisible(id, 2) and ns.ReadyFrames_OnReadyTransition then
 					ns.ReadyFrames_OnReadyTransition(id, entry)
 				end
 				self.entries[id] = nil
@@ -4342,6 +4455,7 @@ function Engine:Start(addon)
 			-- Never index a table with a secret spellID (Midnight) - it would not match a plain-number key anyway.
 			if not secret then Engine:OnTrackedCast(spellID) end
 			if isPlayer and not p.lastSecret then Engine:FireCustomSpellTrigger(spellID) end
+			if isPlayer and not p.lastSecret and ns.Compat.IS_FOREVER then Engine:RestartBuffFromCast(spellID) end
 			if isPlayer and not p.lastSecret and not ns.Compat.HAS_COMBAT_LOG then
 				Engine:OnCastForAuras(spellID, GetTime())
 				if Engine._offLearnArmed then Engine:OnOffLearnCast(spellID) end

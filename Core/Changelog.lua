@@ -2,6 +2,23 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.18.0",
+		date = "2026-09-20",
+		sections = {
+			{ head = "New Features", items = {
+				"Recasting a buff on WoW Forever now restarts its icon right away. Forever blocks addons from reading your buffs mid-fight, so a buff you refreshed during a fight used to sit there stale until the fight was over. Cooldown Master now watches what you cast instead. Recast a buff it has already seen on you and the icon restarts at once, so a seal you refresh mid-fight shows immediately. A buff it has never read on you out of combat still waits for combat to end, so spend a moment out of combat with your buffs up and it will have them all.",
+				"Swapping one buff for another now clears the icon of the one it replaced. Cast a different seal and the old seal's icon used to keep counting down to nothing for the rest of the fight. Cooldown Master works out which of your buffs can never be up at the same time and drops the replaced one the moment you cast over it.",
+				"A buff that runs out mid-fight now pops its ready box then and there, instead of at the end of combat. An icon it started from a cast alone never pops one, because casting a buff does not prove it landed on you.",
+				"All of this is Forever only. Classic Era, Burning Crusade Classic, Mists of Pandaria Classic and retail are untouched. One limit to know about in a group: the game does not tell addons who a buff was cast on, so buffing a groupmate mid-fight can show that buff on your own lane, and can clear the icon of your own buff of the same kind, such as your own blessing. Both put themselves right when combat ends. Forever support is still a work in progress, so please keep the reports coming on CurseForge or Discord.",
+			} },
+			{ head = "Improvements", items = {
+				"Potions and trinkets are confirmed working on WoW Forever, in combat and out. They shipped there untested in 1.17.0 and behave exactly as they do everywhere else.",
+				"The Buff Bars filter tab is hidden on WoW Forever. It lists a Blizzard category that only exists on retail, so it could never fill there, and its note sent you to an Offensives tab that Forever does not have.",
+				"The offensives commands now say so on WoW Forever. Offensive tracking does not run there, but typing one of its commands still ran it. They now tell you it is not available instead.",
+			} },
+		},
+	},
+	{
 		version = "1.17.0",
 		date = "2026-09-17",
 		sections = {

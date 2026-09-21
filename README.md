@@ -308,7 +308,7 @@ Icons flagged **Pinned** never fade. They stay in the box until you reload or sw
 
 ## What gets tracked
 
-Cooldown Master sorts everything it tracks into nine categories. Each one is a sub-tab under **Options > Filters**. On WoW Forever there are eight, because Offensives is switched off and hidden there.
+Cooldown Master sorts everything it tracks into nine categories. Each one is a sub-tab under **Options > Filters**. On WoW Forever there are seven, because Offensives is switched off there, and Buff Bars lists a Blizzard category that only exists on retail.
 
 | Category | What is in it |
 | --- | --- |
@@ -322,9 +322,13 @@ Cooldown Master sorts everything it tracks into nine categories. Each one is a s
 | **Pet Spells** | Your pet's cooldowns |
 | **Custom** | Anything you define yourself |
 
-**Potions and consumables** are discovered from your bags automatically. Conjured mana gems and healthstones are recognized by ID, and your equipped on-use trinkets are picked up without any setup. Classic Era reports every consumable under one category with nothing to tell a potion from a sandwich, so there it lists them all. Food and drink carry no cooldown and never draw anything, and can be hidden from the list. Potions and trinkets have not been tested on WoW Forever yet.
+**Potions and consumables** are discovered from your bags automatically. Conjured mana gems and healthstones are recognized by ID, and your equipped on-use trinkets are picked up without any setup. Classic Era reports every consumable under one category with nothing to tell a potion from a sandwich, so there it lists them all. Food and drink carry no cooldown and never draw anything, and can be hidden from the list. Potions and trinkets work on WoW Forever too, in combat and out.
 
-**Buffs on WoW Forever** are tracked out of combat only. Forever blocks addons from reading your buffs mid-fight, so buff tracking pauses while you are in combat. A buff already on a lane keeps counting down, a buff you cast mid-fight appears when combat ends, and one that runs out mid-fight pops its ready box when combat ends.
+**Buffs on WoW Forever** are read out of combat only, because Forever blocks addons from reading your buffs mid-fight. Cooldown Master fills that gap from what you cast. A buff already on a lane keeps counting down, and recasting a buff it has already seen on you restarts that icon immediately, at the length it read, so a seal you refresh mid-fight shows at once instead of waiting for the fight to end. Casting a buff that replaces another, one seal over another, clears the replaced icon as well, worked out from which of your buffs have never been up at the same time.
+
+A buff whose timer runs out mid-fight pops its ready box at that moment, as long as Cooldown Master has read that buff on you at some point. An icon it started from a cast alone never pops one, because casting a buff does not prove it landed on you, and a buff it has never read on you out of combat still waits for combat to end. Spend a moment out of combat with your buffs up and it will have read them all.
+
+One limit to know about in a group: the game does not tell addons who a buff was cast on. So buffing a groupmate mid-fight can show that buff on your own lane, and can clear the icon of your own buff of the same kind, such as your own blessing. Both put themselves right when combat ends, and neither sets off a false ready box.
 
 **Pet Spells** reads your pet's spellbook, so Spell Lock, Axe Toss, Gnaw, Freeze and the rest travel the lanes like anything else. Your pet's basic attack and its command and stance buttons are left out, so only real cooldowns show. It is on by default for anyone with a pet bar.
 
@@ -336,7 +340,7 @@ Some abilities have a cooldown *and* give you a buff, and you want to watch both
 
 Tick **Buff** on that spell's row under **Filters > Spells** or **Filters > Utility**, where it is the last column on the list, and the buff appears as its own second icon, counting down the buff itself rather than the cooldown. It is off by default, so nothing new appears until you ask for it.
 
-On Retail, Blizzard's own category sets already surface tracked buffs, so this is not needed there. On WoW Forever the **Buff** column is offered too, and that second icon pauses in combat like the rest of your buffs there.
+On Retail, Blizzard's own category sets already surface tracked buffs, so this is not needed there. On WoW Forever the **Buff** column is offered too, and recasting the spell restarts that second icon in combat, the same as any other buff there.
 
 ### Offensives
 
@@ -545,7 +549,7 @@ The minimap button can be hidden under Options > Global if you would rather not 
 
 There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
 
-**`/cm anchor`** is a one-shot probe of the anchoring state. On Retail and WoW Forever, **`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so.
+**`/cm anchor`** is a one-shot probe of the anchoring state. On Retail and WoW Forever, **`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so. On WoW Forever every offensives command reports that Offensives is switched off there rather than running.
 
 ---
 
@@ -557,13 +561,13 @@ Cooldown Master runs on Midnight (12.1), Classic Era, Burning Crusade Classic, M
 | --- | --- | --- | --- |
 | Finding your spells | Blizzard's Cooldown Manager category sets | Spellbook scan | Spellbook scan |
 | Cooldown lengths | Learned, see above | Learned, like Retail | Read directly |
-| Buffs | Surfaced by Blizzard's category sets | Out of combat only, paused in combat | Tracked in and out of combat |
+| Buffs | Surfaced by Blizzard's category sets | Read out of combat, and a recast restarts one in combat | Tracked in and out of combat |
 | GCD and swing indicators | Not available | Not available | Available |
 | Health and resource tags | Not available | Not available | Available |
 | `[cd.time]` tag | Not available | Available | Available |
-| A cooldown's buff as a second icon | Handled by Blizzard's category sets | Tick **Buff** on the spell's row, paused in combat | Tick **Buff** on the spell's row |
+| A cooldown's buff as a second icon | Handled by Blizzard's category sets | Tick **Buff** on the spell's row, and a recast restarts it in combat | Tick **Buff** on the spell's row |
 | Offensives | Learned out of combat, `/cm offlearn` | Switched off | Detected automatically |
-| Potions and trinkets | Tracked | Not tested yet | Tracked |
+| Potions and trinkets | Tracked | Tracked | Tracked |
 | Auto-switch profile by spec | Available | Not tested yet | Mists of Pandaria Classic only, Era and TBC have no specs |
 
 **WoW Forever support is a work in progress, so expect bugs.** If something looks wrong there, please report it on the [Discord](https://discord.gg/vm8K2WfQUE) or open a [GitHub issue](https://github.com/wheelbarrel00/CooldownMaster/issues).
@@ -611,7 +615,7 @@ WoW Forever (internal name Camelot, interface `16001`) loads `CooldownMaster_Cam
 
 - **Discovery** is the Classic spellbook scan. The Retail `C_CooldownViewer` path is gated on a Midnight interface number, which Forever does not have.
 - **Reading** is the Retail `isActive` loop. `C_Spell.GetSpellCooldown`'s start and duration are secret in combat and plain out of it, exactly as on Retail, so lengths are learned out of combat, seeded from the game's base cooldown until then, and the swipe and countdown are fed a `DurationObject` through the native `Cooldown` widget.
-- **Aura reads throw.** In combat, reading a player aura raises a Lua error rather than handing back a secret, so the buff scan runs after the cooldown loop, probes under a `pcall`, and holds its existing entries until auras read again out of combat.
+- **Aura reads throw.** In combat, reading a player aura raises a Lua error rather than handing back a secret, so the buff scan runs after the cooldown loop, probes under a `pcall`, and holds its existing entries until auras read again out of combat. Because that leaves the scan blind for a whole fight, buffs are also driven off casts there. Each out-of-combat pass records every buff's name, length and icon, plus which buffs were read in the same pass, so a cast whose spell name matches a known buff restarts that entry at the recorded length, and a cast drops another entry of the same length that has never been seen beside it, which is how a replaced seal clears. An entry started from a cast is flagged as inferred and never pops a ready box, since a cast does not prove the aura landed on you. A wall-clock sweep retires a buff whose recorded end time passes in combat, and `ScanBuffs` corrects the estimated timing the moment auras read again.
 - **The combat log is off.** Registering `COMBAT_LOG_EVENT_UNFILTERED` is forbidden, as on Retail, so Offensives and the lanes' swing indicator are switched off. The GCD indicator goes with them, since it needs cooldown numbers that are secret in combat.
 - **Health and power stay secret.** `UnitHealth` and `UnitPower` read secret even out of combat, as on Retail, so the health and power tags are hidden.
 
@@ -659,7 +663,7 @@ The options panel is hand-built rather than driven by an AceConfig options table
 
 - **More tags** for the label and status line system.
 - **More languages.** All seven here are complete, and any new language is welcome. Corrections to the ones already in are just as valuable.
-- **Filling in WoW Forever.** Support there is a work in progress. Buffs pause in combat, Offensives and the GCD and swing indicators are off, and potions and trinkets are still untested, so reports from Forever players are especially welcome.
+- **Filling in WoW Forever.** Support there is a work in progress. Offensives and the GCD and swing indicators are off, the health and power tags are hidden, and a buff Cooldown Master has never read on you out of combat still waits for the fight to end, so reports from Forever players are especially welcome.
 - **More tracking indicator types** on Classic. The per-lane secondary tracking covers the GCD and your main hand swing timer today.
 - **More conditional autohide**, to hide frames on resource level or stealth state, alongside today's rules: Auto-hide Frames out of combat, the Always / In Group / In Instance visibility gate, and the per-lane Keep Shown While Running added in 1.16.0.
 

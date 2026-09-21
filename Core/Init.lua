@@ -270,8 +270,19 @@ function CDM:OnEnteringWorld()
 end
 
 
+local OFFENSIVE_COMMANDS = {
+	["off"] = true, ["offprobe"] = true, ["offlearn"] = true, ["offreset"] = true,
+	["auraprobe"] = true, ["auraapi"] = true,
+}
+
+
 function CDM:OnSlash(input)
 	input = (input or ""):trim():lower()
+
+	if not ns.Compat.HAS_OFFENSIVES and OFFENSIVE_COMMANDS[input:match("^%a+") or ""] then
+		self:Print("Offensive tracking does not run on WoW Forever, so there is nothing to probe, learn or reset.")
+		return
+	end
 
 	if input == "" or input == "config" or input == "options" then
 		if ns.Options_Toggle then ns.Options_Toggle() end
@@ -564,6 +575,23 @@ function CDM:OnSlash(input)
 				tostring(engine.baselineDurations[e.spellID]),
 				tostring(e._fresh),
 				tostring(engine._seenReady and engine._seenReady[e.spellID])))
+		end
+		if ns.Compat.IS_FOREVER then
+			for name, rec in pairs(engine._buffByName) do
+				self:Print(string.format("  cast restarts: %s -> id=%s %.1fs%s", name, tostring(rec.key),
+					rec.duration or 0, rec.variable and " (length varies, skipped)" or ""))
+			end
+			local tracked = engine.trackedSpells or {}
+			local function BuffLabel(id)
+				local t = tracked[id]
+				return string.format("%s (%s)", t and tostring(t.name) or "?", tostring(id))
+			end
+			for id, with in pairs(engine._buffSeenWith) do
+				local names = {}
+				for other in pairs(with) do names[#names + 1] = BuffLabel(other) end
+				self:Print(string.format("  seen beside: %s -> %s", BuffLabel(id),
+					#names > 0 and table.concat(names, ", ") or "nothing yet"))
+			end
 		end
 
 		-- Live charge-spell state (combat-safe fields only; currentCharges is secret). Shows

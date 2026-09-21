@@ -1913,10 +1913,18 @@ local FILTER_READYFLAG_OPTIONS = {
 	{ value = 3, text = L["Imp + Pin"] },
 }
 
+-- Buff Bars is Blizzard's own category 3, which Forever never fills, and its empty-state text sends you to an Offensives tab that is hidden there.
+local function CategoryIsOffered(key)
+	if key == "offensives" then return ns.Compat.HAS_OFFENSIVES end
+	if key == "debuffs" then return not ns.Compat.IS_FOREVER end
+	return true
+end
+
+
 local function BuildDefaultsCategoryDropdownOptions()
 	local opts = {}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
-		if def.key ~= "offensives" or ns.Compat.HAS_OFFENSIVES then
+		if CategoryIsOffered(def.key) then
 			opts[#opts + 1] = { value = def.key, text = def.label }
 		end
 	end
@@ -2960,7 +2968,7 @@ local function BuildFiltersTab(content)
 		{ key = "defaults", label = L["Defaults"] },
 	}
 	for _, def in ipairs(ns.CONST.FILTER_CATEGORIES) do
-		if def.key ~= "offensives" or ns.Compat.HAS_OFFENSIVES then
+		if CategoryIsOffered(def.key) then
 			railEntries[#railEntries + 1] = def
 		end
 	end
