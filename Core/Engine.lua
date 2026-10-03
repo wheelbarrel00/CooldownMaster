@@ -1156,8 +1156,14 @@ function Engine:RestartBuffFromCast(spellID)
 		self._castNames[spellID] = name
 	end
 	local rec = self._buffByName[name]
-	if not rec or rec.variable then return end
+	if not rec then return end
 	local key = rec.key
+	if rec.variable then
+		-- The recast length is unknown, so the old timer must not pop a ready box while the buff is still up.
+		local e = self.entries[key]
+		if e and e._source == "buff" then e._inferred = true end
+		return
+	end
 	-- ScanBuffs mints a synthetic key only while its opt-in stands, so a cast must not revive one the user has since unticked.
 	if rec.buffSpellID and not self.trackedSpells[key] then return end
 	if not self:IsSpellVisible(key, 2) then return end

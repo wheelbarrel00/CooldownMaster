@@ -2,6 +2,17 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "1.18.1",
+		date = "2026-10-03",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Cooldown Master recognizes WoW Forever again after the October 1 game update. That update changed how Forever identifies itself to addons, and Cooldown Master began treating it as a Classic client in two places. The lanes' GCD and Swing tracking options reappeared on Forever, where picking either could raise a Lua error in every fight or a warning that Cooldown Master had been blocked from an action. The color picker's opacity slider also ran backwards, so dragging it toward solid made a color more see-through. Both are fixed. If you changed a color's opacity on Forever since October 1, set it again.",
+				"A buff whose length varies no longer pops a false ready box on WoW Forever. Some buffs last a different time each cast, such as Slice and Dice, which runs longer the more combo points you spend. Cooldown Master cannot know the new length of one you recast mid-fight, so it left the icon on its old timer, and when that ran out it popped a ready box even though the buff was still up. Now the icon leaves quietly instead, and if the buff is still up when combat ends, it comes back with its real timer.",
+				"Both fixes are Forever only. Classic Era, Burning Crusade Classic, Mists of Pandaria Classic and retail are untouched.",
+			} },
+		},
+	},
+	{
 		version = "1.18.0",
 		date = "2026-09-20",
 		sections = {

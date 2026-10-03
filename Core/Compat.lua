@@ -2,7 +2,8 @@ local ADDON_NAME, ns = ...
 
 ns.Compat = {}
 
-ns.Compat.IS_RETAIL  = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
+-- Forever reports WOW_PROJECT_CAMELOT (nil on every other client) since build 70170, but it runs the retail engine.
+ns.Compat.IS_RETAIL  = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or WOW_PROJECT_ID == WOW_PROJECT_CAMELOT)
 ns.Compat.IS_CLASSIC = (WOW_PROJECT_ID == WOW_PROJECT_CLASSIC)
 ns.Compat.IS_TBC     = (WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC)
 ns.Compat.IS_MOP     = (WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC)
@@ -10,10 +11,10 @@ ns.Compat.IS_MOP     = (WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC)
 local _, _, _, tocversion = GetBuildInfo()
 ns.Compat.TOC_VERSION = tocversion or 0
 
--- Forever (1.60.x) is a Vanilla ruleset on the retail engine. It reports WOW_PROJECT_MAINLINE, so IS_RETAIL is true there too.
+-- Forever (1.60.x) is a Vanilla ruleset on the retail engine.
 ns.Compat.IS_FOREVER = ns.Compat.TOC_VERSION >= 16000 and ns.Compat.TOC_VERSION < 20000
 
--- Midnight 12.0+ (tocversion >= 120000) is where Blizzard's native Cooldown Manager exists.
+-- Blizzard's native Cooldown Manager arrived in Midnight 12.0.
 ns.Compat.HAS_BLIZZ_CDM = ns.Compat.IS_RETAIL and ns.Compat.TOC_VERSION >= 120000
 
 -- Retail 12.0 and Forever forbid COMBAT_LOG_EVENT_UNFILTERED. Registering it fires ADDON_ACTION_FORBIDDEN, so it cannot be probed for.
