@@ -1022,6 +1022,18 @@ local function RememberBuff(name, key, buffSpellID, icon, duration)
 end
 
 
+local function CastName(spellID)
+	local name = Engine._castNames[spellID]
+	if not name then
+		-- A secret name, or the "?" returned before spell data loads, is not cached so a later cast can read the real one.
+		name = PlainOrNil((GetSpellNameIcon(spellID)))
+		if not name or name == "?" then return nil end
+		Engine._castNames[spellID] = name
+	end
+	return name
+end
+
+
 -- Classic buffs (Seals, Blessings) have no cooldown, so track them as auras timed by remaining duration. Category 2 is the Buffs filter/lane.
 function Engine:ScanBuffs()
 	-- Forever raises a Lua error on any aura read while auras are secret, so buff entries hold until they read again.
@@ -1148,13 +1160,8 @@ end
 -- Forever blocks aura reads in combat, so the timing here is an estimate ScanBuffs corrects once auras read again.
 function Engine:RestartBuffFromCast(spellID)
 	if not InCombatLockdown() then return end
-	local name = self._castNames[spellID]
-	if not name then
-		-- A secret name, or the "?" returned before spell data loads, is not cached so a later cast can read the real one.
-		name = PlainOrNil((GetSpellNameIcon(spellID)))
-		if not name or name == "?" then return end
-		self._castNames[spellID] = name
-	end
+	local name = CastName(spellID)
+	if not name then return end
 	local rec = self._buffByName[name]
 	if not rec then return end
 	local key = rec.key
@@ -3257,6 +3264,20 @@ function Engine:OnTrackedCast(spellID)
 		if base and base ~= spellID and self.trackedSpells[base] then
 			spellID, tracked = base, self.trackedSpells[base]
 			p.aliasHit = p.aliasHit + 1
+		end
+	end
+	if ns.Compat.IS_FOREVER and (not tracked or tracked.category == 2)
+		and IsPlayerSpell and PlainOrNil(IsPlayerSpell(spellID)) then
+		-- Forever casts report the rank used (Holy Strike 680), not the one id per name tracked (679), and a rank's own buff can hold that id. IsPlayerSpell keeps out triggered spells that share the name.
+		local name = CastName(spellID)
+		if name then
+			for id, t in pairs(self.trackedSpells) do
+				if t.name == name and t.category ~= 2 then
+					spellID, tracked = id, t
+					p.aliasHit = p.aliasHit + 1
+					break
+				end
+			end
 		end
 	end
 	if not tracked then return end

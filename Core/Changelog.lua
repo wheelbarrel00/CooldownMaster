@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.0.1",
+		date = "2026-10-13",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"A spell you use again the moment it comes off cooldown no longer gets stuck at the ready end of its lane on WoW Forever. Holy Strike showed it most, but any spell with ranks could do it, Hammer of Justice included. Forever reports the rank you cast, while Cooldown Master had the spell listed under a different rank, so it never saw the recast. The icon sat at the ready end through the whole next cooldown, its ready box came a full cooldown late, and it stayed stuck for as long as you kept using the spell the moment it came back. It now restarts the instant you cast. This is Forever only. Classic Era, Burning Crusade Classic, Mists of Pandaria Classic and retail are untouched. Thanks to wimpby on Discord for the report.",
+			} },
+		},
+	},
+	{
 		version = "2.0.0",
 		date = "2026-10-12",
 		sections = {
