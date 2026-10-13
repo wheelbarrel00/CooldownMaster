@@ -23,6 +23,7 @@ function ns.DataBroker_Init(addon)
 					and L["Frames unlocked."] or L["Frames locked."])
 				-- No per-tick config apply repaints lane drag-labels anymore, so refresh them here.
 				ns.ForEachSurface("RefreshUnlockState", addon)
+				if ns.Settings then ns.Settings.Redraw() end
 			elseif button == "MiddleButton" then
 				addon:ToggleTestMode()
 			end

@@ -586,7 +586,7 @@ local function RefreshBarBody(index)
 			if not fed and e.startTime and e.duration then
 				item.cd:SetCooldown(e.startTime, e.duration)
 			end
-			-- Feeding the cooldown resets the count font, so re-bind it on each feed (SetCountdownFont is Retail-only).
+			-- Feeding the cooldown resets the count font, so re-bind it on each feed.
 			if item.cd.SetCountdownFont and f._timeFontName then
 				pcall(item.cd.SetCountdownFont, item.cd, f._timeFontName)
 			end

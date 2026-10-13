@@ -22,56 +22,6 @@ CDM.barFramePool = {}
 
 ns.DISCORD_URL = "https://discord.gg/vm8K2WfQUE"
 
-local urlPopup
-function ns.ShowURL(url)
-	if not url then return end
-	if not urlPopup then
-		local f = CreateFrame("Frame", "CooldownMasterURLPopup", UIParent,
-			BackdropTemplateMixin and "BackdropTemplate" or nil)
-		f:SetSize(440, 120)
-		f:SetPoint("CENTER")
-		f:SetFrameStrata("FULLSCREEN_DIALOG")
-		f:EnableMouse(true)
-		f:SetMovable(true)
-		f:RegisterForDrag("LeftButton")
-		f:SetScript("OnDragStart", f.StartMoving)
-		f:SetScript("OnDragStop", f.StopMovingOrSizing)
-		ns.Theme.ApplyBackdrop(f)
-
-		local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-		title:SetPoint("TOP", f, "TOP", 0, -12)
-		title:SetText(ns.CONST.ADDON_DISPLAY)
-		title:SetTextColor(ns.CONST.RGB.YELLOW.r, ns.CONST.RGB.YELLOW.g, ns.CONST.RGB.YELLOW.b)
-
-		local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		hint:SetPoint("TOP", title, "BOTTOM", 0, -6)
-		hint:SetText(L["Press Ctrl+C to copy, then Escape to close."])
-
-		local eb = CreateFrame("EditBox", nil, f,
-			BackdropTemplateMixin and "BackdropTemplate" or nil)
-		eb:SetSize(400, 22)
-		eb:SetPoint("TOP", hint, "BOTTOM", 0, -10)
-		eb:SetAutoFocus(false)
-		eb:SetFontObject("GameFontHighlight")
-		eb:SetTextInsets(6, 6, 2, 2)
-		ns.Theme.ApplyBackdrop(eb, { r = 0.05, g = 0.05, b = 0.05, a = 1 }, ns.CONST.RGB.PANEL_BORDER)
-		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
-		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-		f.editBox = eb
-
-		local close = ns.Theme.CreateButton(f, CLOSE, 90, 24)
-		close:SetPoint("BOTTOM", f, "BOTTOM", 0, 12)
-		close:SetScript("OnClick", function() f:Hide() end)
-
-		urlPopup = f
-	end
-	urlPopup.editBox:SetText(url)
-	urlPopup.editBox:SetCursorPosition(0)
-	urlPopup.editBox:HighlightText()
-	urlPopup.editBox:SetFocus()
-	urlPopup:Show()
-end
-
 
 function CDM:OnInitialize()
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
@@ -180,9 +130,7 @@ function CDM:ApplyProfile()
 	end
 	ns.ForEachSurface("RefreshUnlockState", self)
 	if ns.DataBroker_ApplyProfile then ns.DataBroker_ApplyProfile(self) end
-	-- Defer to next frame: ApplyProfile can run from the Active-profile dropdown's onChange, and
-	-- Options_Rebuild SetParent(nil)s that dropdown mid-callback; letting the callback unwind first
-	-- avoids tearing down a frame still on the stack. (Rebuild wipes the filter caches itself.)
+	-- A frame later, so a profile changed from inside a settings window callback redraws once that callback returns
 	if ns.Options_Rebuild then
 		C_Timer.After(0, function()
 			if ns.Options_Rebuild then ns.Options_Rebuild() end
@@ -291,16 +239,20 @@ function CDM:OnSlash(input)
 		self.db.profile.global.unlockFrames = false
 		self:Print(string.format(L["Frames %s."], ns.Colorize(ns.CONST.HEX.YELLOW, L["locked"])))
 		ns.ForEachSurface("RefreshUnlockState", self)
+		if ns.Settings then ns.Settings.Redraw() end
 
 	elseif input == "unlock" then
 		self.db.profile.global.unlockFrames = true
 		self:Print(string.format(L["Frames %s."], ns.Colorize(ns.CONST.HEX.YELLOW, L["unlocked"])))
 		ns.ForEachSurface("RefreshUnlockState", self)
+		if ns.Settings then ns.Settings.Redraw() end
 
 	elseif input == "test" then
 		self:ToggleTestMode()
 
 	elseif input == "reset" then
+		-- An open color picker's cancel would otherwise write its old color into the reset profile
+		if ns.Settings then ns.Settings.ClosePicker() end
 		self.db:ResetProfile()
 		self:Print(L["Settings reset to defaults."])
 

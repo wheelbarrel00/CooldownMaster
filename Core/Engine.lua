@@ -221,7 +221,7 @@ local function GetPlayerBuff(i)
 end
 
 
--- HARMFUL|PLAYER is what makes an aura "ours" here (sourceUnit reads secret). Name and icon are resolved from the spellID instead - a secret name throws in the Filters tab's table.sort.
+-- HARMFUL|PLAYER is what makes an aura "ours" here (sourceUnit reads secret). Name and icon are resolved from the spellID instead - a secret name throws in the Filters page's table.sort.
 local function GetTargetDebuff(i)
 	if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
 		local d = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL|PLAYER")
@@ -4084,6 +4084,8 @@ end
 
 
 function Engine:ArmAuraCapture(onCapture)
+	-- Forever's player aura read throws while auras are secret, and a capture armed without its snapshot would take a buff already up
+	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return false end
 	local snap = self._auraCaptureSnap or {}
 	self._auraCaptureSnap = snap
 	for k in pairs(snap) do snap[k] = nil end
@@ -4096,6 +4098,7 @@ function Engine:ArmAuraCapture(onCapture)
 	end
 	self._auraCaptureCb = onCapture
 	self._auraCaptureArmed = true
+	return true
 end
 
 function Engine:CancelAuraCapture()
@@ -4105,6 +4108,8 @@ end
 
 function Engine:PollAuraCapture()
 	if not self._auraCaptureArmed then return end
+	-- Forever's player aura read throws while auras are secret, so a capture armed before the pull reads nothing until it ends
+	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	local snap = self._auraCaptureSnap
 	local i = 1
 	while true do
@@ -4224,7 +4229,7 @@ function Engine:Start(addon)
 		C_Timer.After(1.5, function()
 			self:BuildTrackedSpells()
 			self:BuildTrackedItems()
-			-- Discovery may land after the Filters tab opened, so drop cached lists.
+			-- Discovery may land after the Filters page opened, so the settings window repaints its lists.
 			if ns.Options_InvalidateFilterLists then
 				ns.Options_InvalidateFilterLists()
 			end

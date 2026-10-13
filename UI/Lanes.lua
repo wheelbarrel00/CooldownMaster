@@ -1799,8 +1799,7 @@ local function RefreshBody(laneIndex)
 			btn._cdFedPath = fed and "dObj" or "numbers"
 			e._cdFedPath   = btn._cdFedPath   -- surfaced by /cdmaster debug
 
-			-- SetCountdownFont is Retail-only (Midnight); feeding the cooldown can also reset
-			-- the count font, so re-bind our live font object on each feed.
+			-- Feeding the cooldown can reset the count font, so re-bind the live font object on each feed.
 			if btn.cd.SetCountdownFont and laneFrame._countFontName then
 				btn.cd:SetCountdownFont(laneFrame._countFontName)
 			end

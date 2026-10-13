@@ -1,5 +1,59 @@
 # Cooldown Master Changelog
 
+## 2.0.0 (2026-10-12) — A new settings window
+
+### New Features
+
+- **A brand new settings window.** Cooldown Master's options now open in the same window as Everything Quests, EQ Objective Tracker and Everything Delves. A sidebar on the left holds Global, Lanes, Ready, Bars, Filters, Colors, Profiles and About, and each page is laid out in cards. Lanes, Ready and Bars open into their sections, and a switch across the top of each page picks which lane, box or bar frame you are editing. Click an open group again to fold it away. The window opens on the last page you used, per character. Every setting carries over exactly as you left it, and nothing resets.
+
+- **Unlock Frames and Test sit at the bottom of every page that changes what you see,** so you can drag a lane or run a test without leaving the page you are tuning. Test turns into Stop Test while one is running, and closing the window ends it, as before.
+
+- **Click any slider's number to type an exact value.**
+
+- **Find a cooldown in seconds.** Each category's list in Filters has a search box that narrows it as you type, and the column headings carry the explanations instead of every row. The Defaults page now shows at a glance where each category sends its cooldowns, and clicking one opens it.
+
+- **What's New now appears only for releases that bring new features.** A release with only fixes stays quiet, and the next feature release lists it too, so nothing is missed. If you have been away for several versions, it lists everything since you last looked, and a first install no longer opens it at all. The chat link option and Don't show these again work as before.
+
+### Improvements
+
+- **Settings that do nothing in your current setup are hidden, and settings a switch turns off are dimmed.** Grow Direction and Height disappear for a Spread lane, for example, In Group and In Instance dim while Always is ticked, and Raise On Mouseover dims unless tooltips are on and frames are locked.
+
+- **A lane's labels are one table** in its Text section, a row per label, with each label's position in percent or seconds to match how it is anchored.
+
+- **Bars has its own Text section** for the name and time text, which makes its other sections much shorter.
+
+- **Highlight Style offers None, Border and Flash.** Glow and Border + Flash always drew exactly what Flash draws, so they are gone from the list. If you had one picked, it keeps drawing as it always has and shows as Flash.
+
+- **Four tooltips that described their setting wrongly are corrected:** a lane's Mode, Hand Off Below, Flags and Route by Cooldown Length. Many settings that had no tooltip now have one, and the bars' time font settings no longer claim to work on retail only. They work on every client.
+
+- **Medium Up To can no longer be set below Short Up To.** Cooldown Master already treated it that way, so the slider now matches what it does.
+
+- **Copying a profile now asks first.** It used to overwrite your current profile the moment you clicked. Everything in the window that erases or overwrites settings now asks in red: Copy, Delete, Reset, Import, Set All and deleting a custom cooldown.
+
+- **Profiles is one list.** Your active profile is highlighted, and every other one has Switch, Copy and Delete beside it. New Profile, Duplicate Current, Export and Import are on the same page.
+
+- **The Colors page lists your own class first.**
+
+- **Test Mode no longer offers Buff Bars on Classic Era, Burning Crusade Classic, Mists of Pandaria Classic or WoW Forever,** where that category does not exist.
+
+- **Links open in a copy box you cannot accidentally edit,** for Discord, CurseForge, GitHub and exported profiles.
+
+- **The Options Window scale now stops at the largest size that fits your screen.**
+
+- **The About page lists EQ Objective Tracker** with the other addons.
+
+- **Escape closes the window out of combat.** In combat, use its close button.
+
+- **All seven languages are complete for this release.**
+
+### Bug Fixes
+
+- **Detect no longer raises a Lua error on WoW Forever in combat.** Forever blocks reading your buffs mid-fight, so in combat Detect now does nothing. Press it out of combat, then gain the buff.
+
+- **Detect no longer fills in a custom cooldown you have moved on from.** If you changed that cooldown to Spell cast, deleted it or switched profiles while Detect was waiting, the buff used to land on it anyway.
+
+- **/cm lock, /cm unlock and the minimap button now update an open settings window,** so the Unlock Frames tick always matches.
+
 ## 1.18.1 (2026-10-03) — WoW Forever fixes after its October update
 
 ### Bug Fixes
