@@ -6,6 +6,8 @@ local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 local WHITE8X8     = "Interface\\Buttons\\WHITE8x8"
 local BOX_FADE_DUR = 0.3
 local FILL_FLOOR   = 0.02   -- keep an isActive bar visibly non-empty while its true end is secret
+-- Bars draw no icon border, but a Classic Masque skin adopts and shows the bar's border texture, so it is hidden again once unskinned.
+local NO_BORDER    = { iconBorder = false }
 
 local function StatusbarTex(name)
 	return (LSM and LSM:Fetch("statusbar", name, true)) or WHITE8X8
@@ -607,6 +609,7 @@ local function RefreshBarBody(index)
 
 		StyleBar(item, cfg, classCol)
 		ns.StyleIcon(item, e.spellID, e.itemID, g)
+		ns.ApplyIconBorder(item, NO_BORDER)
 
 		local ov = overrides and overrides[e.spellID]
 		ApplyBarHighlight(item, cfg, ov and ov.important == true)

@@ -47,8 +47,7 @@ local function AcquireReadyIcon(f, index)
 	btn = CreateFrame("Frame", "CooldownMaster_Ready_"..f.index.."_Btn_"..index, f)
 	btn:SetSize(ICON_SIZE, ICON_SIZE)
 
-	-- Per-box icon border (off by default): a solid backing that extends a few px beyond the
-	-- icon so a clean ring shows around it; sized/colored/toggled per box via ns.ApplyIconBorder.
+	-- A solid backing a few px larger than the icon, so it must stay below the icon's ARTWORK layer.
 	btn.border = btn:CreateTexture(nil, "BACKGROUND")
 	btn.border:Hide()
 
@@ -487,7 +486,10 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 					needRelayout = true
 				else
 					visible = visible + 1
-					if restyle and g then ns.StyleIcon(btn, btn._spellID, btn._itemID, g) end
+					if restyle and g then
+						ns.StyleIcon(btn, btn._spellID, btn._itemID, g)
+						if cfg then ns.ApplyIconBorder(btn, cfg) end
+					end
 					if btn._fadeIn then
 						btn._fadeIn = btn._fadeIn - elapsed
 						if btn._fadeIn <= 0 then

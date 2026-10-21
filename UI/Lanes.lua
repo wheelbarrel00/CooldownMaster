@@ -7,14 +7,14 @@ local WHITE8X8 = "Interface\\Buttons\\WHITE8x8"
 
 -- Smallest lane fraction an isActive (retail, extrapolated) icon may sit at. Its remaining time is
 -- secret in combat, so if our extrapolation undershoots the real cooldown the icon would otherwise
--- snap to the exact ready edge with the widget still counting down; this holds it a hair short.
+-- snap to the exact ready edge with the widget still counting down. This holds it a hair short.
 local ICON_READY_FLOOR = 0.02
 
 -- Lane icons want OnEnter for the tooltip but must never take mouse-down, or hovering one
 -- swallows the right-click drag and blocks mouse-turning. EnableMouse grabs clicks too.
 local HAS_SPLIT_MOUSE = type(UIParent.SetMouseMotionEnabled) == "function"
 
--- UI units per physical pixel numerator (768/screen height); a coordinate divided by
+-- UI units per physical pixel numerator (768/screen height). A coordinate divided by
 -- (PIXEL_FACTOR / effectiveScale) is in physical pixels. Verified against Blizzard's
 -- PixelUtil.GetPixelToUIUnitFactor on a live 4K/0.5-scale setup.
 local PIXEL_FACTOR = 768 / select(2, GetPhysicalScreenSize())
@@ -70,7 +70,7 @@ pxWatch:SetScript("OnEvent", function()
 end)
 
 -- Register the built-in names so saved "CDM Smooth"/"CDM Shadow" resolve and list
--- alongside the user's LSM media; WHITE8x8 keeps the default flat look unchanged.
+-- alongside the user's LSM media. WHITE8x8 keeps the default flat look unchanged.
 -- A border edgeFile is sliced into 8 square cells, so that art must be an 8-cell strip.
 local MEDIA = [[Interface\AddOns\CooldownMaster\media\]]
 if LSM then
@@ -121,8 +121,6 @@ local function ChromeShown(addon, cfg, laneFrame)
 end
 
 
--- Alpha-toggle the chrome only; never the frame alpha or the icon children (that is what
--- keeps icons lit). Backdrop is the frame's own artwork, so alpha-zero it, don't detach.
 function ns.ApplyStatusTextStyle(anchorFrame, fs, cfg)
 	local sc = cfg.statusColor or ns.CONST.RGB.YELLOW
 	fs:SetFont(ns.ResolveFont(cfg.statusFont, cfg.statusSize, cfg.statusFlags))
@@ -141,8 +139,10 @@ function ns.ApplyStatusTextStyle(anchorFrame, fs, cfg)
 end
 
 
+-- Alpha-toggle the chrome only, never the frame alpha or the icon children (that is what
+-- keeps icons lit). Backdrop is the frame's own artwork, so alpha-zero it, don't detach.
 local function SetLaneChrome(addon, f, cfg, show)
-	-- cfg.alpha fades the bar chrome only; icons keep their own iconAlpha (the frame stays opaque).
+	-- cfg.alpha fades the bar chrome only. Icons keep their own iconAlpha (the frame stays opaque).
 	local a = cfg.alpha or 1
 	local bg = f._chromeBg
 	if bg then
@@ -180,7 +180,7 @@ local function SetLaneChrome(addon, f, cfg, show)
 			end
 		end
 	end
-	-- Tracking bars are combat-rhythm chrome, so they hide with the rest of it; the flag also
+	-- Tracking bars are combat-rhythm chrome, so they hide with the rest of it. The flag also
 	-- stops the per-frame UpdateTracking from re-showing them while chrome is hidden.
 	f._chromeHidden = not show
 	if not show then
@@ -221,11 +221,11 @@ end
 local TRACKING_ENABLED = not ns.Compat.IS_RETAIL
 
 -- 61304 is Blizzard's hidden Global Cooldown spell (canonical GCD probe on the modern
--- engine); 8921 (Moonfire, no cooldown of its own) is a fallback for older clients.
+-- engine). 8921 (Moonfire, no cooldown of its own) is a fallback for older clients.
 local GCD_SPELLS = { 61304, 8921 }
 
 local swingEnd, swingSpeed   -- main-hand swing state, player-wide
-local swingActive = false    -- any enabled lane tracking SWING; gates the combat-log work
+local swingActive = false    -- any enabled lane tracking SWING - gates the combat-log work
 
 function ns.Lanes_HandleSwingLog()
 	if not swingActive then return end
@@ -281,7 +281,7 @@ end
 local function CalcTrackingNow(which)
 	if which == "GCD" then
 		-- Prefer the spellbook probe (a spell the player actually knows, so it reflects the
-		-- GCD on every flavor); fall back to the fixed IDs that only work on newer clients.
+		-- GCD on every flavor). Fall back to the fixed IDs that only work on newer clients.
 		local probe = ns.Engine and ns.Engine.gcdProbe
 		if probe then
 			local p = gcdFraction(probe)
@@ -527,7 +527,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	f:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
 	f:SetScale(ns.GetFrameScale())
 	f:SetClampedToScreen(true)
-	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only; ApplyVisibility keeps it in sync
+	f:EnableMouse(addon.db.profile.global.unlockFrames)   -- drag-only, kept in sync by ApplyVisibility
 	f.laneIndex = index
 
 	f:SetScript("OnMouseDown", function(self, button)
@@ -643,7 +643,7 @@ function ns.Lanes_CreateLane(addon, index, cfg)
 	end)
 
 	addon.lanes[index] = f
-	addon.lanePool[index] = f   -- free-list entry; reused across profile/enable changes
+	addon.lanePool[index] = f   -- free-list entry, reused across profile/enable changes
 
 	-- Required: marker positioning lives only in ApplyConfigBody and the per-tick
 	-- refresh no longer applies config, so lanes built at login would otherwise
@@ -670,7 +670,7 @@ local function GetCountdownFormatter()
 		return nil
 	end
 	local Up = Enum.NumericRuleFormatRounding.Up
-	-- LS lacks the formatter's type def; SetBreakpoints takes the table (Skiron ships this).
+	-- LS lacks the formatter's type def. SetBreakpoints takes the table (Skiron ships this).
 	---@diagnostic disable-next-line: redundant-parameter
 	f:SetBreakpoints({
 		{ threshold = 0,  displayStyle = "secondsOnly", step = 1, rounding = Up, format = "%d" },
@@ -683,10 +683,10 @@ end
 ns.GetCountdownFormatter = GetCountdownFormatter
 
 
--- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis (maxTime);
--- LOG = same axis logarithmic (last seconds spread wide, long cooldowns compress); default =
+-- Cooldown remaining -> 0..1 position along the lane. TIMELINE = shared seconds axis (maxTime).
+-- LOG = same axis logarithmic (last seconds spread wide, long cooldowns compress). Default =
 -- each icon spans its own cooldown. Shared by the per-icon OnUpdate and the stacking pass so
--- they never drift; memo LOG's maxTime-only denominator so we don't math.log it every frame.
+-- they never drift. Memo LOG's maxTime-only denominator so we don't math.log it every frame.
 local logDenomCache = {}
 local function ModeProgress(cfg, remaining, duration)
 	local p
@@ -856,9 +856,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn = CreateFrame("Frame", nil, laneFrame)
 	btn:SetSize(iconSize, iconSize)
 
-	-- Per-lane icon border (off by default): a solid backing that extends a few px beyond the
-	-- icon so a clean ring shows around it. Below ARTWORK so the icon covers its center; sized,
-	-- colored, and toggled per lane in RefreshBody via ApplyIconBorder.
+	-- A solid backing a few px larger than the icon, so it must stay below the icon's ARTWORK layer.
 	btn.border = btn:CreateTexture(nil, "BACKGROUND")
 	btn.border:Hide()
 
@@ -876,7 +874,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 
 	-- In combat the remaining time is a secret value we cannot read (see
 	-- docs/EXPERIMENTS.md), so we feed this widget the opaque DurationObject via
-	-- SetCooldownFromDurationObject; items / test use SetCooldown.
+	-- SetCooldownFromDurationObject. Items / test use SetCooldown.
 	btn.cd = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
 	btn.cd:SetAllPoints(btn.cdAnchor)
 	btn.cd:SetDrawEdge(false)
@@ -901,7 +899,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	btn.hl:Hide()
 
 	-- Full-icon glow so the highlight fills the icon, not just its edge (the border texture
-	-- alone leaves the center empty). Additive, colored to match; the border carries the flash.
+	-- alone leaves the center empty). Additive, colored to match. The border carries the flash.
 	btn.hlFill = btn:CreateTexture(nil, "OVERLAY")
 	btn.hlFill:SetTexture(WHITE8X8)
 	btn.hlFill:SetBlendMode("ADD")
@@ -923,7 +921,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 	ns.Masque_Add("lane", btn)
 
 	btn:SetScript("OnEnter", function(self)
-		-- Raise above stack-mates so an occluded stacked icon can be hovered; only
+		-- Raise above stack-mates so an occluded stacked icon can be hovered. Only
 		-- meaningful when stacking overlaps icons, so gate it on the toggle.
 		if self._cfg and self._cfg.stackRaiseHover and self:GetParent() then
 			self._hoverRaised = true
@@ -995,7 +993,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 		local progress = ModeProgress(cfg, remaining, self._duration)
 		if self._isActive and progress < ICON_READY_FLOOR then progress = ICON_READY_FLOOR end
 
-		-- SPREAD stacking nudges icons apart along the lane axis; 0 for every other mode.
+		-- SPREAD stacking nudges icons apart along the lane axis. It is 0 for every other mode.
 		local shift = self._spreadShift or 0
 		local point, coord
 		if cfg.vertical then
@@ -1010,7 +1008,7 @@ local function AcquireIcon(laneFrame, i, iconSize)
 			if cfg.reversed then point, coord = "RIGHT", -x else point, coord = "LEFT", x end
 		end
 
-		-- Float coord, not pixel-rounded: SetPoint renders sub-pixel so the icon glides; rounding reintroduces stair-stepping.
+		-- Float coord, not pixel-rounded: SetPoint renders sub-pixel so the icon glides. Rounding reintroduces stair-stepping.
 		if self._anchPoint ~= point or self._anchCoord ~= coord or self._anchOff ~= off then
 			self._anchPoint, self._anchCoord, self._anchOff = point, coord, off
 			self:ClearAllPoints()
@@ -1116,13 +1114,13 @@ local function ApplyLaneHighlight(btn, cfg, important)
 end
 
 
--- Default icon-border trim (matches the texcoord set at creation); the zoom multiplier
+-- Default icon-border trim (matches the texcoord set at creation). The zoom multiplier
 -- scales the visible fraction relative to this baseline so zoom = 1 leaves the look unchanged.
 local ICON_BASE_VISIBLE = 1 - 0.08 * 2
 
--- Shared per-icon styling for lanes AND ready frames: configurable zoom + the "unusable"
+-- Shared per-icon styling for lanes, ready boxes and bars: configurable zoom + the "unusable"
 -- tint/desaturate. IsSpellUsable is a plain boolean (combat-safe). Cached so the usable path
--- makes no setter calls after the first frame; texcoord re-applied only when zoom changes.
+-- makes no setter calls after the first frame. The texcoord is re-applied only when zoom changes.
 function ns.StyleIcon(btn, spellID, itemID, g)
 	local tex = btn and btn.tex
 	if not (tex and g) then return end
@@ -1131,10 +1129,12 @@ function ns.StyleIcon(btn, spellID, itemID, g)
 	if not ns.Masque_IsSkinned(btn) then
 		local zoom = g.zoom or 1
 		if zoom < 1 then zoom = 1 end
-		if btn._zoom ~= zoom then
+		-- Masque's Skin_Icon drops the icon to BACKGROUND on every pass, idle icons included, so the layer is read back.
+		if btn._zoom ~= zoom or tex:GetDrawLayer() ~= "ARTWORK" then
 			btn._zoom = zoom
 			local inset = (1 - ICON_BASE_VISIBLE / zoom) * 0.5
 			tex:SetTexCoord(inset, 1 - inset, inset, 1 - inset)
+			tex:SetDrawLayer("ARTWORK", 0)
 		end
 	elseif btn._zoom then
 		-- Forget the crop we applied while the group was disabled, or re-disabling it later reads
@@ -1179,21 +1179,22 @@ end
 
 local DEFAULT_ICON_BORDER = { r = 0, g = 0, b = 0, a = 1 }
 
--- Icon border shared by lane icons and ready icons (cfg = the lane / ready-box table). Memoized
+-- Icon border shared by lane icons, ready icons and bars (cfg = the lane / ready-box table). Memoized
 -- on the enabled flag, size, and color so the refresh only re-anchors/recolors on an actual
--- change; the border is a solid backing that extends `size` px beyond the icon, showing a ring.
+-- change. The border is a solid backing that extends `size` px beyond the icon, showing a ring.
 function ns.ApplyIconBorder(btn, cfg)
 	local b = btn.border
 	if not b then return end
-	-- Handed to Masque as the Normal region, which hides it and draws the skin's ring instead.
+	-- Handed to Masque as the Normal region, so the skin owns it while the group is enabled.
 	if ns.Masque_IsSkinned(btn) then
 		-- Drop the memo for the same reason as the zoom above: retaking the border has to re-run
 		-- the full apply, not short-circuit on values it set the last time the group was disabled.
 		btn._bOn = nil
 		return
 	end
+	-- Masque re-skins idle icons too, so what it leaves on the region is read back rather than trusted to the memo.
 	if not cfg.iconBorder then
-		if btn._bOn ~= false then
+		if btn._bOn ~= false or b:IsShown() then
 			btn._bOn = false
 			b:Hide()
 		end
@@ -1203,7 +1204,8 @@ function ns.ApplyIconBorder(btn, cfg)
 	local c  = cfg.iconBorderColor or DEFAULT_ICON_BORDER
 	local a  = c.a or 1
 	if btn._bOn and btn._bSz == sz
-		and btn._bR == c.r and btn._bG == c.g and btn._bB == c.b and btn._bA == a then
+		and btn._bR == c.r and btn._bG == c.g and btn._bB == c.b and btn._bA == a
+		and b:IsShown() and b:GetAlpha() > 0 and b:GetDrawLayer() == "BACKGROUND" then
 		return
 	end
 	btn._bOn, btn._bSz = true, sz
@@ -1211,9 +1213,12 @@ function ns.ApplyIconBorder(btn, cfg)
 	b:ClearAllPoints()
 	b:SetPoint("TOPLEFT", btn, "TOPLEFT", -sz, sz)
 	b:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", sz, -sz)
-	-- Masque zeroes the region alpha when it adopts this as its Normal region, and never restores
-	-- it, so taking the border back after a group is disabled needs this or it draws invisibly.
+	-- Masque's Normal pass zeroes this region's alpha, or under a UseStates skin (Blizzard Classic)
+	-- lifts it to ARTWORK over the icon and tints it. A group disable restores none of it.
 	b:SetAlpha(1)
+	b:SetDrawLayer("BACKGROUND", 0)
+	b:SetVertexColor(1, 1, 1, 1)
+	b:SetBlendMode("BLEND")
 	b:SetColorTexture(c.r, c.g, c.b, a)
 	b:Show()
 end
@@ -1315,7 +1320,7 @@ local function ApplyConfigBody(laneIndex)
 	laneFrame._chromeBorder = (borderOn and cfg.borderColor) or nil
 
 	laneFrame:SetSize(cfg.width, cfg.height)
-	-- Don't reposition mid-drag (fights the mouse); IsMoving may be absent on
+	-- Don't reposition mid-drag (fights the mouse). IsMoving may be absent on
 	-- some frame types, so guard the call.
 	local isMoving = laneFrame.IsMoving and laneFrame:IsMoving()
 	if not isMoving then
@@ -1323,7 +1328,7 @@ local function ApplyConfigBody(laneIndex)
 		laneFrame:SetPoint(cfg.anchor, UIParent, cfg.anchor, cfg.x, cfg.y)
 	end
 	laneFrame:SetScale(ns.GetFrameScale())
-	-- Frame stays opaque so icons keep their own iconAlpha; cfg.alpha fades the bar chrome (SetLaneChrome).
+	-- Frame stays opaque so icons keep their own iconAlpha. cfg.alpha fades the bar chrome (SetLaneChrome).
 	laneFrame:SetAlpha(1)
 	ns.SnapFrameToPixelGrid(laneFrame)
 
@@ -1420,7 +1425,7 @@ local function ApplyConfigBody(laneIndex)
 	ApplyTrackingConfig(laneFrame, cfg)
 	RecomputeTrackingNeeds()
 
-	-- This path restored chrome to full; re-apply the current show/hide state.
+	-- This path restored chrome to full, so re-apply the current show/hide state.
 	local chrome = ChromeShown(addon, cfg, laneFrame)
 	SetLaneChrome(addon, laneFrame, cfg, chrome)
 	if laneFrame.dragHandle then
@@ -1482,7 +1487,7 @@ end
 
 -- Stable slot assignment: pairs() order is unspecified and shifts as entries are added/removed,
 -- reshuffling icons between pool slots and flickering their textures/swipes. Sort by startTime
--- so a fresh cooldown appends to the last slot (existing icons keep theirs); spellID breaks ties.
+-- so a fresh cooldown appends to the last slot (existing icons keep theirs). spellID breaks ties.
 local refreshScratch = {}
 -- The shared-cooldown dedupe keeps the FIRST of a group, so this order picks which potion is shown.
 local function ByStartTime(a, b)
@@ -1495,12 +1500,12 @@ local function ByStartTime(a, b)
 end
 
 -- Two entries count as one shared cooldown if they started together and end within
--- this window; the slack keeps a learned-vs-baseline duration mismatch from un-merging.
+-- this window. The slack keeps a learned-vs-baseline duration mismatch from un-merging.
 local SHARED_CD_TOL = 0.5
 
 
 -- Reused scratch for the GROUPED stacking pass (kept module-level so the per-refresh
--- pack allocates nothing). Sorted by lane position; spellID breaks ties for stability.
+-- pack allocates nothing). Sorted by lane position, with spellID breaking ties for stability.
 local stackOrder  = {}
 local stackRowEnd = {}
 local function ByStackCoord(a, b)
@@ -1528,7 +1533,7 @@ local function SetStackLevel(btn, lvl)
 end
 
 -- Stacking placement. GROUPED packs overlaps into perpendicular rows and OFFSET fans every icon
--- across stackHeight (both write _stackOff, the stable cross-axis offset); SPREAD pushes icons
+-- across stackHeight (both write _stackOff, the stable cross-axis offset). SPREAD pushes icons
 -- apart along the lane (_spreadShift). Extracted so the 60 Hz lane OnUpdate can re-run SPREAD
 -- live: its shift is relative to each icon's natural position, which the per-icon OnUpdate keeps
 -- moving, so a shift computed only at the ~10 Hz refresh makes a blocked icon drift off its slot
@@ -1578,7 +1583,7 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 	table.sort(stackOrder, ByStackCoord)
 
 	if style == "SPREAD" then
-		-- Walk nearest-ready first; nudge each less-ready icon out so it sits at least one
+		-- Walk nearest-ready first, nudging each less-ready icon out so it sits at least one
 		-- icon-width past the previous one. Keeps icons on the lane line (no row offset).
 		local placedPrev
 		for i = 1, n do
@@ -1599,7 +1604,7 @@ local function ApplyStacking(laneFrame, cfg, count, iconSize, now)
 
 	-- GROUPED and OFFSET share the cross-axis grow rules: UP/RIGHT positive, DOWN/LEFT negative,
 	-- CENTER straddles the lane line. Icons overlap once the pile exceeds stackHeight, so give each
-	-- a rising frame level by sort position (a stable layer order; last in sort draws on top).
+	-- a rising frame level by sort position (a stable layer order where the last in sort draws on top).
 	local grow    = cfg.stackGrowDirection
 	local center  = grow == "CENTER"
 	local dirSign = (grow == "DOWN" or grow == "LEFT") and -1 or 1
@@ -1652,7 +1657,7 @@ end
 
 -- SPREAD spacing must track live positions (see ApplyStacking), so the 60 Hz lane OnUpdate
 -- re-runs it: a passing icon then stays glued to its neighbor instead of drift-and-snapping
--- once per refresh. Self-gates to SPREAD lanes; no-op otherwise.
+-- once per refresh. Self-gates to SPREAD lanes and is a no-op otherwise.
 function ns.Lanes_RepackSpread(laneFrame)
 	local cfg = laneFrame.cfg
 	if not (cfg and cfg.stackEnabled and cfg.stackStyle == "SPREAD") then return end
@@ -1734,7 +1739,7 @@ local function RefreshBody(laneIndex)
 	table.sort(visible, ByStartTime)
 
 	-- Shared-cooldown dedupe for the lane render (the Engine mirrors this for ready pops). Sorted by
-	-- startTime, so spells sharing a cooldown are contiguous; drop any whose start+length
+	-- startTime, so spells sharing a cooldown are contiguous. Drop any whose start+length
 	-- matches one already kept in the same start group, leaving the lowest-spellID icon.
 	if g.detectSharedCD and #visible > 1 then
 		local w = 0
@@ -1764,8 +1769,8 @@ local function RefreshBody(laneIndex)
 	for idx = 1, count do
 		local e = visible[idx]
 		local btn = AcquireIcon(laneFrame, idx, iconSize)
-		-- Steady-state guards: these setters ran with identical values 10x/sec per icon;
-		-- the wasted layout/texture work landed on render frames and read as a travel hitch.
+		-- Steady-state guards: these setters ran with identical values 10x/sec per icon.
+		-- The wasted layout/texture work landed on render frames and read as a travel hitch.
 		if btn._iconSize ~= iconSize then
 			btn:SetSize(iconSize, iconSize)
 			btn.cdAnchor:SetSize(iconSize, iconSize)
@@ -1779,9 +1784,9 @@ local function RefreshBody(laneIndex)
 		-- reused pool slot re-feeds when it switches spells.
 		if btn._cdSpellID ~= e.spellID or btn._cdStart ~= e.startTime or btn._cdGen ~= e._feedGen then
 			btn._cdSpellID = e.spellID
-			btn._cdItemID  = e.itemID   -- nil for spells; picks SetItemByID vs SetSpellByID in the tooltip
+			btn._cdItemID  = e.itemID   -- nil for spells, picks SetItemByID vs SetSpellByID in the tooltip
 			btn._cdCustom  = (e.spellID or 0) >= ns.CONST.CUSTOM_ID_BASE
-			btn._cdBuffSpell = e.buffSpellID   -- a buff riding a cooldown spell; its real spell for the tooltip
+			btn._cdBuffSpell = e.buffSpellID   -- a buff riding a cooldown spell, its real spell for the tooltip
 			btn._cdName    = e.name
 			btn._cdStart   = e.startTime
 			btn._cdGen     = e._feedGen
@@ -1803,12 +1808,12 @@ local function RefreshBody(laneIndex)
 			if btn.cd.SetCountdownFont and laneFrame._countFontName then
 				btn.cd:SetCountdownFont(laneFrame._countFontName)
 			end
-			-- Feeding can also reset swipe color / number visibility; drop the memos so the
+			-- Feeding can also reset swipe color / number visibility. Drop the memos so the
 			-- guarded setters below re-apply on this pass.
 			btn._hideNums, btn._swipeA = nil, nil
 		end
 
-		-- The native widget owns the countdown text; this toggle only controls
+		-- The native widget owns the countdown text. This toggle only controls
 		-- whether its number is drawn. Guarded: re-running these with identical values
 		-- 10x/sec per icon put avoidable widget work on render frames.
 		local showTime = (cfg.iconText and cfg.iconText[2] and cfg.iconText[2].enabled)
@@ -1887,12 +1892,12 @@ local function RefreshBody(laneIndex)
 	end
 
 	-- Stacking declutters clustered cooldowns. GROUPED and OFFSET here at refresh cadence (~10 Hz)
-	-- is fine (their offset is on the stable cross axis); SPREAD is also re-run live at 60 Hz by the
+	-- is fine (their offset is on the stable cross axis). SPREAD is also re-run live at 60 Hz by the
 	-- lane OnUpdate so passing icons stay glued instead of drift-and-snapping (see ApplyStacking).
 	ApplyStacking(laneFrame, cfg, count, iconSize, now)
 
 	-- A slot that changed occupants (resort/re-anchor/reuse) still sits at its previous
-	-- anchor and would render one ghost frame there before its OnUpdate runs; position it
+	-- anchor and would render one ghost frame there before its OnUpdate runs, so position it
 	-- synchronously now. Runs after stacking so _stackOff/_spreadShift are current.
 	for idx = 1, count do
 		local btn = laneFrame.iconPool[idx]
@@ -1934,7 +1939,7 @@ end
 
 
 function ns.Lanes_RefreshUnlockState(addon)
-	-- Applies chrome + drag-mouse + label in one pass; only the gate (never lock) hides a lane.
+	-- Applies chrome + drag-mouse + label in one pass. Only the gate (never lock) hides a lane.
 	ApplyVisibility(addon)
 end
 

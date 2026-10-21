@@ -2,6 +2,20 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.0.2",
+		date = "2026-10-20",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Turning off a Cooldown Master group in Masque no longer leaves its icons as black squares. Masque moves an icon behind its border while it skins it, and nothing moved it back when you switched the group off, so Cooldown Master's own black icon border covered the art until a /reload. Lane icons, ready boxes and bars now come straight back the moment you turn a group off, including icons that were not on screen at the time, and bar icons no longer keep a leftover Masque ring.",
+				"Buffing a groupmate mid-fight on WoW Forever no longer shows up as your own buff. Forever blocks addons from reading your buffs in combat, so Cooldown Master follows what you cast, and until now it could not tell who a buff landed on. A blessing you put on a groupmate appeared on your own lane and could clear the icon of your own blessing until combat ended. Cooldown Master now reads who each buff was cast on. Seals and anything you cast on yourself restart at once, as before. When the buff you put on someone else shares its name with one you are wearing, or is a party-wide buff such as Arcane Brilliance or Prayer of Fortitude that may have reached you too, your own icon keeps its old timer and leaves quietly instead of popping a ready box, and comes back with its real timer if the buff is still up when combat ends.",
+				"/cm help no longer lists the offensives commands on WoW Forever, where offensive tracking does not run.",
+			} },
+			{ head = "Thanks", items = {
+				"yisisixu on GitHub - for the Filters page suggestions that shaped 2.0.0's search box, per-category defaults and Defaults overview, which went uncredited in 2.0.0's notes.",
+			} },
+		},
+	},
+	{
 		version = "2.0.1",
 		date = "2026-10-13",
 		sections = {

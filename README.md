@@ -328,7 +328,7 @@ Cooldown Master sorts everything it tracks into nine categories. Each one has it
 
 A buff whose timer runs out mid-fight pops its ready box at that moment, as long as its icon came from Cooldown Master reading the buff on you out of combat, even if you have recast it since. An icon it started from a cast alone never pops one, because casting a buff does not prove it landed on you. A buff it has not read on you out of combat this session is not restarted by a cast and still waits for combat to end. One it has read at more than one length, such as Slice and Dice, is not restarted either, since its new length is unknown. Recast it mid-fight and its icon keeps the old timer, then leaves quietly when that runs out instead of popping, and if the buff is still up when combat ends its real timer comes back. Spend a moment out of combat with your buffs up and it will have read them all.
 
-One limit to know about in a group: the game does not tell addons who a buff was cast on. So buffing a groupmate mid-fight can show that buff on your own lane, and can clear the icon of your own buff of the same kind, such as your own blessing. Both put themselves right when combat ends, and neither sets off a false ready box.
+Buffing a groupmate mid-fight leaves your own buff icons alone. Cooldown Master reads who each buff was cast on, so a blessing you put on someone else neither shows on your lanes nor clears one of yours. When that buff shares its name with one you are wearing, or is a party-wide buff such as Arcane Brilliance or Prayer of Fortitude that may have reached you too, Cooldown Master cannot tell whether yours was refreshed, so your icon is handled like Slice and Dice above: it keeps its old timer and leaves quietly instead of popping, and if the buff is still up when combat ends its real timer comes back. Recasting it on yourself in the same fight restarts it as normal.
 
 **Pet Spells** reads your pet's spellbook, so Spell Lock, Axe Toss, Gnaw, Freeze and the rest travel the lanes like anything else. Your pet's basic attack and its command and stance buttons are left out, so only real cooldowns show. It is on by default for anyone with a pet bar.
 
@@ -505,7 +505,7 @@ If you skin your icons, Cooldown Master registers **three separate groups** in M
 
 Skin or disable each independently. It is opt-in per group, so nothing changes until you pick a skin.
 
-While a group is skinned, that skin owns the icon's border and crop, so Cooldown Master's own icon border, zoom, and pulse step aside for it. Turning the group off again should bring them straight back, but there is a known bug: disabling a Cooldown Master group in Masque can leave its icons as solid black squares. Until that is fixed, type **`/reload`** after turning a group off and they come back as normal.
+While a group is skinned, that skin owns the icon's border and crop, so Cooldown Master's own icon border, zoom, and pulse step aside for it. Turning the group off again brings them straight back, no `/reload` needed.
 
 Run **`/cm masque`** if you want to check what it has detected.
 
@@ -551,7 +551,7 @@ The minimap button can be hidden under Options > Global if you would rather not 
 
 **`/cdmaster`** and **`/cooldownmaster`** work as long forms, with every subcommand above.
 
-There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
+There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and, on every flavor but WoW Forever, the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
 
 **`/cm anchor`** is a one-shot probe of the anchoring state. On Retail and WoW Forever, **`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so. On WoW Forever every offensives command reports that Offensives is switched off there rather than running.
 
@@ -667,7 +667,7 @@ The settings window is built on **EverythingUI-1.0**, the shared interface libra
 
 - **More tags** for the label and status line system.
 - **More languages.** All seven here are complete, and any new language is welcome. Corrections to the ones already in are just as valuable.
-- **Filling in WoW Forever.** Support there is a work in progress. Offensives and the GCD and swing indicators are off, the health and power tags are hidden, and a buff Cooldown Master has never read on you out of combat still waits for the fight to end, so reports from Forever players are especially welcome.
+- **Filling in WoW Forever.** Support there is a work in progress. Offensives and the GCD and swing indicators are off, the health and power tags are hidden, and a buff Cooldown Master has not read on you out of combat this session still waits for the fight to end, so reports from Forever players are especially welcome.
 - **More tracking indicator types** on Classic. The per-lane secondary tracking covers the GCD and your main hand swing timer today.
 - **More conditional autohide**, to hide frames on resource level or stealth state, alongside today's rules: Auto-hide Frames out of combat, the Always / In Group / In Instance visibility gate, and the per-lane Keep Shown While Running added in 1.16.0.
 

@@ -1157,18 +1157,27 @@ function Engine:ScanBuffs()
 end
 
 
+-- UNIT_SPELLCAST_SUCCEEDED carries no target, so Forever reads it off SENT and matches the two by castGUID.
+local sentGUID, sentTarget
+
 -- Forever blocks aura reads in combat, so the timing here is an estimate ScanBuffs corrects once auras read again.
-function Engine:RestartBuffFromCast(spellID)
+function Engine:RestartBuffFromCast(spellID, castGUID)
 	if not InCombatLockdown() then return end
 	local name = CastName(spellID)
 	if not name then return end
 	local rec = self._buffByName[name]
 	if not rec then return end
 	local key = rec.key
-	if rec.variable then
-		-- The recast length is unknown, so the old timer must not pop a ready box while the buff is still up.
+	-- SENT reads nil for a seal and the player's own name for any self-cast (probed), so only another name means it went elsewhere.
+	local me = PlainOrNil(UnitName("player"))
+	local elsewhere = me and sentTarget and sentTarget ~= "" and castGUID and castGUID == sentGUID and sentTarget ~= me
+	-- A cast aimed elsewhere may still reach you as a party-wide buff, so like an unknown recast length it must not pop the old timer.
+	if rec.variable or elsewhere then
 		local e = self.entries[key]
-		if e and e._source == "buff" then e._inferred = true end
+		if e and e._source == "buff" then
+			if elsewhere and not e._inferred then e._elsewhere = true end
+			e._inferred = true
+		end
 		return
 	end
 	-- ScanBuffs mints a synthetic key only while its opt-in stands, so a cast must not revive one the user has since unticked.
@@ -1193,10 +1202,11 @@ function Engine:RestartBuffFromCast(spellID)
 			_inferred   = true,
 		}
 	elseif e._source == "buff" then
-		-- A recast of a buff already read on you keeps its confirmed standing, so it still pops when it runs out.
+		-- A recast of a buff already read on you keeps its confirmed standing, or regains what a cast aimed elsewhere took, so it still pops.
 		e.startTime = now
 		e.duration  = rec.duration
 		e.endTime   = now + rec.duration
+		if e._elsewhere then e._elsewhere, e._inferred = nil, nil end
 	end
 
 	-- Absence proves nothing until this buff has been read beside another one.
@@ -4468,7 +4478,7 @@ function Engine:Start(addon)
 	if not self.castSucceededFrame then
 		local f = CreateFrame("Frame")
 		f:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-		f:SetScript("OnEvent", function(_, _, unit, _, spellID)
+		f:SetScript("OnEvent", function(_, _, unit, castGUID, spellID)
 			-- Pet abilities are tracked spells too, but their casts arrive on the "pet" unit.
 			local isPlayer = unit == "player"
 			if not isPlayer and unit ~= "pet" then return end
@@ -4487,7 +4497,7 @@ function Engine:Start(addon)
 			-- Never index a table with a secret spellID (Midnight) - it would not match a plain-number key anyway.
 			if not secret then Engine:OnTrackedCast(spellID) end
 			if isPlayer and not p.lastSecret then Engine:FireCustomSpellTrigger(spellID) end
-			if isPlayer and not p.lastSecret and ns.Compat.IS_FOREVER then Engine:RestartBuffFromCast(spellID) end
+			if isPlayer and not p.lastSecret and ns.Compat.IS_FOREVER then Engine:RestartBuffFromCast(spellID, PlainOrNil(castGUID)) end
 			if isPlayer and not p.lastSecret and not ns.Compat.HAS_COMBAT_LOG then
 				Engine:OnCastForAuras(spellID, GetTime())
 				if Engine._offLearnArmed then Engine:OnOffLearnCast(spellID) end
@@ -4495,6 +4505,15 @@ function Engine:Start(addon)
 			ScheduleDeferredScan()
 		end)
 		self.castSucceededFrame = f
+	end
+
+	if ns.Compat.IS_FOREVER and not self.castSentFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
+		f:SetScript("OnEvent", function(_, _, _, target, castGUID)
+			sentGUID, sentTarget = PlainOrNil(castGUID), PlainOrNil(target)
+		end)
+		self.castSentFrame = f
 	end
 
 	-- Item cooldowns have their own event, which keeps potion icons prompt under the 1 Hz sweep. PollAllItems reads about 5 plain items, so no debounce.

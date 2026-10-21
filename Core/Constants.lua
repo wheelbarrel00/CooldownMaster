@@ -5,7 +5,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "2.0.1",
+	VERSION          = "2.0.2",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 
@@ -13,20 +13,14 @@ ns.CONST = {
 	SV_KEY           = "CooldownMasterDB",
 
 	HEX = {
-		RED          = "6D0501",
 		YELLOW       = "EBB706",
-		WHITE        = "FFFFFF",
-		GREY         = "888888",
 	},
 
 	RGB = {
 		RED          = { r = 0.4275, g = 0.0196, b = 0.0039, a = 1 },
-		RED_DIM      = { r = 0.2500, g = 0.0150, b = 0.0030, a = 1 },
-		RED_HOVER    = { r = 0.5500, g = 0.0500, b = 0.0200, a = 1 },
 		YELLOW       = { r = 0.9216, g = 0.7176, b = 0.0235, a = 1 },
 		PANEL_BG     = { r = 0.0500, g = 0.0500, b = 0.0500, a = 0.95 },
 		PANEL_BORDER = { r = 0.4275, g = 0.0196, b = 0.0039, a = 1 },
-		BODY_TEXT    = { r = 1.0000, g = 1.0000, b = 1.0000, a = 1 },
 	},
 
 	CLASS_COLORS = {

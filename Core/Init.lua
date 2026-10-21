@@ -565,7 +565,8 @@ function CDM:OnSlash(input)
 		end
 
 	else
-		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe | offprobe | off | offlearn | auraprobe | auraapi | offreset | tagprobe | masque | items | bagscan | itemcd <id> | buffs | anchor [arm [secs] [spell]] | cdv | spells | haste | tracking")
+		local offensives = ns.Compat.HAS_OFFENSIVES and " | offprobe | off | offlearn | auraprobe | auraapi | offreset" or ""
+		self:Print("Commands: /cm (or /cdmaster) | lock | unlock | test | reset | version | whatsnew | debug | api | curvetest | seedtest | petprobe" .. offensives .. " | tagprobe | masque | items | bagscan | itemcd <id> | buffs | anchor [arm [secs] [spell]] | cdv | spells | haste | tracking")
 	end
 end
 
