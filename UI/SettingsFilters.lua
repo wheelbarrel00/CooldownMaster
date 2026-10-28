@@ -919,7 +919,7 @@ local function buildCustom(self, content)
 			if duration and duration > 0 then d.durationMs = math.floor(duration * 1000 + 0.5) end
 			rebuildCustom()
 		end)
-		-- Refused (Forever in combat), a capture already waiting for another cooldown keeps its own timer
+		-- Refused (in combat on the retail engine), a capture already waiting for another cooldown keeps its own timer
 		if not armed then
 			sync()
 			return

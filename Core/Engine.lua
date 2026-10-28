@@ -35,6 +35,7 @@ Engine.entries         = {}
 Engine._buffByName     = {}   -- Forever only: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
 Engine._buffSeenWith   = {}   -- Forever only: [buff key] = { [other key] = true }, buffs read in the same pass
 Engine._castNames      = {}   -- Forever only: [cast spellID] = name, so a per-cast GetSpellInfo table is not allocated
+Engine._cooldownByName = {}   -- Classic and Forever: [spell name] = the id a cooldown spell is tracked under, rebuilt with trackedSpells
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
 Engine.testSpellIDs    = { 184575, 853, 633, 642 }
@@ -845,7 +846,7 @@ function Engine:BuildTrackedSpellsClassic()
 		local name, icon = GetSpellNameIcon(spellID)
 		-- MoP ships per-spec spell variants under one name (Soul Reaper x3); dedupe by name.
 		if not name or seenNames[name] then return end
-		seenNames[name] = true
+		seenNames[name] = spellID
 		local cat = ns.CONST.CLASSIC_UTILITY_SPELLS[spellID] and 1 or 0
 		self.trackedSpells[spellID] = { name = name, icon = icon, category = cat }
 	end
@@ -871,6 +872,7 @@ function Engine:BuildTrackedSpellsClassic()
 			end
 		end
 	end
+	self._cooldownByName = seenNames
 
 	self:AddTrackedPetSpells()
 	self:ApplyBuffTracking()
@@ -952,7 +954,9 @@ function Engine:ScanSpellsClassic()
 	local now = GetTime()
 
 	for spellID, tracked in pairs(self.trackedSpells) do
-		local start, duration = getCD(spellID)
+		local start, duration
+		-- A category-2 key is a buff ScanBuffs owns. A higher rank's own cooldown must not write onto its entry.
+		if tracked.category ~= 2 then start, duration = getCD(spellID) end
 		-- A real cooldown, not the shared 1.5s GCD every spell reports while one is running.
 		if start and duration and start > 0 and duration > 1.5 then
 			seen[spellID] = true
@@ -1015,10 +1019,25 @@ local function RememberBuff(name, key, buffSpellID, icon, duration)
 	if not rec then
 		rec = {}
 		Engine._buffByName[name] = rec
-	elseif rec.key == key and math.abs(rec.duration - duration) > 0.5 then
+	-- Every rank of an opted-in buff shares one key, so only the same rank read at a new length makes it variable.
+	elseif rec.key == key and rec.buffSpellID == buffSpellID and math.abs(rec.duration - duration) > 0.5 then
 		rec.variable = true
 	end
 	rec.key, rec.buffSpellID, rec.icon, rec.duration = key, buffSpellID, icon, duration
+end
+
+
+-- A higher rank's buff carries its own id, so the cooldown spell it rides is found by name.
+local function RiddenSpell(name, buffID)
+	local id = name and Engine._cooldownByName[name]
+	local src = id and id ~= buffID and Engine.trackedSpells[id]
+	return src and src.category ~= 2 and id or nil
+end
+
+-- A higher rank's buff ending is not its spell coming ready while that spell still cools down or its Buff column is ticked.
+local function RankBuffEndsQuietly(e, key)
+	local ridden = RiddenSpell(e.name, key)
+	return ridden ~= nil and (Engine.entries[ridden] ~= nil or Engine.trackedSpells[ns.CONST.BUFF_ID_BASE + ridden] ~= nil)
 end
 
 
@@ -1050,6 +1069,14 @@ function Engine:ScanBuffs()
 		if spellID and duration and duration > 0 and expiration and expiration > now
 			and IsPlayerSpell and IsPlayerSpell(spellID) then
 			local tracked = self.trackedSpells[spellID]
+			local ownerID = spellID
+			if not (tracked and tracked.category ~= 2) then
+				local ridden = RiddenSpell(name, spellID)
+				-- An opted-in higher rank's buff rides the tracked rank's key, so the choices made for that key apply to every rank.
+				if ridden and self.trackedSpells[ns.CONST.BUFF_ID_BASE + ridden] then
+					tracked, ownerID = self.trackedSpells[ridden], ridden
+				end
+			end
 			if not tracked or tracked.category == 2 then
 				if not tracked then
 					self.trackedSpells[spellID] = { name = name, icon = icon, category = 2 }
@@ -1081,7 +1108,7 @@ function Engine:ScanBuffs()
 				end
 			else
 				-- An opted-in buff rides a synthetic key so it and the cooldown coexist as two icons.
-				local buffKey = ns.CONST.BUFF_ID_BASE + spellID
+				local buffKey = ns.CONST.BUFF_ID_BASE + ownerID
 				if ns.Compat.IS_FOREVER and name and self.trackedSpells[buffKey] then
 					RememberBuff(name, buffKey, spellID, icon, duration)
 				end
@@ -1143,7 +1170,8 @@ function Engine:ScanBuffs()
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
 			-- A buff riding a cooldown spell just wore off, which is not the spell coming ready, so it leaves quietly with no ready pop.
-			if not silent and not e._inferred and not e.buffSpellID and self:IsSpellVisible(spellID, 2)
+			if not silent and not e._inferred and not e.buffSpellID and not RankBuffEndsQuietly(e, spellID)
+				and self:IsSpellVisible(spellID, 2)
 				and ns.ReadyFrames_OnReadyTransition then
 				ns.ReadyFrames_OnReadyTransition(spellID, e)
 			end
@@ -2610,7 +2638,7 @@ function Engine:RunBuffProbe()
 	local cdm = ns.CDM
 	if not (cdm and cdm.Print) then return end
 	cdm:Print(string.format("===== Player buffs ===== inCombat=%s", tostring(InCombatLockdown())))
-	if ns.Compat.IS_FOREVER then
+	if ns.Compat.IS_RETAIL or ns.Compat.IS_FOREVER then
 		local ok, err = pcall(GetPlayerBuff, 1)
 		if not ok then
 			cdm:Print("  aura read BLOCKED: " .. tostring(err))
@@ -4059,7 +4087,7 @@ end
 -- A nil prev set means the first scan only seeds, so a buff already up at login is not a false gained-edge.
 function Engine:ScanCustomAuras()
 	if not next(customAuraTriggers) then return end
-	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
+	if (ns.Compat.IS_RETAIL or ns.Compat.IS_FOREVER) and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	-- Loading screens briefly report no auras. Skip WITHOUT touching prev, so a buff that survived
 	-- the zone is not seen as a fresh gained-edge when it reappears.
 	if self._loadingScreen or GetTime() < (self._readyBlackoutUntil or 0) then return end
@@ -4073,7 +4101,6 @@ function Engine:ScanCustomAuras()
 	while true do
 		local present, _, spellID = GetPlayerBuff(i)
 		if not present then break end
-		-- In combat the player's own buffs read secret, so a present-but-unreadable buff must not clear prev as though it fell off.
 		if spellID then
 			local defs = customAuraTriggers[spellID]
 			if defs then
@@ -4098,10 +4125,10 @@ function Engine:ScanCustomAuras()
 end
 
 
--- On retail a buff is secret in combat, so one first gained mid-fight is invisible to ScanCustomAuras and never enters prev. Leaving combat makes it readable again, and without this the next scan reads it as a fresh gain and fires the custom late. Fold whatever is up into prev WITHOUT firing.
+-- ScanCustomAuras skips combat on the retail engine, so a buff gained mid-fight never enters prev. Fold what is up into prev without firing, or the next scan fires the custom late.
 function Engine:ReseedCustomAuras()
 	if not next(customAuraTriggers) then return end
-	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
+	if (ns.Compat.IS_RETAIL or ns.Compat.IS_FOREVER) and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	local prev = self._customAuraPrev or {}
 	self._customAuraPrev = prev
 	local i = 1
@@ -4115,8 +4142,8 @@ end
 
 
 function Engine:ArmAuraCapture(onCapture)
-	-- Forever's player aura read throws while auras are secret, and a capture armed without its snapshot would take a buff already up
-	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return false end
+	-- The retail engine's player aura read throws while auras are secret, and a capture armed without its snapshot would take a buff already up
+	if (ns.Compat.IS_RETAIL or ns.Compat.IS_FOREVER) and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return false end
 	local snap = self._auraCaptureSnap or {}
 	self._auraCaptureSnap = snap
 	for k in pairs(snap) do snap[k] = nil end
@@ -4139,8 +4166,8 @@ end
 
 function Engine:PollAuraCapture()
 	if not self._auraCaptureArmed then return end
-	-- Forever's player aura read throws while auras are secret, so a capture armed before the pull reads nothing until it ends
-	if ns.Compat.IS_FOREVER and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
+	-- The retail engine's player aura read throws while auras are secret, so a capture armed before the pull reads nothing until it ends
+	if (ns.Compat.IS_RETAIL or ns.Compat.IS_FOREVER) and (InCombatLockdown() or not pcall(GetPlayerBuff, 1)) then return end
 	local snap = self._auraCaptureSnap
 	local i = 1
 	while true do
@@ -4181,7 +4208,7 @@ function Engine:Tick()
 			if entry._source == "buff" and entry.endTime and cnow >= entry.endTime then
 				-- Dead-ness may read secret on this engine, and a boolean test on a secret boolean throws.
 				local dead = PlainOrNil(UnitIsDeadOrGhost("player"))
-				if not entry._inferred and not entry.buffSpellID and not dead
+				if not entry._inferred and not entry.buffSpellID and not RankBuffEndsQuietly(entry, id) and not dead
 					and self:IsSpellVisible(id, 2) and ns.ReadyFrames_OnReadyTransition then
 					ns.ReadyFrames_OnReadyTransition(id, entry)
 				end

@@ -1,5 +1,19 @@
 # Cooldown Master Changelog
 
+## 2.0.3 (2026-10-27) — Ranked spell and retail combat fixes
+
+### Bug Fixes
+
+- **A spell with ranks no longer shows its cooldown twice on Classic Era and Burning Crusade Classic.** After you cast rank 2 or higher of a spell that puts a buff on you and has a cooldown, such as Divine Protection, Divine Shield, Blessing of Protection or Sprint, a second copy of its cooldown appeared once the buff wore off: a second bar, a second lane icon and a second ready icon. Cooldown Master lists a spell under its first rank, so it took the higher rank's buff for a separate spell and then read the shared cooldown for it too. The buff still shows while it is up, and the cooldown now shows once.
+
+- **A higher rank's buff no longer pops a ready icon while its spell is still on cooldown.** Casting Divine Protection rank 2, for example, popped a "Divine Protection" ready icon the moment its buff wore off, with nearly 5 minutes of cooldown left. A buff that outlasts its cooldown, such as Ice Barrier, still pops when it ends, since the spell really is ready by then.
+
+- **Ticking the Buff column on a spell with ranks now works at every rank, the same as at rank 1.** It only ever matched rank 1's buff, so from rank 2 up the buff ignored the lane, ready box and bar you chose for it, and Filters > Buffs listed the spell twice.
+
+- **Aura gained custom cooldowns no longer raise a Lua error in every fight on retail.** Since patch 12.1 the game raises an error when an addon reads your buffs during combat, where it used to hand back hidden values. With an Aura gained custom cooldown set up, that error came up again and again through every fight. Cooldown Master now reads your buffs only once combat ends, as it already did on WoW Forever. An Aura gained custom still cannot fire mid-fight on retail, because the game keeps your buffs hidden until combat ends. `/cm buffs` in combat now says the read was blocked instead of raising an error.
+
+- **Pressing Detect on a custom cooldown during a fight on retail no longer raises a Lua error or fills in a buff you already had.** Detect now does nothing until combat ends, as on WoW Forever, so press it after the fight.
+
 ## 2.0.2 (2026-10-20) — Masque and WoW Forever fixes
 
 ### Bug Fixes
