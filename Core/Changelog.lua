@@ -2,6 +2,19 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.0.4",
+		date = "2026-10-28",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Test Mode no longer shows your real buffs on Classic Era, Burning Crusade Classic, Mists of Pandaria Classic and WoW Forever. Whenever your buffs changed during a test, for example when you recast a seal, your real buff icons came back among the sample ones, and a buff that wore off during the test popped a real ready icon. A test now shows only its samples, and your buffs come back the moment it ends.",
+				"Test Mode no longer shows debuffs you put on your target. With Offensives turned on, a debuff you cast on your target during a test on Classic Era, Burning Crusade Classic or Mists of Pandaria Classic appeared among the sample icons and stayed there after it wore off, until the test ended. On retail, a test started mid-fight could pick one up when combat ended. A debuff still on your target when the test ends shows again right away.",
+			} },
+			{ head = "Improvements", items = {
+				"Marked compatible with retail patch 12.1.7. The retail load file now lists the 12.1.7 interface version, so Cooldown Master does not show as out of date on that patch.",
+			} },
+		},
+	},
+	{
 		version = "2.0.3",
 		date = "2026-10-27",
 		sections = {

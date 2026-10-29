@@ -280,7 +280,7 @@ end
 -- debounce it the same way (hoisted body + one pending flag) instead of scanning per fire.
 local function DeferredBuffPoll()
 	Engine._buffScanPending = nil
-	Engine:ScanBuffs()
+	if not Engine.testActive then Engine:ScanBuffs() end
 end
 
 local function ScheduleBuffScan()
@@ -1292,6 +1292,8 @@ end
 
 
 function Engine:SyncOffensiveEntry(spellID, rec)
+	-- Gated here and not at the combat-log handler, so its records stay current through the demo and StopTestMode rebuilds the right dots.
+	if self.testActive then return end
 	local cat = ns.CONST.OFFENSIVE_CATEGORY
 	local e = self.entries[spellID]
 	if e and e._source ~= "offensive" then return end   -- a cooldown owns this key outright
