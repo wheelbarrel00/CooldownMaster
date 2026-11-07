@@ -1,5 +1,19 @@
 # Cooldown Master Changelog
 
+## 2.0.5 (2026-11-07) — WoW Forever cooldown flash fix
+
+### Bug Fixes
+
+- **A seal cast or a wand shot no longer flashes every ready spell onto your bars on WoW Forever.** Now and then a seal cast, and almost every wand shot, put every cooldown that was already ready onto your bars and lanes for a moment. When the flash lasted long enough, as it usually did with a wand, each of those spells also popped a ready icon. The game does not always mark the global cooldown as the global cooldown, so for a moment every ready spell looked like it had just started a cooldown. Cooldown Master now waits until a spell you did not just cast has stayed on cooldown for longer than a global cooldown before it shows it. A spell you cast still shows the moment you cast it. A cooldown that starts without you casting that spell, such as one started by a shared cooldown, appears about two seconds later than before.
+
+### Improvements
+
+- **Updated the retail interface versions to 12.1.5 and 12.1.7.** The retail `.toc` no longer lists the retired 12.1.0.
+
+### Thanks
+
+- **mmfw13** on CurseForge — for reporting the wand shots on WoW Forever.
+
 ## 2.0.4 (2026-10-28) — Test Mode fixes
 
 ### Bug Fixes

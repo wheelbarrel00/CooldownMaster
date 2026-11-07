@@ -35,6 +35,7 @@ Engine.entries         = {}
 Engine._buffByName     = {}   -- Forever only: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
 Engine._buffSeenWith   = {}   -- Forever only: [buff key] = { [other key] = true }, buffs read in the same pass
 Engine._castNames      = {}   -- Forever only: [cast spellID] = name, so a per-cast GetSpellInfo table is not allocated
+Engine._trackedCastAt  = {}   -- Forever only: [tracked spellID] = GetTime of its last cast. Not _castAt, which OnCastForAuras owns
 Engine._cooldownByName = {}   -- Classic and Forever: [spell name] = the id a cooldown spell is tracked under, rebuilt with trackedSpells
 Engine.cooldownViewerFound = false
 Engine.testActive      = false
@@ -3214,6 +3215,9 @@ local CHARGE_TRACK_DELAY = 1.6
 -- window: outside it the flip cannot be GCD masking, so a wrong duration can never park an entry.
 local GCD_MASK_HOLD = 1.6
 
+-- Forever only, just past the 1.5s GCD. Blizzard documents isOnGCD as reliable only inside SPELL_UPDATE_COOLDOWN, so a spell not just cast must stay active this long before it gets an entry.
+local LOCKOUT_WINDOW = 1.6
+
 function Engine:LearnDuration(spellID, dObj)
 	if not dObj then return end
 	if InCombatLockdown() then return end
@@ -3323,12 +3327,10 @@ function Engine:OnTrackedCast(spellID)
 	if not tracked then return end
 	p.matched = p.matched + 1
 	local now = GetTime()
+	if ns.Compat.IS_FOREVER then self._trackedCastAt[spellID] = now end
 	local e = self.entries[spellID]
 	if tracked.hasCharges then
-		-- A depleted charge spell can't be cast at 0 charges, so a cast landing while its
-		-- entry is live proves a charge just recharged and was spell-queue-consumed before
-		-- any scan saw isActive drop. Without this the entry extrapolates from a start many
-		-- casts old and parks at the ready edge; restart the next-charge wait from this cast.
+		-- A charge spell cannot be cast at 0 charges, so a cast while its entry is live means a charge recharged unseen. Restart the recharge from this cast.
 		if e and e._source == "isactive" then
 			self._activeSince[spellID] = now
 			e.startTime = now
@@ -3507,6 +3509,14 @@ function Engine:ScanSpells()
 			end
 		end
 
+		if ns.Compat.IS_FOREVER and active and not multiCharge and not self.entries[spellID] then
+			local castAt = self._trackedCastAt[spellID]
+			local castBorn = castAt ~= nil and now - castAt <= LOCKOUT_WINDOW
+			if not castBorn and now - (self._activeSince[spellID] or now) < LOCKOUT_WINDOW then
+				active = false
+			end
+		end
+
 		-- Hold through the GCD-masked tail (GCD_MASK_HOLD), but only on a duration learned out of combat. A baseline or the 30s default would park the entry past the real cooldown.
 		local gcdHeld = false
 		---@diagnostic disable-next-line: undefined-field
@@ -3595,7 +3605,8 @@ function Engine:ScanSpells()
 					dObj      = dObj,
 					-- Trust the span for learning only if we saw this spell ready first.
 					_fresh    = self._seenReady[spellID] or false,
-					_bornAt   = now,
+					-- On Forever the blip check counts from _activeSince, so the LOCKOUT_WINDOW wait is not counted twice.
+					_bornAt   = (ns.Compat.IS_FOREVER and not multiCharge) and (self._activeSince[spellID] or now) or now,
 					_source   = "isactive",
 				}
 				if self:Tracing(spellID) then
@@ -3678,11 +3689,13 @@ function Engine:ScanSpells()
 			local tracked = self.trackedSpells and self.trackedSpells[spellID]
 			-- Losing the pet is not its abilities coming off cooldown, and learning a span from one would bank its lifetime as the cooldown length.
 			if tracked and petGone and tracked.category == ns.CONST.PET_CATEGORY then tracked = nil end
+			local popped = false
 			if not massVanish and tracked then
 				local e = self.entries[spellID]
 				-- Falling edge of the CHARGE_TRACK_DELAY guard. An entry that short was a partial-charge blip, never a real cooldown.
 				local blip = e and e._bornAt and (now - e._bornAt) < CHARGE_TRACK_DELAY
 				if not blip then
+					popped = true
 					-- Learn only from a cooldown whose start was seen (_fresh), so the wall-clock span is the real length.
 					if e and e._fresh and e._source == "isactive" and e.startTime then
 						self:ObserveDuration(spellID, now - e.startTime)
@@ -3696,7 +3709,7 @@ function Engine:ScanSpells()
 				-- age well short of dur on a G state = the cooldown was masked by the GCD, not finished.
 				local e = self.entries[spellID]
 				ns.CDM:Print(string.format("[trace] %s ENTRY REMOVED (ready edge, popped=%s) age=%s dur=%s",
-					tostring(spellID), tostring(not massVanish),
+					tostring(spellID), tostring(popped),
 					e and string.format("%.1f", now - (e.startTime or now)) or "-",
 					e and string.format("%.1f", e.duration or 0) or "-"))
 			end

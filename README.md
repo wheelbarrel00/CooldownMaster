@@ -1,6 +1,6 @@
 # Cooldown Master
 
-[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![Languages](https://img.shields.io/badge/Languages-EN_FR_DE_RU_KO_ZHCN_ZHTW-6D0501?style=flat-square) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.1-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![WoW Forever](https://img.shields.io/badge/WoW-Forever1.60-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120007%20%7C%20120100%20%7C%20120105-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
+[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/wheelbarrel00) [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal)](https://www.paypal.biz/wheelbarrel00) [![Join our Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/vm8K2WfQUE) [![Version](https://img.shields.io/github/v/release/wheelbarrel00/CooldownMaster?color=6D0501&label=Version&style=flat-square)](https://github.com/wheelbarrel00/CooldownMaster/releases) ![Languages](https://img.shields.io/badge/Languages-EN_FR_DE_RU_KO_ZHCN_ZHTW-6D0501?style=flat-square) ![WoW Midnight](https://img.shields.io/badge/WoW-Midnight12.1-8B0000?style=flat-square) ![WoW Classic Era](https://img.shields.io/badge/WoW-ClassicEra1.15-8B0000?style=flat-square) ![WoW TBC](https://img.shields.io/badge/WoW-BurningCrusade2.5-8B0000?style=flat-square) ![WoW MoP](https://img.shields.io/badge/WoW-MoP5.5-8B0000?style=flat-square) ![WoW Forever](https://img.shields.io/badge/WoW-Forever1.60-8B0000?style=flat-square) ![Interface](https://img.shields.io/badge/Interface-120105%20%7C%20120107-333333?style=flat-square) [![License](https://img.shields.io/github/license/wheelbarrel00/CooldownMaster?style=flat-square&color=333333)](https://github.com/wheelbarrel00/CooldownMaster/blob/main/LICENSE)
 
 **A timeline-style cooldown tracker for World of Warcraft. Your spells, items, potions, and trinkets glide along lanes toward a ready edge, with depleting bars and pop-up alerts the moment they come up. The visual companion to Blizzard's built-in Cooldown Manager. Install it and it just works. Your cooldowns show up automatically, in your own language, with deep customization there if you want it.**
 
@@ -199,7 +199,7 @@ Masque skins draw their own icon, so the pulse steps aside while a skin is activ
 
 When cooldowns bunch up near the ready edge they can cover each other. Stacking keeps them readable.
 
-**Enabled** turns stacking on for this lane. It is off by default, so nothing below takes effect until you tick it.
+**Enabled** turns stacking on for this lane. It is off by default, so nothing below takes effect until you tick it, apart from Raise On Mouseover, which works on any lane.
 
 | Stack Style | What it does |
 | --- | --- |
@@ -276,9 +276,9 @@ These two settings, both under **Bars > a bar frame > General**, let a bar frame
 
 **It takes two settings, not one.** Hand Off Below decides when the *bar* lets go. What decides when the *lane* picks up is that lane's own **Max Time** and **Hide Long Timers**, over under Lanes. So set Hand Off Below to the lane's Max Time, and make sure that lane has Hide Long Timers ticked. With both in place a ten minute cooldown sits on the bar until it reaches two minutes, then leaves the bar for the lane. It enters at the far end on Timeline, Logarithmic and Split, and a fifth of the way from the ready edge on Linear, where it spans its whole ten minutes. With Hide Long Timers off, the lane draws that cooldown the entire time instead — clamped to the far end of the lane on any Mode but Linear, because it cannot travel a distance it does not fit in — and the hand-off looks like it did nothing.
 
-**Tick it on the frame your cooldowns actually go to.** Both settings belong to one bar frame, and what decides which frame a cooldown lands on is **Default Bar** in the category's Defaults card under **Filters**, or the **Bar** column on an individual spell's row. Everything ships routed to Bars 1, so ticking the box on Bars 2 does nothing until you send something there as well. If you want a dedicated frame for your long cooldowns, enable it under Bars and then point a category or a few spells at it.
+**Tick it on the frame your cooldowns actually go to.** Both settings belong to one bar frame, and what decides which frame a cooldown lands on is **Default Bar** in the category's Defaults card under **Filters**, or the **Bar** column on an individual spell's row. Everything ships routed to Bars 1, and Bars 2 and 3 start switched off, so ticking the box on Bars 2 does nothing until you enable that frame and send something there as well. If you want a dedicated frame for your long cooldowns, enable it under Bars and then point a category or a few spells at it.
 
-**How they work together.** The lane has to be able to show the cooldown it is handed, and what decides that is the category's **Ignore Threshold**, not the bar's setting — so for anything longer than that threshold, raise it first or the cooldown will simply leave the bar and go nowhere. Mind the gap in the other direction too: a hand-off higher than the receiving lane's **Max Time** leaves a stretch where neither surface draws the cooldown, so keep the two numbers equal unless you mean otherwise. The Hand Off Below slider moves in steps of 5, but you can click its number and type any value, so set the two exactly equal. If they differ, keep the hand-off below the lane's Max Time rather than above it — overshooting the lane is what opens the gap.
+**How they work together.** The lane has to be able to show the cooldown it is handed, and what decides that is the category's **Ignore Threshold**, not the bar's setting — so for anything longer than that threshold, raise it first or the cooldown will simply leave the bar and go nowhere. Mind the gap in the other direction too: a hand-off higher than the receiving lane's **Max Time** leaves a stretch where neither surface draws the cooldown, so keep the two numbers equal unless you mean otherwise. The Hand Off Below slider moves in steps of 5, and a number you type snaps to the nearest step too, so give the lane a Max Time that is a multiple of 5 and set the two equal. The default Max Time, 120, already is. If they differ, keep the hand-off below the lane's Max Time rather than above it — overshooting the lane is what opens the gap.
 
 **A few things worth knowing.** Hand Off Below applies to *everything* on that frame, not only to long cooldowns, so a frame that also carries your buffs will drop those at the same mark. A bar showing hour-long cooldowns holds those places in its list for the whole hour, so raise **Max Bars** or give them a frame of their own. And a long cooldown that only a bar can see stays out of your ready boxes, so it finishes quietly rather than popping an icon an hour after you cast it.
 
@@ -314,7 +314,7 @@ Cooldown Master sorts everything it tracks into nine categories. Each one has it
 | --- | --- |
 | **Spells** | Your main ability cooldowns |
 | **Utility** | Utility and movement abilities on Retail. On Classic and WoW Forever nearly everything is sorted under Spells |
-| **Buffs** | Buffs you have on you |
+| **Buffs** | Timed buffs on you from spells you know, on Classic and WoW Forever. On Retail, the buffs Blizzard's category sets track |
 | **Buff Bars** | Buff-style entries from Blizzard's own category set (Retail) |
 | **Potions** | Potions, flasks, and elixirs found in your bags |
 | **Trinkets** | Equipped on-use trinkets |
@@ -322,7 +322,7 @@ Cooldown Master sorts everything it tracks into nine categories. Each one has it
 | **Pet Spells** | Your pet's cooldowns |
 | **Custom** | Anything you define yourself |
 
-**Potions and consumables** are discovered from your bags automatically. Conjured mana gems and healthstones are recognized by ID, and your equipped on-use trinkets are picked up without any setup. Classic Era reports every consumable under one category with nothing to tell a potion from a sandwich, so there it lists them all. Food and drink carry no cooldown and never draw anything, and can be hidden from the list. Potions and trinkets work on WoW Forever too, in combat and out.
+**Potions and consumables** are discovered from your bags automatically. Conjured mana gems and healthstones are recognized by ID, and your equipped on-use trinkets are picked up without any setup. Classic Era reports every consumable under one category with nothing to tell a potion from a sandwich, so there it lists them all. Food and drink carry no cooldown, so they never draw anything, though their rows stay in the list. Potions and trinkets work on WoW Forever too, in combat and out.
 
 **Buffs on WoW Forever** are read out of combat only, because Forever blocks addons from reading your buffs mid-fight. Cooldown Master fills that gap from what you cast. A buff already on a lane keeps counting down, and recasting a buff it has already seen on you restarts that icon immediately, at the length it read, so a seal you refresh mid-fight shows at once instead of waiting for the fight to end. Casting a buff that replaces another, one seal over another, clears the replaced icon as well, worked out from which of your buffs have never been up at the same time and last the same length.
 
@@ -434,6 +434,8 @@ Each custom cooldown has a tick box in the list to switch it on or off, and **Ed
 
 On Retail and WoW Forever the game hides your buffs from addons while you are in combat, so an Aura gained trigger cannot see a buff you gain mid-fight and its timer will not start. Prefer Spell cast for anything you cast or use.
 
+A Spell cast trigger fires only for the exact ID you enter. Where a spell has ranks, use the ID of the rank you cast, and update it when you train a new one.
+
 Custom cooldowns run on a purely local timer, so they work for anything the cooldown API does not expose. They flow through the same lanes, bars, and ready boxes as everything else, with the same routing and highlight options.
 
 ---
@@ -448,7 +450,7 @@ Text is built from tags in square brackets, mixed with any plain text you like.
 
 **Status tags** describe your overall state: `[cd.next]`, `[cd.count]`, `[player.class]`, `[player.name]`, `[target.name]`, `[target.class]`, plus `[player.hp.pct]` and `[player.power.pct]` on Classic, with `[player.hp]` and `[player.power]` for the raw numbers. Those last two are not among the tag buttons, so type them by hand.
 
-Nobody wants to memorize tag syntax, so every text field has a row of **tag buttons** under it that insert a tag with a click. It only ever offers the tags that are valid in that spot, and only the ones your game version can actually draw. Templates built from static tags alone resolve once instead of every frame.
+Nobody wants to memorize tag syntax, so every text field has a row of **tag buttons** under it that insert a tag with a click. It only ever offers the tags that are valid in that spot, and only the ones your game version can actually draw. An icon label or a ready box's status line built from static tags alone resolves once instead of every frame.
 
 Health and resource tags are Classic only, because Midnight protects those values from addons even out of combat, and WoW Forever, which runs on the same modern client, hides them too. `[cd.time]` is not offered on Retail for the same reason, and the icon's native countdown draws it there instead. Forever still offers `[cd.time]`, and for a spell there it counts down Cooldown Master's own learned timing, the same one that places the icon, so the icon's native countdown is the exact one.
 
@@ -471,7 +473,7 @@ Settings apply live as you drag the sliders, and the samples obey your real filt
 
 ## Appearance and media
 
-One in-game settings window controls the whole look. It is the same window Everything Quests, EQ Objective Tracker and Everything Delves use: a sidebar of pages on the left, cards on the right, and **Unlock Frames** and **Test** at the bottom of every page that changes what you see. Click any slider's number to type an exact value. Escape closes the window out of combat.
+One in-game settings window controls the whole look. It is the same window Everything Quests, EQ Objective Tracker and Everything Delves use: a sidebar of pages on the left, cards on the right, and **Unlock Frames** and **Test** at the bottom of every page that changes what you see. Click any slider's number to type a value, which snaps to that slider's step. Escape closes the window out of combat.
 
 **Fonts** are picked from a list that **previews each font in the font itself**, so you can see what you are choosing before you commit.
 
@@ -481,7 +483,7 @@ One in-game settings window controls the whole look. It is the same window Every
 
 **Two scale sliders** under Options > Global: one resizes every cooldown frame together while keeping each anchored where you put it, and the other resizes the settings window itself from half size up to double, or as large as fits your screen.
 
-**Auto-hide Frames** hides each lane's background, border, name, and markers out of combat, while your tracked cooldown icons stay visible. The chrome returns in combat. Visibility rules are tickboxes for **Always**, **In Group**, and **In Instance**, and any one of them ticked will show your **lanes** — they gate lanes only, so ready boxes and bars are not affected.
+**Auto-hide Frames** hides each lane's background, border, name, and markers out of combat, while your tracked cooldown icons stay visible. The chrome returns in combat. It also lets an empty ready box or bar frame fade away rather than sit there. Visibility rules are tickboxes for **Always**, **In Group**, and **In Instance**, and any one of them ticked will show your **lanes** — they gate lanes only, so ready boxes and bars are not affected.
 
 Both auto-hide opt-outs live under **Lanes > a lane > General > Auto-hide**. **Override Autohide** keeps that lane's chrome always shown. **Keep Shown While Running**, off by default, is the softer version: with Auto-hide Frames on, the lane keeps its chrome out of combat for as long as a cooldown is still traveling on it, then hides it again once the lane empties. Override Autohide wins over it, and it is ignored while Unlock Frames is on.
 
@@ -503,9 +505,9 @@ If you skin your icons, Cooldown Master registers **three separate groups** in M
 - **Ready Icons**
 - **Bar Icons**
 
-Skin or disable each independently. It is opt-in per group, so nothing changes until you pick a skin.
+Masque applies its default skin to all three groups as soon as it is installed. Pick a different skin for each, or disable a group, in Masque's own options.
 
-While a group is skinned, that skin owns the icon's border and crop, so Cooldown Master's own icon border, zoom, and pulse step aside for it. Turning the group off again brings them straight back, no `/reload` needed.
+While a group is enabled, its skin owns the icon's border and crop, so Cooldown Master's own icon border, zoom, and pulse step aside for it. Disable the group in Masque and they come straight back, no `/reload` needed.
 
 Run **`/cm masque`** if you want to check what it has detected.
 
@@ -517,7 +519,7 @@ Run **`/cm masque`** if you want to check what it has detected.
 
 **Auto-switch by Specialization** maps a profile to each spec and switches for you when you change spec. Retail and Mists of Pandaria Classic only, since Classic Era and Burning Crusade Classic have no specs, so the section is not drawn there. On WoW Forever the section is drawn, but it lists a single row named after your class, because Forever's original rules have no specs, so there is never a spec change for it to switch on.
 
-**Import and Export** turn any profile into a copy-paste string, so you can share a setup or carry it to another character.
+**Export** turns your current profile into a copy-paste string, and **Import** pastes one over your current profile, so you can share a setup or carry it to another character.
 
 ---
 
@@ -551,7 +553,7 @@ The minimap button can be hidden under Options > Global if you would rather not 
 
 **`/cdmaster`** and **`/cooldownmaster`** work as long forms, with every subcommand above.
 
-There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking`, `cdv`, `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and, on every flavor but WoW Forever, the offensives probes (`off`, `offprobe`, `offlearn`, `offreset`, `auraprobe`, `auraapi`). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
+There is a set of diagnostic subcommands too, for troubleshooting or filing a good bug report: `debug`, `api`, `spells`, `haste`, `tracking` (Classic only), `cdv` (Retail only), `seedtest`, `curvetest`, `items`, `bagscan`, `itemcd <id>`, `buffs`, `petprobe`, `tagprobe`, `anchor`, `masque`, and, on every flavor but WoW Forever, the offensives probes (`off`, `offprobe`, `offreset`, `auraprobe`, `auraapi`, plus `offlearn` on Retail only). A few have aliases: `config` and `options` for bare `/cm`, `news` for `whatsnew`, `curveprobe` for `curvetest`, and `pettest` for `petprobe`.
 
 **`/cm anchor`** is a one-shot probe of the anchoring state. On Retail and WoW Forever, **`/cm anchor arm 30 <spell>`** traces one spell's live cooldown state for 30 seconds, which is the quickest way to show what the engine is actually seeing when reporting a timing bug. **`/cm off arm [seconds]`** does the same for the offensives binder on Retail, showing why each dot was learned or refused. Classic reads its dots straight off the combat log, so it has no binder to trace and the command says so. On WoW Forever every offensives command reports that Offensives is switched off there rather than running.
 
@@ -618,8 +620,8 @@ Instance-id collections go the same way. `removedAuraInstanceIDs` measures as a 
 WoW Forever (internal name Camelot, interface `16001`) loads `CooldownMaster_Camelot.toc`. It plays by the original game's rules, but it is the Midnight client underneath, secret values included. Since build 70170 it reports its own `WOW_PROJECT_CAMELOT` (earlier builds reported `WOW_PROJECT_MAINLINE`), and `IS_RETAIL` in `Core/Compat.lua` accepts either, since the engine is Retail's. `IS_FOREVER` tells it apart from Retail by interface number, and Cooldown Master runs a hybrid of its two pipelines there:
 
 - **Discovery** is the Classic spellbook scan. The Retail `C_CooldownViewer` path is gated on a Midnight interface number, which Forever does not have.
-- **Reading** is the Retail `isActive` loop. `C_Spell.GetSpellCooldown`'s start and duration are secret in combat and plain out of it, exactly as on Retail, so lengths are learned out of combat, seeded from the game's base cooldown until then, and the swipe and countdown are fed a `DurationObject` through the native `Cooldown` widget.
-- **Aura reads throw.** In combat, reading a player aura raises a Lua error rather than handing back a secret, so the buff scan runs after the cooldown loop, probes under a `pcall`, and holds its existing entries until auras read again out of combat. Because that leaves the scan blind for a whole fight, buffs are also driven off casts there. Each out-of-combat pass records every buff's name, length and icon, plus which buffs were read in the same pass. A cast whose spell name matches a known buff restarts that entry at the recorded length, unless that buff has been read at more than one length, in which case its existing entry is flagged as inferred so its old timer cannot pop a ready box, and the cast does nothing more. Otherwise, once the cast buff has been read beside at least one other, the cast also drops any entry of the same length that has never been seen beside it, which is how a replaced seal clears. An entry started from a cast is flagged as inferred and never pops a ready box, since a cast does not prove the aura landed on you. A wall-clock sweep retires a buff whose recorded end time passes in combat, and `ScanBuffs` corrects the estimated timing the moment auras read again.
+- **Reading** is the Retail `isActive` loop. `C_Spell.GetSpellCooldown`'s start and duration are secret in combat and plain out of it, exactly as on Retail, so lengths are learned out of combat, seeded from the game's base cooldown until then, and the swipe and countdown are fed a `DurationObject` through the native `Cooldown` widget. Blizzard documents `isOnGCD` as reliable only while handling `SPELL_UPDATE_COOLDOWN`, and a misread makes every ready spell look like it is cooling down for one global cooldown, so a spell you did not just cast has to stay on cooldown for at least 1.6 seconds before it gets an icon.
+- **Aura reads throw.** In combat, reading a player aura raises a Lua error rather than handing back a secret, so the buff scan runs after the cooldown loop, probes under a `pcall`, and holds its existing entries until auras read again out of combat. Because that leaves the scan blind for a whole fight, buffs are also driven off casts there. Each out-of-combat pass records every buff's name, length and icon, plus which buffs were read in the same pass. A cast whose spell name matches a known buff restarts that entry at the recorded length, unless that buff has been read at more than one length, or the cast went to another player's name (read from `UNIT_SPELLCAST_SENT` and matched by cast GUID). Either way its existing entry is flagged as inferred so its old timer cannot pop a ready box, and the cast does nothing more. Otherwise, once the cast buff has been read beside at least one other, the cast also drops any entry of the same length that has never been seen beside it, which is how a replaced seal clears. An entry started from a cast is flagged as inferred and never pops a ready box, since a cast does not prove the aura landed on you. A wall-clock sweep retires a buff whose recorded end time passes in combat, and `ScanBuffs` corrects the estimated timing the moment auras read again.
 - **The combat log is off.** Registering `COMBAT_LOG_EVENT_UNFILTERED` is forbidden, as on Retail, so Offensives and the lanes' swing indicator are switched off. The GCD indicator goes with them, since it needs cooldown numbers that are secret in combat.
 - **Health and power stay secret.** `UnitHealth` and `UnitPower` read secret even out of combat, as on Retail, so the health and power tags are hidden.
 
@@ -645,7 +647,7 @@ Clone it straight into your AddOns folder and `/reload`. Every embedded library 
 git clone https://github.com/wheelbarrel00/CooldownMaster.git
 ```
 
-Drop the `CooldownMaster/` folder into `World of Warcraft/_retail_/Interface/AddOns/` (or the `_classic_era_`, `_anniversary_`, or `_classic_` equivalent, and `_classic_beta_` for WoW Forever). The same folder serves every flavor, and the right `.toc` loads itself:
+Drop the `CooldownMaster/` folder into `World of Warcraft/_retail_/Interface/AddOns/` (or the `_classic_era_`, `_anniversary_`, or `_classic_` equivalent, and `_forever_` for WoW Forever). The same folder serves every flavor, and the right `.toc` loads itself:
 
 | File | Flavor |
 | --- | --- |
