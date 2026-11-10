@@ -3215,7 +3215,7 @@ local CHARGE_TRACK_DELAY = 1.6
 -- window: outside it the flip cannot be GCD masking, so a wrong duration can never park an entry.
 local GCD_MASK_HOLD = 1.6
 
--- Forever only, just past the 1.5s GCD. Blizzard documents isOnGCD as reliable only inside SPELL_UPDATE_COOLDOWN, so a spell not just cast must stay active this long before it gets an entry.
+-- Forever only, just past the 1.5s GCD. Blizzard documents isOnGCD as reliable only inside SPELL_UPDATE_COOLDOWN, so a spell not just cast must read active this long without a break before it gets an entry.
 local LOCKOUT_WINDOW = 1.6
 
 function Engine:LearnDuration(spellID, dObj)
@@ -4199,6 +4199,22 @@ function Engine:PollAuraCapture()
 end
 
 
+-- A wand shot makes every ready spell read active for 1.0s. The shot's own scan lands inside that read and the 1 Hz sweep hits the gap before the next shot too rarely, so a ready or GCD read is caught here per tick to restart the LOCKOUT_WINDOW wait.
+function Engine:DropBrokenWaits()
+	local now = GetTime()
+	for spellID in pairs(self._activeSince) do
+		local tracked = self.trackedSpells[spellID]
+		local castAt = self._trackedCastAt[spellID]
+		if tracked and tracked.category ~= 2 and not tracked.multiCharge and not self.entries[spellID]
+			and not (castAt and now - castAt <= LOCKOUT_WINDOW) then
+			local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+			if ok and info and (not info.isActive or info.isOnGCD) then
+				self._activeSince[spellID] = nil
+			end
+		end
+	end
+end
+
 function Engine:Tick()
 	self._tickCount = self._tickCount + 1
 
@@ -4231,6 +4247,9 @@ function Engine:Tick()
 			end
 		end
 	end
+
+	-- Kept ahead of the Test Mode branch. No scan runs during a test, so a wait begun before it could complete at StopTestMode's rescan.
+	if ns.Compat.IS_FOREVER then self:DropBrokenWaits() end
 
 	if self.testActive then
 		local now = GetTime()

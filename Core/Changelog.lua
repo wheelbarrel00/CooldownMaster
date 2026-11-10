@@ -2,6 +2,24 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.0.6",
+		date = "2026-11-09",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"Shooting a wand on WoW Forever no longer pops a ready icon for every spell that was already ready. 2.0.5 fixed this for seal casts, but not for wands. While you kept shooting, spells such as Fade, Psychic Scream, Power Word: Shield and your racials still flashed onto your bars and lanes together, again and again, and each one popped a ready icon. After every wand shot the game reports each ready spell as cooling down for about a second. Cooldown Master waits for a spell you did not just cast to stay on cooldown for longer than a global cooldown, but it rarely looked during the short ready moment between two shots, so a steady stream of shots looked like one long cooldown on every ready spell. It now looks about every tenth of a second, and that ready moment, or a global cooldown, starts the wait over. That covers weaving an instant spell such as Shadow Word: Pain between shots too. A spell you cast still shows the moment you cast it.",
+				"Turning Test Mode on and off while you shoot a wand on WoW Forever no longer pops every ready spell. Cooldown Master does not read your cooldowns during a test, so a ready spell that looked like it was cooling down when the test started was still waiting when the test ended, and the read at the end took it for a real cooldown. Cooldown Master now keeps watching for that ready moment during a test.",
+			} },
+			{ head = "Known Issues", items = {
+				"A cooldown that comes ready while you shoot a wand on WoW Forever can pop up to a few seconds late. If a spell's cooldown, such as Mind Blast's, runs out while you keep shooting, its ready icon can appear a few seconds after the spell is really ready, because that second-long reading after every shot hides the moment the cooldown ends. Earlier versions do the same. I know the cause, and the fix is coming in the next update.",
+				"Those late ready icons can teach Cooldown Master too long a cooldown on WoW Forever. Cooldown Master learns how long a cooldown lasts by watching it, so a late ready icon makes a spell's cooldown look longer than it is, and its lane icon can then run a little long. This is fixed in the next update too.",
+			} },
+			{ head = "Thanks", items = {
+				"TheBigBadGRIM on CurseForge - for reporting that wand shots still popped every ready spell on WoW Forever in 2.0.5.",
+				"coderhyme on CurseForge - for confirming it on 2.0.5, and for a detailed write-up that pinned down the late ready icons.",
+			} },
+		},
+	},
+	{
 		version = "2.0.5",
 		date = "2026-11-07",
 		sections = {
