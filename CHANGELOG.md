@@ -1,5 +1,17 @@
 # Cooldown Master Changelog
 
+## 2.1.0 (2026-11-10) — A settings window that moves out of the way, and the wand fixes I promised
+
+### New Features
+
+- **The settings window can now hang partly off your screen, and it opens where you left it.** Drag it by its title bar past the left, right or bottom edge of your screen, so it stops covering the lane, bar or ready box you are setting up. Part of its title bar always stays on screen, so you can always drag it back. It keeps its place after a `/reload` and on every character on your account, and switching or importing a profile never moves it. Thanks to aisenfaire on CurseForge for asking.
+
+### Bug Fixes
+
+- **A cooldown that comes ready while you shoot a wand on WoW Forever no longer pops a few seconds late.** This is the first of the two known issues listed in 2.0.6. The game sends nothing when a cooldown runs out, so Cooldown Master caught that moment with a check once a second, and while you kept shooting, that check only now and then landed in the short ready moment between two shots. Now a cooldown that has reached its expected end is checked about every tenth of a second, and its ready icon pops the moment the game reports it ready. The game still holds that report back until the current shot's second-long reading ends, so a cooldown that runs out mid-shot can still pop up to about a second late. A cooldown your talents shorten can still pop late until Cooldown Master has seen it running out of combat once, which teaches it the exact length, and so can one that was already running when you logged in or reloaded.
+
+- **Late ready icons no longer teach Cooldown Master a cooldown longer than the game's own on WoW Forever.** This is the second one. Cooldown Master learns how long a cooldown lasts by timing it, so a late ready icon made a spell's cooldown look longer than it is, and its lane icon then ran long. On Forever a cooldown never lasts longer than the game's own length for that spell, because talents there only shorten cooldowns, so a longer timing is now cut back to that length. A too-long length learned before this update is read the same way, so there is nothing to reset. If you route cooldowns by length or set an Ignore Threshold right at a spell's length, a spell whose learned length ran long now goes by the game's own length for it.
+
 ## 2.0.6 (2026-11-09) — WoW Forever wand fix
 
 ### Bug Fixes

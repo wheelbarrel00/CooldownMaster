@@ -16,6 +16,11 @@ local function globalSettings()
 	return ns.CDM and ns.CDM.db and ns.CDM.db.profile.global
 end
 
+-- Account-wide, so a profile switch or an imported profile never moves the window
+local function accountDB()
+	return ns.CDM and ns.CDM.db and ns.CDM.db.global
+end
+
 local ui = EUI:NewContext({
 	id         = "CDM",
 	title      = ns.CONST.ADDON_DISPLAY,
@@ -37,6 +42,17 @@ local ui = EUI:NewContext({
 	setLastTab     = function(id) local c = charDB() if c then c.lastOptionsTab = id end end,
 	getWindowScale = function() local g = globalSettings() return g and g.optionsScale end,
 	setWindowScale = function(v) local g = globalSettings() if g then g.optionsScale = v end end,
+	getWindowPosition = function()
+		local a = accountDB()
+		local p = a and a.settingsPos
+		if p then return p.x, p.y end
+	end,
+	setWindowPosition = function(x, y)
+		local a = accountDB()
+		if not a then return end
+		a.settingsPos = a.settingsPos or {}
+		a.settingsPos.x, a.settingsPos.y = x, y
+	end,
 })
 Settings.ui = ui
 

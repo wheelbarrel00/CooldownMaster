@@ -26,10 +26,10 @@ Engine._offLearnInsts  = {}   -- [auraInstanceID] = true, instances captured dur
 Engine._reanchorAt     = {}   -- [spellID] = last re-anchor GetTime, debounces a proc/Divine-Toll recast burst that would otherwise freeze a dot at the lane start
 Engine.cdIDToSpellID   = {}
 Engine.knownDurations  = {}   -- learned out of combat / persisted; talent-adjusted, overrides baseline
-Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime; below known, above baseline
+Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime. Below a trusted known and above baseline, and capped by LateSpanCap on Forever
 Engine._seenReady      = {}   -- spellIDs seen off their own cooldown this session; gates trusting an observed span
 Engine._activeSince    = {}   -- when each spell's cooldown began (first isActive, during GCD) = its real start
-Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed; used only when nothing learned
+Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed. Read when nothing is learned, and on Forever it caps an observed span that has no known
 Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began; debounces the partial-use isActive blip
 Engine.entries         = {}
 Engine._buffByName     = {}   -- Forever only: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
@@ -578,9 +578,7 @@ function Engine:EnsureCurves()
 end
 
 
--- GetSpellBaseCooldown returns the BASE cooldown in milliseconds (no
--- haste/talent). Lookup precedence: learned/persisted > hardcoded fallback >
--- this seed > 30s default.
+-- GetSpellBaseCooldown is the untalented length in milliseconds. It ranks below a learned or hardcoded length and above the 30s default, and on Forever it also caps an observed span when the spell has no known.
 
 -- Runs inside pcall so a comparison against a secret value (were the detector
 -- ever unavailable) fails closed instead of erroring up the stack.
@@ -604,7 +602,8 @@ function Engine:SeedBaselineDurations()
 	self._seedAPIPresent = true
 
 	for spellID in pairs(self.trackedSpells) do
-		if not self.knownDurations[spellID]
+		-- Forever seeds every spell, since a profile switch reloads the known lengths without a rebuild and its late-span cap needs a length to fall back on.
+		if (ns.Compat.IS_FOREVER or not self.knownDurations[spellID])
 			and not self.baselineDurations[spellID] then
 			local ok, secs = pcall(ReadBaseCooldownSeconds, spellID)
 			if ok and secs then
@@ -3276,12 +3275,19 @@ function Engine:BestAuraDuration(spellID)
 end
 
 
--- Learn a cooldown's real length from its observed wall-clock span when it finishes
--- (combat-safe, no secret read); rescues spells whose extrapolation undershoots (charge
--- spells, or any never seen on cooldown out of combat). Stored below knownDurations so a
--- precise out-of-combat read still wins. Converge UP only: the longest span seen is the true cd.
+-- Vanilla rules have no haste on cooldowns and talents only shorten them, so on Forever a span past the known or base length is a ready edge seen late and that length is the most it can be.
+local function LateSpanCap(self, spellID, span)
+	if not ns.Compat.IS_FOREVER then return nil end
+	local cap = self.knownDurations[spellID] or self.baselineDurations[spellID]
+	if cap and span > cap then return cap end
+	return nil
+end
+
+
+-- Converges up because a reset only ever cuts a span short. On Forever a span is trimmed to LateSpanCap's cap first, so it never replaces a stored one already past the cap.
 function Engine:ObserveDuration(spellID, observed)
 	if type(observed) ~= "number" or observed <= 1.5 then return end
+	observed = LateSpanCap(self, spellID, observed) or observed
 	local current = self.observedDurations[spellID]
 	if current and observed <= current + 0.5 then return end
 	self.observedDurations[spellID] = observed
@@ -3419,14 +3425,12 @@ function Engine:RunAnchorProbe()
 end
 
 
--- Extrapolation duration. A plausible out-of-combat known (exact, haste/talent-adjusted) wins
--- outright; the in-combat observation only rescues a missing or GCD-bogus known, as the longer
--- of the two (obs over-counts recasts, so it can't be trusted over a good known). Baseline/
--- default are the caller's fallback below this.
+-- A trusted out-of-combat known wins outright, since an observed span can run long from a missed re-anchor or a late ready edge.
 function Engine:BestDuration(spellID)
 	local k = self.knownDurations[spellID]
 	local o = self.observedDurations[spellID]
 	if k and k > KNOWN_TRUST_MIN then return k end
+	if o then o = LateSpanCap(self, spellID, o) or o end
 	if k and o then return (k > o) and k or o end
 	return k or o
 end
@@ -4215,6 +4219,19 @@ function Engine:DropBrokenWaits()
 	end
 end
 
+-- No event fires when a cooldown runs out and a wand shot hides the ready read for 1.0s, so an overdue entry is read every tick and scanned at once, as a deferred scan can land in the next lock.
+function Engine:ScanOverdueEntries(now)
+	for spellID, e in pairs(self.entries) do
+		if e._source == "isactive" and e.endTime and now >= e.endTime then
+			local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+			if ok and info and (not info.isActive or info.isOnGCD) then
+				self:ScanSpells()
+				return
+			end
+		end
+	end
+end
+
 function Engine:Tick()
 	self._tickCount = self._tickCount + 1
 
@@ -4282,11 +4299,9 @@ function Engine:Tick()
 		end
 	else
 		self:FlushOffensivePops()
+		if ns.Compat.IS_FOREVER and not cblackout then self:ScanOverdueEntries(cnow) end
 
-		-- Safety-net sweep every 10th tick (1 Hz): covers cooldown edges the event paths miss
-		-- (e.g. dropped across a loading screen). Scanning every tick allocated ~400 tables/sec
-		-- at 40 tracked spells, for data that rarely changed between ticks. Item poll staggered
-		-- to a different tick so no single frame carries both sweeps (read as a travel hitch).
+		-- A 1 Hz safety net for edges no event reports. A full scan every tick allocated ~400 tables a second at 40 spells, and the item and Offensives polls sit on other ticks to avoid a hitch.
 		self._scanCounter = (self._scanCounter or 0) + 1
 		if self._scanCounter == 5 then
 			self:PollAllItems()

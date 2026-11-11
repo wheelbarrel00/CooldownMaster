@@ -23,6 +23,8 @@ local OPTS = {
     setLastTab = { kind = "function" },
     getWindowScale = { kind = "function" },
     setWindowScale = { kind = "function" },
+    getWindowPosition = { kind = "function" },
+    setWindowPosition = { kind = "function" },
 }
 
 local LABELS = {
@@ -31,6 +33,10 @@ local LABELS = {
     discordTip      = true,
     testSound       = true,
     clear           = true,
+    classColor      = true,
+    search          = true,
+    searchEmpty     = true,
+    searchTitle     = true,
 }
 
 local function isRGB(v)
@@ -75,6 +81,9 @@ function lib:NewContext(opts)
     if (opts.getWindowScale == nil) ~= (opts.setWindowScale == nil) then
         error("EverythingUI: opts.getWindowScale and opts.setWindowScale come as a pair", 2)
     end
+    if (opts.getWindowPosition == nil) ~= (opts.setWindowPosition == nil) then
+        error("EverythingUI: opts.getWindowPosition and opts.setWindowPosition come as a pair", 2)
+    end
     local labels = {}
     for key, v in pairs(opts.labels or {}) do
         if not LABELS[key] then
@@ -87,6 +96,10 @@ function lib:NewContext(opts)
     end
     if opts.discord and not labels.discord then
         error("EverythingUI: opts.discord needs opts.labels.discord", 2)
+    end
+    -- labels.search is what turns the settings search on, so the window of a host without it is unchanged.
+    if labels.search and not (labels.searchEmpty and labels.searchTitle) then
+        error("EverythingUI: opts.labels.search needs opts.labels.searchEmpty and opts.labels.searchTitle", 2)
     end
 
     local kept = {}
