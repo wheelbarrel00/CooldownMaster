@@ -242,7 +242,7 @@ L["How many icons this box holds at once. When it is full, the icon closest to f
 L["Ready Sound"] = "Bereitschaftston"
 L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."] = "Der Bildschirmpunkt, an dem das Feld verankert ist und von dem aus es mit den X- und Y-Versätzen oben verschoben wird. Von diesem Punkt aus wachsen auch die Bereitschaftssymbole."
 L["Box Alpha"] = "Feldtransparenz"
-L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."] = "Blendet das ganze Feld samt Hintergrund, Rahmen und Symbolen gemeinsam ab. Transparenz unter Symbole blendet nur die Symbole ab."
+L["Fades the box's background, border and text. Transparency under Icons fades the icons."] = "Blendet Hintergrund, Rahmen und Text des Feldes ab. Transparenz unter Symbole blendet die Symbole ab."
 L["Background"] = "Hintergrund"
 L["Texture"] = "Textur"
 L["Background Color"] = "Hintergrundfarbe"

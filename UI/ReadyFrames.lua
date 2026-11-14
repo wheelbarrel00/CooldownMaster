@@ -234,8 +234,7 @@ local function UpdateReadyHandle(f)
 	ns.RefreshDragHandle(f.dragHandle, f.cfg and f.cfg.frameName, shown)
 end
 
--- Shared across all ready boxes so a relayout (per pop / per expiry) allocates no scratch;
--- fully consumed within the call and Lua is single-threaded, so one table is safe.
+-- One scratch table serves every box, since each relayout uses it up before returning.
 local relayoutScratch = {}
 local function RelayoutReadyFrame(f)
 	local cfg      = f.cfg
@@ -262,7 +261,7 @@ local function RelayoutReadyFrame(f)
 	local count = #active
 
 	local horizontal = grow == "LEFT" or grow == "RIGHT" or grow == "CENTER_H"
-	-- Block length along the stacking axis (at least one icon so an empty box is square).
+	-- At least one icon long, so an empty box stays square.
 	local blockLen = (math.max(1, count) - 1) * step + iconSize
 	local half = (blockLen - iconSize) / 2
 
@@ -296,9 +295,7 @@ local function RelayoutReadyFrame(f)
 		f:SetSize(iconSize + margin * 2, blockLen + margin * 2)
 	end
 
-	-- With icons the box shows at full alpha; when it goes empty it stays shown while unlock,
-	-- test, or autohide-off keeps it up (see ReadyBoxKeepShown), otherwise hiding is deferred
-	-- to the box-fade pass in the OnUpdate so the backdrop fades out instead of snapping off.
+	-- An empty box is not hidden here. The OnUpdate box fade hides it, so the backdrop fades out instead of snapping off.
 	local cdm = ns.CDM
 	local g = cdm and cdm.db and cdm.db.profile.global
 	if count > 0 or ReadyBoxKeepShown(g) then
@@ -309,7 +306,7 @@ local function RelayoutReadyFrame(f)
 			f.statusText:SetText(s)
 		end
 		f._boxFade = nil
-		f:SetAlpha(cfg.alpha or 1)
+		f:SetAlpha(1)
 		f:Show()
 	end
 	if ns.SnapFrameToPixelGrid then ns.SnapFrameToPixelGrid(f) end
@@ -326,8 +323,7 @@ local function SetIconAlpha(btn, a)
 end
 
 
--- Reset a pooled box's popped icons so reuse (profile switch) starts empty. The box-fade pass in
--- OnUpdate then hides the now-empty box if it is locked.
+-- A pooled box is reused across profile switches, so it must start empty.
 local function ClearReadyIcons(f)
 	for i = 1, #f.iconPool do
 		local btn = f.iconPool[i]
@@ -432,8 +428,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			rfCfg.x = math.floor(x + 0.5)
 			rfCfg.y = math.floor(y + 0.5)
 		end
-		-- The relayout snaps too, but it only runs when the icon set changes, so a box dragged and
-		-- left alone would sit off the pixel grid until its next pop.
+		-- A drag gets no relayout until the next pop, lock or setting change, so snap here.
 		if ns.SnapFrameToPixelGrid then ns.SnapFrameToPixelGrid(self) end
 	end
 
@@ -469,8 +464,6 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 		local restyle = self._styleTimer >= STYLE_INTERVAL
 		if restyle then self._styleTimer = 0 end
 
-		-- Hold countdown per icon. A pinned icon freezes (cleared only by the user),
-		-- otherwise it fades over its last second and is hidden when the hold expires.
 		local visible = 0
 		local needRelayout = false
 		for i = 1, #self.iconPool do
@@ -507,11 +500,7 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			end
 		end
 
-		-- Post-combat linger: out of combat, force a clear once pTime elapses since the
-		-- last pop. Reset to 0 while in combat so the clock starts when combat ends.
-		-- Runs once per linger (_lingerDone): a surviving pinned icon keeps visible > 0, so without
-		-- the guard this re-fires every frame (relayout alloc + backdrop flicker). Recount the pinned
-		-- survivors into `visible` so an all-pinned box stays shown and an empty one still fades out.
+		-- Runs once per linger (_lingerDone), or a surviving pinned icon keeps visible above 0 and this clears every frame.
 		local pTime = (cfg and cfg.pTime) or 0
 		if pTime > 0 then
 			if InCombatLockdown() then
@@ -566,24 +555,20 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 			end
 		end
 
-		-- Box-level fade: when empty and nothing keeps it shown (unlock/test/autohide-off) it
-		-- fades the backdrop out over BOX_FADE_DUR then hides; OnUpdate only runs while shown,
-		-- so this owns the empty-box hide.
-		local boxAlpha = (cfg and cfg.alpha) or 1
 		if visible > 0 or ReadyBoxKeepShown(g) then
 			if self._boxFade then
 				self._boxFade = nil
-				self:SetAlpha(boxAlpha)
+				self:SetAlpha(1)
 			end
 		else
 			self._boxFade = (self._boxFade or 0) + elapsed
 			if self._boxFade >= BOX_FADE_DUR then
-				self:SetAlpha(boxAlpha)
+				self:SetAlpha(1)
 				self._boxFade = nil
 				self:Hide()
 				UpdateReadyHandle(self)
 			else
-				self:SetAlpha(boxAlpha * (1 - self._boxFade / BOX_FADE_DUR))
+				self:SetAlpha(1 - self._boxFade / BOX_FADE_DUR)
 			end
 		end
 	end)
@@ -610,7 +595,8 @@ function ns.ReadyFrames_CreateFrame(addon, index, cfg)
 	end)
 
 	addon.readyFrames[index] = f
-	addon.readyFramePool[index] = f   -- free-list entry; reused across profile/enable changes
+	-- Free-list entry, reused across profile and enable changes.
+	addon.readyFramePool[index] = f
 end
 
 
@@ -783,7 +769,7 @@ function ns.ReadyFrames_RefreshUnlockState(addon)
 			f:EnableMouse(unlocked)
 			if f.label then
 				local lta = (f.cfg and f.cfg.labelColor and f.cfg.labelColor.a) or 1
-				f.label:SetAlpha((unlocked and 0.6 or 0) * lta)
+				f.label:SetAlpha((unlocked and 0.6 or 0) * lta * ((f.cfg and f.cfg.alpha) or 1))
 			end
 			RelayoutReadyFrame(f)
 		end
@@ -841,15 +827,17 @@ function ns.ReadyFrames_ApplyConfig(index)
 			edgeSize = edgeSize,
 			insets   = { left = bpad, right = bpad, top = bpad, bottom = bpad },
 		})
+		-- Box Alpha goes on the art and text, never the frame, because the icons are the frame's children.
+		local boxAlpha = cfg.alpha or 1
 		local bg = cfg.bgColor or { r = 0.1, g = 0.1, b = 0.1, a = 0.85 }
-		pcall(f.SetBackdropColor, f, bg.r, bg.g, bg.b, bg.a or 1)
+		pcall(f.SetBackdropColor, f, bg.r, bg.g, bg.b, (bg.a or 1) * boxAlpha)
 		if borderOn then
 			local bc = cfg.borderColor
-			if bc then pcall(f.SetBackdropBorderColor, f, bc.r, bc.g, bc.b, bc.a or 1) end
+			if bc then pcall(f.SetBackdropBorderColor, f, bc.r, bc.g, bc.b, (bc.a or 1) * boxAlpha) end
 		else
 			pcall(f.SetBackdropBorderColor, f, 0, 0, 0, 0)
 		end
-		f:SetAlpha(cfg.alpha or 1)
+		f:SetAlpha(1)
 
 		if f.label then
 			-- SetAlpha on a FontString overrides its SetTextColor alpha, so carry the tag's opacity on the region.
@@ -857,7 +845,7 @@ function ns.ReadyFrames_ApplyConfig(index)
 			f.label:SetFont(ns.ResolveFont(cfg.labelFont, cfg.labelSize, cfg.labelFlags))
 			f.label:SetTextColor(lc.r, lc.g, lc.b, 1)
 			f.label:SetText(cfg.frameName or "")
-			f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1))
+			f.label:SetAlpha((addon.db.profile.global.unlockFrames and 0.6 or 0) * (lc.a or 1) * boxAlpha)
 		end
 
 		ConfigureReadyTagFont(f, cfg)
@@ -871,8 +859,7 @@ function ns.ReadyFrames_ApplyConfig(index)
 			f._statusLive = (scfg and scfg.enabled and ns.TemplateHasLiveTag(scfg.text)) or false
 			if scfg and scfg.enabled then
 				ns.ApplyStatusTextStyle(f, f.statusText, cfg)
-				-- The box itself carries cfg.alpha and the text is its child, so only the picker opacity belongs here.
-				f.statusText:SetAlpha((cfg.statusColor and cfg.statusColor.a) or 1)
+				f.statusText:SetAlpha(boxAlpha * ((cfg.statusColor and cfg.statusColor.a) or 1))
 				local s = ns.RenderTag(scfg.text, nil)
 				f._statusStr = s
 				f.statusText:SetText(s)

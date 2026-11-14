@@ -242,7 +242,7 @@ L["How many icons this box holds at once. When it is full, the icon closest to f
 L["Ready Sound"] = "就緒音效"
 L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."] = "此框固定在螢幕上的基準點，再由上方的 X 與 Y 偏移微調。就緒圖示也從該點開始延伸。"
 L["Box Alpha"] = "框透明度"
-L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."] = "讓整個就緒框連同背景、邊框和圖示一起變淡。【圖示】中的【透明度】只影響圖示。"
+L["Fades the box's background, border and text. Transparency under Icons fades the icons."] = "讓就緒框的背景、邊框和文字變淡。【圖示】中的【透明度】控制圖示。"
 L["Background"] = "背景"
 L["Texture"] = "材質"
 L["Background Color"] = "背景顏色"

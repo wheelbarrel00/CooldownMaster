@@ -26,11 +26,11 @@ ns.DISCORD_URL = "https://discord.gg/vm8K2WfQUE"
 function CDM:OnInitialize()
 	self.db = AceDB:New(ns.CONST.SV_KEY, { profile = ns.DEFAULTS }, "Default")
 
-	-- Per-character spec->profile map for auto-switch; db.char so it survives profile
-	-- switches. Empty = no auto-switch.
+	-- In db.char so the spec-to-profile map survives a profile switch. Empty means no auto-switch.
 	self.db.char.specProfiles = self.db.char.specProfiles or {}
 
 	self:MigrateV030()
+	self:MigrateReadyBoxAlpha()
 
 	if next(self.db.profile.classColors) == nil then
 		for class, rgb in pairs(ns.CONST.CLASS_COLORS) do
@@ -42,7 +42,7 @@ function CDM:OnInitialize()
 		self:RegisterChatCommand(cmd, "OnSlash")
 	end
 
-	-- A profile switch/copy/reset swaps db.profile to a different table, so rebuild from the new one.
+	-- A profile switch, copy or reset changes what db.profile holds, so rebuild from it.
 	self.db.RegisterCallback(self, "OnProfileChanged", "ApplyProfile")
 	self.db.RegisterCallback(self, "OnProfileCopied",  "ApplyProfile")
 	self.db.RegisterCallback(self, "OnProfileReset",   "ApplyProfile")
@@ -95,6 +95,23 @@ function CDM:MigrateV030()
 end
 
 
+-- Box Alpha used to fade the icons too, so it is folded into iconAlpha once. The marker is exported, so an import is never folded twice.
+function CDM:MigrateReadyBoxAlpha()
+	local p = self.db and self.db.profile
+	if not p or p.readyAlphaSplit then return end
+	if type(p.readyFrames) == "table" then
+		for i = 1, 3 do
+			local cfg = p.readyFrames[i]
+			if type(cfg) == "table" and type(cfg.alpha) == "number" and cfg.alpha < 1 then
+				local iconAlpha = type(cfg.iconAlpha) == "number" and cfg.iconAlpha or 1
+				cfg.iconAlpha = iconAlpha * cfg.alpha
+			end
+		end
+	end
+	p.readyAlphaSplit = true
+end
+
+
 function CDM:ApplyProfile()
 	if next(self.db.profile.classColors) == nil then
 		for class, rgb in pairs(ns.CONST.CLASS_COLORS) do
@@ -102,8 +119,8 @@ function CDM:ApplyProfile()
 		end
 	end
 	self:MigrateV030()
-	-- Learned durations are per-profile; without this a manual profile switch keeps running
-	-- on the old profile's values until the next zoning.
+	self:MigrateReadyBoxAlpha()
+	-- Learned durations are per-profile. Without this a manual switch runs on the old profile's values until the next zoning.
 	if ns.Engine and ns.Engine.LoadPersistedDurations then
 		ns.Engine:LoadPersistedDurations()
 	end

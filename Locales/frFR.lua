@@ -242,7 +242,7 @@ L["How many icons this box holds at once. When it is full, the icon closest to f
 L["Ready Sound"] = "Son de disponibilité"
 L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."] = "Le point de l'écran auquel la boîte est fixée, puis décalé par les décalages X et Y ci-dessus. C'est aussi le point à partir duquel les icônes Prêt s'étendent."
 L["Box Alpha"] = "Opacité de la boîte"
-L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."] = "Estompe toute la boîte, son fond, sa bordure et ses icônes ensemble. Opacité, dans Icônes, n'estompe que les icônes."
+L["Fades the box's background, border and text. Transparency under Icons fades the icons."] = "Estompe le fond, la bordure et le texte de la boîte. Opacité, dans Icônes, estompe les icônes."
 L["Background"] = "Arrière-plan"
 L["Texture"] = "Texture"
 L["Background Color"] = "Couleur d'arrière-plan"

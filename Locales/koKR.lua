@@ -242,7 +242,7 @@ L["How many icons this box holds at once. When it is full, the icon closest to f
 L["Ready Sound"] = "준비 소리"
 L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."] = "상자가 고정되는 화면상의 기준점으로, 위의 X와 Y 위치 조정만큼 밀려납니다. 준비 아이콘이 뻗어 나가기 시작하는 지점이기도 합니다."
 L["Box Alpha"] = "상자 불투명도"
-L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."] = "상자 전체를 배경, 테두리, 아이콘과 함께 흐리게 합니다. 아이콘 항목의 불투명도는 아이콘만 흐리게 합니다."
+L["Fades the box's background, border and text. Transparency under Icons fades the icons."] = "상자의 배경, 테두리, 글자를 흐리게 합니다. 아이콘 항목의 불투명도는 아이콘을 흐리게 합니다."
 L["Background"] = "배경"
 L["Texture"] = "텍스처"
 L["Background Color"] = "배경 색상"

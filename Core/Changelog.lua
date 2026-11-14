@@ -2,6 +2,15 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.1.1",
+		date = "2026-11-14",
+		sections = {
+			{ head = "Improvements", items = {
+				"A ready box's Box Alpha no longer fades its icons. It now fades only the box's background, border, name tag and status line, the way Lane Alpha already works on the lanes, and the icons follow their own Transparency setting under Icons. If you had lowered Box Alpha, your icons look exactly as they did, because the update moves that dimming into the icons' Transparency once. Only the Transparency number changes. Thanks to \"Nothing\" on Discord for the report.",
+			} },
+		},
+	},
+	{
 		version = "2.1.0",
 		date = "2026-11-10",
 		sections = {

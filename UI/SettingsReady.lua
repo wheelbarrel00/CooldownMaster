@@ -85,7 +85,7 @@ local function buildAppearance(self, content)
 		L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."]))
 	get, set = key("alpha", 1)
 	card:Add(slider(self, content, L["Box Alpha"], 0, 1, 0.05, get, set,
-		L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."]))
+		L["Fades the box's background, border and text. Transparency under Icons fades the icons."]))
 
 	card = push(self:CreateGroup(content, L["Background"]))
 	get, set = key("bgTexture")

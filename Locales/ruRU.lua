@@ -242,7 +242,7 @@ L["How many icons this box holds at once. When it is full, the icon closest to f
 L["Ready Sound"] = "Звук готовности"
 L["Screen point the box is pinned to, then nudged by the X and Y offsets above. Also the point the ready icons grow out from."] = "Точка экрана, к которой привязан блок, а затем сдвинут смещениями X и Y выше. Также это точка, из которой растут значки готовности."
 L["Box Alpha"] = "Непрозрачность блока"
-L["Fades the whole box, its background, border and icons together. Transparency under Icons fades only the icons."] = "Делает прозрачным весь блок целиком: его фон, границу и значки. «Непрозрачность» в разделе «Значки» меняет только значки."
+L["Fades the box's background, border and text. Transparency under Icons fades the icons."] = "Делает прозрачными фон, границу и текст блока. «Непрозрачность» в разделе «Значки» меняет значки."
 L["Background"] = "Фон"
 L["Texture"] = "Текстура"
 L["Background Color"] = "Цвет фона"

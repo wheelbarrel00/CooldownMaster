@@ -300,6 +300,8 @@ These two settings, both under **Bars > a bar frame > General**, let a bar frame
 
 **Size**, **Transparency**, **Icon Offset**, and the border and label options match a lane's Icons page.
 
+**Box Alpha**, on the box's Appearance page, fades the box's background, border, status line, and name tag together, the same as a lane's Lane Alpha. Icons are untouched and keep their own **Transparency** on the Icons page.
+
 **Texture**, under the Background header on **Ready > a box > Appearance**, sets the texture drawn behind the icons, and **Border Texture**, under the Border heading on the same page, sets the box's edge. Texture offers every LibSharedMedia statusbar texture you have installed and Border Texture every border texture, and a Border Texture of **None** draws no border at all. The defaults are unchanged, so a box you have not touched looks as it always did.
 
 Icons flagged **Pinned** never fade. They stay in the box until you reload, switch profile, or turn test mode on or off, so a cooldown you must not miss will wait for you.
