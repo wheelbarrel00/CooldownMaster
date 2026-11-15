@@ -114,20 +114,85 @@ local function byName(a, b)
 	return a.sort < b.sort
 end
 
+local function addEntry(list, n, id, info)
+	n = n + 1
+	local e = list.entries[n]
+	if not e then
+		e = {}
+		list.entries[n] = e
+	end
+	e.id, e.info, e.sort = id, info, fold(info.name or "")
+	list.all[n] = e
+	return n
+end
+
 local function gather(list, source, n)
 	local engine = ns.Engine
 	for id, info in pairs(source or EMPTY) do
-		if engine:GetCategoryFilterKey(info.category) == list.key then
-			n = n + 1
-			local e = list.entries[n]
-			if not e then
-				e = {}
-				list.entries[n] = e
-			end
-			e.id, e.info, e.sort = id, info, fold(info.name or "")
-			list.all[n] = e
+		if engine:GetCategoryFilterKey(info.category) == list.key then n = addEntry(list, n, id, info) end
+	end
+	return n
+end
+
+local function rememberedStore()
+	local char = ns.CDM and ns.CDM.db and ns.CDM.db.char
+	if not char then return end
+	char.rememberedBuffs = char.rememberedBuffs or {}
+	return char.rememberedBuffs
+end
+
+local sighted = setmetatable({}, { __mode = "k" })
+
+-- Stamped when its icon appears, or its key for a buff with no icon. A rebuild keeps icons, and a faded buff keeps its key until the next rebuild.
+local function rememberBuffs()
+	local engine = ns.Engine
+	if not engine._trackedBuilt then return end
+	local store = rememberedStore()
+	if not store then return end
+	local now = time()
+	for id, t in pairs(engine.trackedSpells) do
+		if t.category == 2 and not t.buffSpellID then
+			local e = engine.entries[id]
+			if e and (e._source ~= "buff" or e._inferred) then e = nil end
+			if not sighted[e or t] then store[id] = now end
+			sighted[t] = true
+			if e then sighted[e] = true end
 		end
 	end
+end
+
+-- ScanBuffs reports only a new key, and a rank cast again over its old key is a new icon on that key
+if not ns.Compat.HAS_BLIZZ_CDM then hooksecurefunc(ns.Engine, "ScanBuffs", rememberBuffs) end
+
+local rowInfo, liveNames, newest = {}, {}, {}
+
+local function rememberedInfo(id)
+	local info = rowInfo[id]
+	if not info then
+		local s = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
+		if not (s and s.name) then return end
+		info = { name = s.name, icon = s.iconID, category = 2 }
+		rowInfo[id] = info
+	end
+	return info
+end
+
+-- Listed only, never put in trackedSpells. One row per name, since every rank of a buff shares the name
+local function gatherRemembered(list, n)
+	local store = rememberedStore()
+	if not (store and IsPlayerSpell) then return n end
+	wipe(liveNames)
+	wipe(newest)
+	for i = 1, n do liveNames[list.all[i].info.name or ""] = true end
+	local tracked = ns.Engine.trackedSpells
+	for id, at in pairs(store) do
+		local info = not tracked[id] and IsPlayerSpell(id) and rememberedInfo(id)
+		if info and not liveNames[info.name] then
+			local best = newest[info.name]
+			if not best or at > store[best] or (at == store[best] and id > best) then newest[info.name] = id end
+		end
+	end
+	for _, id in pairs(newest) do n = addEntry(list, n, id, rowInfo[id]) end
 	return n
 end
 
@@ -137,6 +202,7 @@ local function collect(list)
 		n = gather(list, engine.trackedSpells, n)
 		n = gather(list, engine.trackedItems, n)
 		n = gather(list, engine.trackedOffensives, n)
+		if list.key == "buffs" and not ns.Compat.HAS_BLIZZ_CDM then n = gatherRemembered(list, n) end
 	end
 	local all = list.all
 	for i = #all, n + 1, -1 do all[i] = nil end
@@ -573,6 +639,15 @@ local function clearField(key, field)
 		local list = lists[key]
 		collect(list)
 		for _, e in ipairs(list.all) do setOverride(e.id, field, nil) end
+		local store = key == "buffs" and not ns.Compat.HAS_BLIZZ_CDM and rememberedStore()
+		if store then
+			local engine = ns.Engine
+			local tracked, items = engine and engine.trackedSpells or EMPTY, engine and engine.trackedItems or EMPTY
+			for id in pairs(store) do
+				local t = tracked[id]
+				if (not t or t.category == 2) and not items[id] then setOverride(id, field, nil) end
+			end
+		end
 	end
 	reroute()
 	invalidate()

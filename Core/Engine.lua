@@ -32,8 +32,8 @@ Engine._activeSince    = {}   -- when each spell's cooldown began (first isActiv
 Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed. Read when nothing is learned, and on Forever it caps an observed span that has no known
 Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began; debounces the partial-use isActive blip
 Engine.entries         = {}
-Engine._buffByName     = {}   -- Forever only: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
-Engine._buffSeenWith   = {}   -- Forever only: [buff key] = { [other key] = true }, buffs read in the same pass
+Engine._buffByName     = {}   -- Forever only, saved per character: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
+Engine._buffSeenWith   = {}   -- Forever only, saved per character: [buff key] = { [other key] = true }, buffs read in the same pass
 Engine._castNames      = {}   -- Forever only: [cast spellID] = name, so a per-cast GetSpellInfo table is not allocated
 Engine._trackedCastAt  = {}   -- Forever only: [tracked spellID] = GetTime of its last cast. Not _castAt, which OnCastForAuras owns
 Engine._cooldownByName = {}   -- Classic and Forever: [spell name] = the id a cooldown spell is tracked under, rebuilt with trackedSpells
@@ -754,6 +754,7 @@ function Engine:BuildTrackedSpells()
 	if not ns.Compat.HAS_BLIZZ_CDM then
 		self:BuildTrackedSpellsClassic()
 		self:DropOffensiveCollisions()
+		if ns.Compat.IS_FOREVER then self:DropBuffMemoryCollisions() end
 		self._trackedBuilt = true
 		-- Forever runs the retail reader, which extrapolates a cooldown first seen in combat from this seed.
 		if ns.Compat.IS_FOREVER then self:SeedBaselineDurations() end
@@ -1013,6 +1014,44 @@ function Engine:ScanSpellsClassic()
 end
 
 
+function Engine:LoadBuffMemory()
+	local char = ns.CDM and ns.CDM.db and ns.CDM.db.char
+	if not (ns.Compat.IS_FOREVER and char) then return end
+	local byName = type(char.buffByName) == "table" and char.buffByName or {}
+	-- A malformed saved record would throw wherever it is read.
+	for name, rec in pairs(byName) do
+		if type(rec) ~= "table" or type(rec.key) ~= "number" or type(rec.duration) ~= "number" then byName[name] = nil end
+	end
+	local seenWith = type(char.buffSeenWith) == "table" and char.buffSeenWith or {}
+	for id, with in pairs(seenWith) do
+		if type(id) ~= "number" or type(with) ~= "table" then seenWith[id] = nil end
+	end
+	char.buffByName, char.buffSeenWith = byName, seenWith
+	self._buffByName, self._buffSeenWith = byName, seenWith
+end
+
+
+-- A buff remembered before its spell was tracked keeps that cooldown's id, and a cast mid-fight would then show the cooldown as a buff.
+function Engine:DropBuffMemoryCollisions()
+	local tracked = self.trackedSpells
+	for name, rec in pairs(self._buffByName) do
+		local owner = tracked[rec.key]
+		if owner and owner.category ~= 2 then self._buffByName[name] = nil end
+	end
+	for id, with in pairs(self._buffSeenWith) do
+		local owner = tracked[id]
+		if owner and owner.category ~= 2 then
+			self._buffSeenWith[id] = nil
+		else
+			for other in pairs(with) do
+				local t = tracked[other]
+				if t and t.category ~= 2 then with[other] = nil end
+			end
+		end
+	end
+end
+
+
 -- Keyed by name, since a cast and the buff it applies can carry different spell ids.
 local function RememberBuff(name, key, buffSpellID, icon, duration)
 	local rec = Engine._buffByName[name]
@@ -1082,7 +1121,8 @@ function Engine:ScanBuffs()
 					self.trackedSpells[spellID] = { name = name, icon = icon, category = 2 }
 					discovered = true
 				end
-				if ns.Compat.IS_FOREVER and name then RememberBuff(name, spellID, nil, icon, duration) end
+				-- Before the tracked build a cooldown spell's own buff reads as a plain buff, and a record kept under its id would hide that cooldown.
+				if ns.Compat.IS_FOREVER and name and self._trackedBuilt then RememberBuff(name, spellID, nil, icon, duration) end
 				if self:IsSpellVisible(spellID, 2) then
 					seen[spellID] = true
 					local e = self.entries[spellID]
@@ -1141,7 +1181,7 @@ function Engine:ScanBuffs()
 	end
 
 	-- Buffs read in one pass run together, so a pair never seen together is an exclusive set like the seals.
-	if ns.Compat.IS_FOREVER then
+	if ns.Compat.IS_FOREVER and self._trackedBuilt then
 		for id in pairs(seen) do
 			local with = self._buffSeenWith[id]
 			if not with then
@@ -4329,6 +4369,7 @@ function Engine:Start(addon)
 
 	-- Must run before any polling so the extrapolator has data to use.
 	self:LoadPersistedDurations()
+	self:LoadBuffMemory()
 	self:RebuildCustomTriggers()
 
 	if not self._buildScheduled then

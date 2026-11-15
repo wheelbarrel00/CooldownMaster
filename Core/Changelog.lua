@@ -2,6 +2,19 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.1.2",
+		date = "2026-11-15",
+		sections = {
+			{ head = "Bug Fixes", items = {
+				"WoW Forever: a cooldown no longer turns into a buff icon after you log in or reload with its buff up. If a spell with a cooldown and a buff of its own, such as Evasion or Fear Ward, had that buff up on you at a login or /reload, every cast of it in combat for the rest of that session showed its cooldown as a buff, and no ready box popped when the cooldown ended.",
+			} },
+			{ head = "Improvements", items = {
+				"Filters > Buffs keeps listing your buffs after a /reload. On Classic and WoW Forever the Buffs list showed only the buffs it had seen on you since the last reload, plus any you track through a spell's Buff column, so after a reload most of it was gone until you cast each buff again. It now remembers every buff it has seen on the character, so you can hide a buff or change where it goes while it is down. Each buff joins the list the first time it is up after this update (on WoW Forever, the first time it is up out of combat). After a reload, a buff you know at several ranks comes back as one row, the rank last up on you. Set All on the Buffs page clears that setting on every buff the list remembers, including ranks it does not show.",
+				"WoW Forever: a buff you cast in the first fight after a /reload shows at once. Forever hides your buffs from addons in combat, so Cooldown Master learns each buff's length out of combat and starts its icon from your cast mid-fight. It forgot all of that on every reload or login, so a seal cast in the first fight after one showed only once the fight ended. It now remembers it per character, along with which buffs have been up together, so casting one seal over another also clears the old seal's icon in that fight, once the new seal has been up on you beside another buff. Each buff is remembered once it has been up on you out of combat after this update. After a /reload mid-fight, a buff you track through a spell's Buff column still waits for that fight to end.",
+			} },
+		},
+	},
+	{
 		version = "2.1.1",
 		date = "2026-11-14",
 		sections = {
