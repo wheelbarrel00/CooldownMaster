@@ -5,7 +5,7 @@ ns.CONST = {
 	ADDON_NAME       = "CooldownMaster",
 	ADDON_DISPLAY    = "Cooldown Master",
 	ADDON_SHORT      = "CDM",
-	VERSION          = "2.1.2",
+	VERSION          = "2.1.3",
 
 	SLASH_COMMANDS   = { "cdmaster", "cooldownmaster", "cm" },
 

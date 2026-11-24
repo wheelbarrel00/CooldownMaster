@@ -2,6 +2,18 @@ local ADDON_NAME, ns = ...
 
 ns.Changelog = {
 	{
+		version = "2.1.3",
+		date = "2026-11-23",
+		sections = {
+			{ head = "Improvements", items = {
+				"WoW Forever: Slice and Dice now shows on your lanes mid-fight. Forever hides your buffs from addons in combat, so Cooldown Master starts a buff's icon from your cast. Slice and Dice lasts longer for each combo point you spend, so Cooldown Master never knew how long a new one would last, and it showed only in its last seconds after the fight ended. It now reads how many combo points you spend on it, and whenever it is still up on you when a fight ends, it learns its length for that many. From then on, casting it with that many starts its icon at the right length, even mid-fight. At a count it has not learned yet, it still waits for the fight to end, as before. It remembers these lengths on that character through a /reload and into your next session.",
+			} },
+			{ head = "Bug Fixes", items = {
+				"WoW Forever: casting a buff mid-fight no longer clears the icon of a buff whose length varies. When you cast a buff, Cooldown Master clears the icon of any other buff of the same length that has never been up beside it, which is how one seal replaces another. A buff that has been up on you at more than one length, such as Slice and Dice, could match that by chance and lose its icon while it was still up.",
+			} },
+		},
+	},
+	{
 		version = "2.1.2",
 		date = "2026-11-15",
 		sections = {

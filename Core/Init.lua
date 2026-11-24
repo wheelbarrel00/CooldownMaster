@@ -513,7 +513,7 @@ function CDM:OnSlash(input)
 				CDM:Print("Lane " .. i .. ": <not created>")
 			end
 		end
-		-- iconText[2] is the [cd.time] number; off means swipe-but-no-number (config, not a bug).
+		-- [cd.time] off draws the swipe with no number, which is a setting and not a bug.
 		for i = 1, 3 do
 			local laneCfg = self.db.profile.lanes[i]
 			local t2 = laneCfg and laneCfg.iconText and laneCfg.iconText[2]
@@ -535,8 +535,7 @@ function CDM:OnSlash(input)
 				tracked and tostring(tracked.hasCharges) or "?",
 				tostring(e._source),
 				tostring(e._cdFedPath)))
-			-- Position-duration ladder: dur is what the icon extrapolates from. If dur is
-			-- much shorter than the live %.1fs above, the icon races to the ready edge.
+			-- The icon extrapolates from dur, so a dur well under the live time above makes it race to the ready edge.
 			self:Print(string.format("       dur=%.1f known=%s obs=%s base=%s fresh=%s seenReady=%s",
 				e.duration or 0,
 				tostring(engine.knownDurations[e.spellID]),
@@ -547,8 +546,21 @@ function CDM:OnSlash(input)
 		end
 		if ns.Compat.IS_FOREVER then
 			for name, rec in pairs(engine._buffByName) do
+				local learned = {}
+				for points, length in pairs(rec.byPoints or {}) do
+					learned[#learned + 1] = string.format("%s=%.1fs", tostring(points), tonumber(length) or 0)
+				end
+				table.sort(learned)
+				local parts = {}
+				if rec.variable then parts[1] = "length varies" end
+				if #learned > 0 then
+					parts[#parts + 1] = "by combo points " .. table.concat(learned, " ")
+				elseif rec.variable then
+					parts[#parts + 1] = "skipped"
+				end
+				local note = #parts > 0 and (" (" .. table.concat(parts, ", ") .. ")") or ""
 				self:Print(string.format("  cast restarts: %s -> id=%s %.1fs%s", name, tostring(rec.key),
-					rec.duration or 0, rec.variable and " (length varies, skipped)" or ""))
+					rec.duration or 0, note))
 			end
 			local tracked = engine.trackedSpells or {}
 			local function BuffLabel(id)
@@ -563,8 +575,7 @@ function CDM:OnSlash(input)
 			end
 		end
 
-		-- Live charge-spell state (combat-safe fields only; currentCharges is secret). Shows
-		-- why a charge spell does/doesn't track: it should be tracked only when usable=false.
+		-- Combat-safe fields only, since currentCharges is secret. A charge spell should track only while usable reads false.
 		for spellID, tracked in pairs(engine.trackedSpells or {}) do
 			if tracked.hasCharges then
 				local cdok, info = pcall(C_Spell.GetSpellCooldown, spellID)

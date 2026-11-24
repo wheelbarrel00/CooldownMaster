@@ -25,14 +25,14 @@ Engine._liveInsts      = {}   -- [auraInstanceID] = true, target-wide drop-detec
 Engine._offLearnInsts  = {}   -- [auraInstanceID] = true, instances captured during a /cm offlearn window, resolved to their cast out of combat
 Engine._reanchorAt     = {}   -- [spellID] = last re-anchor GetTime, debounces a proc/Divine-Toll recast burst that would otherwise freeze a dot at the lane start
 Engine.cdIDToSpellID   = {}
-Engine.knownDurations  = {}   -- learned out of combat / persisted; talent-adjusted, overrides baseline
+Engine.knownDurations  = {}   -- learned out of combat and persisted, talent-adjusted, overrides baseline
 Engine.observedDurations = {} -- learned in combat from a spell's full observed lifetime. Below a trusted known and above baseline, and capped by LateSpanCap on Forever
-Engine._seenReady      = {}   -- spellIDs seen off their own cooldown this session; gates trusting an observed span
+Engine._seenReady      = {}   -- spellIDs seen off their own cooldown this session, which gates trusting an observed span
 Engine._activeSince    = {}   -- when each spell's cooldown began (first isActive, during GCD) = its real start
 Engine.baselineDurations = {} -- hardcoded fallback or GetSpellBaseCooldown seed. Read when nothing is learned, and on Forever it caps an observed span that has no known
-Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began; debounces the partial-use isActive blip
+Engine._chargeOnCdSince = {}  -- when a multi-charge spell's on-cooldown state began, which debounces the partial-use isActive blip
 Engine.entries         = {}
-Engine._buffByName     = {}   -- Forever only, saved per character: [buff name] = { key, buffSpellID, icon, duration, variable }, learned out of combat
+Engine._buffByName     = {}   -- Forever only, saved per character: [buff name] = { key, buffSpellID, icon, duration, variable, byPoints }, learned out of combat
 Engine._buffSeenWith   = {}   -- Forever only, saved per character: [buff key] = { [other key] = true }, buffs read in the same pass
 Engine._castNames      = {}   -- Forever only: [cast spellID] = name, so a per-cast GetSpellInfo table is not allocated
 Engine._trackedCastAt  = {}   -- Forever only: [tracked spellID] = GetTime of its last cast. Not _castAt, which OnCastForAuras owns
@@ -43,7 +43,7 @@ Engine.testSpellIDs    = { 184575, 853, 633, 642 }
 -- Gate ready-popup suppression during the loading-screen cooldown blackout (ScanSpells).
 Engine._loadingScreen      = false
 Engine._readyBlackoutUntil = 0
--- Cast->re-anchor pipeline counters for the /cm anchor probe (numbers only; no per-cast allocs).
+-- Cast->re-anchor pipeline counters for the /cm anchor probe (numbers only, no per-cast allocs).
 Engine._probe = { seen = 0, matched = 0, anchored = 0, aliasHit = 0 }
 Engine._traceState = {}   -- per-spell last state string for the /cm anchor arm tracer
 
@@ -1021,6 +1021,7 @@ function Engine:LoadBuffMemory()
 	-- A malformed saved record would throw wherever it is read.
 	for name, rec in pairs(byName) do
 		if type(rec) ~= "table" or type(rec.key) ~= "number" or type(rec.duration) ~= "number" then byName[name] = nil end
+		if type(rec) == "table" and type(rec.byPoints) ~= "table" then rec.byPoints = nil end
 	end
 	local seenWith = type(char.buffSeenWith) == "table" and char.buffSeenWith or {}
 	for id, with in pairs(seenWith) do
@@ -1052,8 +1053,11 @@ function Engine:DropBuffMemoryCollisions()
 end
 
 
+-- [cast name] = when and with how many combo points on its target it was last cast in combat, matched to the aura that cast applied.
+local finisherAt, finisherPoints = {}, {}
+
 -- Keyed by name, since a cast and the buff it applies can carry different spell ids.
-local function RememberBuff(name, key, buffSpellID, icon, duration)
+local function RememberBuff(name, key, buffSpellID, icon, duration, startedAt)
 	local rec = Engine._buffByName[name]
 	if not rec then
 		rec = {}
@@ -1062,7 +1066,21 @@ local function RememberBuff(name, key, buffSpellID, icon, duration)
 	elseif rec.key == key and rec.buffSpellID == buffSpellID and math.abs(rec.duration - duration) > 0.5 then
 		rec.variable = true
 	end
+	-- A new rank has its own length at each combo point count.
+	if rec.key ~= key or rec.buffSpellID ~= buffSpellID then rec.byPoints = nil end
 	rec.key, rec.buffSpellID, rec.icon, rec.duration = key, buffSpellID, icon, duration
+	-- Slice and Dice lasts longer per combo point spent, so the aura that finisher applied gives that count's length.
+	local castAt = finisherAt[name]
+	if castAt and math.abs(startedAt - castAt) < 1 then
+		rec.byPoints = rec.byPoints or {}
+		rec.byPoints[finisherPoints[name]] = duration
+	end
+end
+
+-- A buff whose length varies, or whose spell is cast with combo points, has no one fixed length for a cast to restart at or the exclusive drop to match on.
+local function NoFixedLength(name)
+	local rec = Engine._buffByName[name]
+	return finisherAt[name] ~= nil or (rec ~= nil and (rec.variable or rec.byPoints ~= nil))
 end
 
 
@@ -1122,7 +1140,7 @@ function Engine:ScanBuffs()
 					discovered = true
 				end
 				-- Before the tracked build a cooldown spell's own buff reads as a plain buff, and a record kept under its id would hide that cooldown.
-				if ns.Compat.IS_FOREVER and name and self._trackedBuilt then RememberBuff(name, spellID, nil, icon, duration) end
+				if ns.Compat.IS_FOREVER and name and self._trackedBuilt then RememberBuff(name, spellID, nil, icon, duration, expiration - duration) end
 				if self:IsSpellVisible(spellID, 2) then
 					seen[spellID] = true
 					local e = self.entries[spellID]
@@ -1150,7 +1168,7 @@ function Engine:ScanBuffs()
 				-- An opted-in buff rides a synthetic key so it and the cooldown coexist as two icons.
 				local buffKey = ns.CONST.BUFF_ID_BASE + ownerID
 				if ns.Compat.IS_FOREVER and name and self.trackedSpells[buffKey] then
-					RememberBuff(name, buffKey, spellID, icon, duration)
+					RememberBuff(name, buffKey, spellID, icon, duration, expiration - duration)
 				end
 				if self.trackedSpells[buffKey] and self:IsSpellVisible(buffKey, 2) then
 					seen[buffKey] = true
@@ -1204,8 +1222,7 @@ function Engine:ScanBuffs()
 				edges[#edges + 1] = spellID
 			end
 		end
-		-- Dying strips every buff in one pass, and more edges than this at once is a mass vanish
-		-- rather than that many buffs genuinely expiring together. Reconcile the entries, pop nothing.
+		-- Dying strips every buff in one pass, so more edges than this at once is a mass vanish that reconciles and pops nothing.
 		local silent = #edges > 0 and (#edges > READY_MAX_POPS_PER_SCAN or UnitIsDeadOrGhost("player"))
 		for _, spellID in ipairs(edges) do
 			local e = self.entries[spellID]
@@ -1225,22 +1242,35 @@ function Engine:ScanBuffs()
 end
 
 
--- UNIT_SPELLCAST_SUCCEEDED carries no target, so Forever reads it off SENT and matches the two by castGUID.
-local sentGUID, sentTarget
+-- UNIT_SPELLCAST_SUCCEEDED carries no target or combo points, so Forever reads them off SENT and matches the two by castGUID.
+local sentGUID, sentTarget, sentPoints
 
 -- Forever blocks aura reads in combat, so the timing here is an estimate ScanBuffs corrects once auras read again.
 function Engine:RestartBuffFromCast(spellID, castGUID)
 	if not InCombatLockdown() then return end
 	local name = CastName(spellID)
 	if not name then return end
+	local points = castGUID and castGUID == sentGUID and sentPoints
+	if points and points > 0 then
+		finisherAt[name], finisherPoints[name] = GetTime(), points
+	else
+		points = nil
+	end
 	local rec = self._buffByName[name]
 	if not rec then return end
 	local key = rec.key
-	-- SENT reads nil for a seal and the player's own name for any self-cast (probed), so only another name means it went elsewhere.
+	-- SENT reads nil for a seal, your own name for a self-cast and the enemy for a finisher (probed), so only another name with no combo points means elsewhere.
 	local me = PlainOrNil(UnitName("player"))
-	local elsewhere = me and sentTarget and sentTarget ~= "" and castGUID and castGUID == sentGUID and sentTarget ~= me
+	local elsewhere = not points and me and sentTarget and sentTarget ~= "" and castGUID and castGUID == sentGUID and sentTarget ~= me
+	local length = rec.duration
+	-- A buff with no fixed length is restarted only at a learned count's length, so a cast at an unread count, or whose count was lost, restarts nothing.
+	local timed = points or NoFixedLength(name)
+	if timed then
+		length = points and rec.byPoints and rec.byPoints[points]
+		if type(length) ~= "number" then length = nil end
+	end
 	-- A cast aimed elsewhere may still reach you as a party-wide buff, so like an unknown recast length it must not pop the old timer.
-	if rec.variable or elsewhere then
+	if not length or elsewhere then
 		local e = self.entries[key]
 		if e and e._source == "buff" then
 			if elsewhere and not e._inferred then e._elsewhere = true end
@@ -1260,8 +1290,8 @@ function Engine:RestartBuffFromCast(spellID, castGUID)
 			name        = name,
 			icon        = rec.icon,
 			startTime   = now,
-			duration    = rec.duration,
-			endTime     = now + rec.duration,
+			duration    = length,
+			endTime     = now + length,
 			laneIndex   = self:ResolveLaneIndex(key, 2),
 			barIndex    = self:ResolveBarIndex(key, 2),
 			category    = 2,
@@ -1272,17 +1302,19 @@ function Engine:RestartBuffFromCast(spellID, castGUID)
 	elseif e._source == "buff" then
 		-- A recast of a buff already read on you keeps its confirmed standing, or regains what a cast aimed elsewhere took, so it still pops.
 		e.startTime = now
-		e.duration  = rec.duration
-		e.endTime   = now + rec.duration
+		e.duration  = length
+		e.endTime   = now + length
 		if e._elsewhere then e._elsewhere, e._inferred = nil, nil end
 	end
 
+	if timed then return end
 	-- Absence proves nothing until this buff has been read beside another one.
 	local with = self._buffSeenWith[key]
 	if not (with and next(with)) then return end
 	for id, other in pairs(self.entries) do
 		-- Exclusive buffs share a length (seals 30s, blessings 5m), which keeps a raid buff gained since the last read out of the drop.
 		if id ~= key and other._source == "buff" and self._buffSeenWith[id] and not with[id]
+			and not NoFixedLength(other.name)
 			and math.abs((other.duration or 0) - rec.duration) <= 0.5 then
 			self.entries[id] = nil
 		end
@@ -4628,7 +4660,11 @@ function Engine:Start(addon)
 		local f = CreateFrame("Frame")
 		f:RegisterUnitEvent("UNIT_SPELLCAST_SENT", "player")
 		f:SetScript("OnEvent", function(_, _, _, target, castGUID)
-			sentGUID, sentTarget = PlainOrNil(castGUID), PlainOrNil(target)
+			-- Cleared first, so a read below that throws cannot pair the last cast's combo points with this one.
+			sentGUID, sentTarget, sentPoints = PlainOrNil(castGUID), PlainOrNil(target), nil
+			-- Combo points read plain in combat and before the finisher spends them (probed 2026-11-23). They count only for a cast at the enemy targeted, and a secret UnitCanAttack fails open.
+			sentPoints = sentTarget and sentTarget == PlainOrNil(UnitName("target")) and PlainOrNil(UnitCanAttack("player", "target")) ~= false
+				and PlainOrNil(GetComboPoints("player", "target")) or nil
 		end)
 		self.castSentFrame = f
 	end
